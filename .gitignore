@@ -75,3 +75,4 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+\n# Tool contexts\n.claude/\n.gemini/

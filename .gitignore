@@ -75,3 +75,9 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+# Tool contexts
+.claude/
+.gemini/
+.claude_bak/
+.gemini_bak/
+

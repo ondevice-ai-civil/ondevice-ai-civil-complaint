@@ -76,7 +76,7 @@ pip install -r requirements.txt
 |------|------|------|------|--------|
 | 팀장 | 엄윤상 | 1705817 | AI학과 | [@umyunsang](https://github.com/umyunsang) |
 | 팀원 | 장시우 | 2143655 | AI학과 | [@siuJang](https://github.com/siuJang) |
-| 팀원 | 이유정 | 2243951 | AI학과 | - |
+| 팀원 | 이유정 | 2243951 | AI학과 | [@yuujjjj](https://github.com/yuujjjj) |
 
 ## 라이선스
 

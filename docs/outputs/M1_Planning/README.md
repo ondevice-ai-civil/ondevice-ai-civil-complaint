@@ -9,9 +9,9 @@
 - [ ] exaone_analysis.md - EXAONE-Deep-7.8B 모델 분석
 
 ### Week 2: 시스템 설계
-- [ ] architecture_diagram.png - 시스템 아키텍처
-- [ ] database_erd.png - ERD
-- [ ] api_specification.md - API 명세서
+- [x] architecture_diagram.png - 시스템 아키텍처
+- [x] database_erd.png - ERD
+- [x] api_specification.md - API 명세서
 - [ ] vllm_serving_design.md - vLLM 서빙 구조
 
 ### Week 3: 개발 환경

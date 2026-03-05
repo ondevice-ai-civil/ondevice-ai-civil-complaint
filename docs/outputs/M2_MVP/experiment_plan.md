@@ -4,7 +4,7 @@
 **문서 버전**: 2.0 (Updated for EXAONE-Deep-7.8B)
 **작성일**: 2026-03-05
 **프로젝트**: On-Device AI 민원 분석 및 처리 시스템
-**실행 환경**: Google Colab L4 (24GB VRAM) / A100 (40GB VRAM)
+**실행 환경**: Google Colab A100 (40GB VRAM)
 **베이스 모델**: [LGAI-EXAONE/EXAONE-Deep-7.8B](https://huggingface.co/LGAI-EXAONE/EXAONE-Deep-7.8B)
 
 ---

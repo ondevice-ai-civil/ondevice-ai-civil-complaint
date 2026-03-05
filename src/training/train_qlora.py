@@ -128,7 +128,9 @@ def main():
     training_args = TrainingArguments(
         output_dir=args.output_dir,
         per_device_train_batch_size=args.batch_size,
+        per_device_eval_batch_size=4, # A100(40GB) 환경에 최적화 (L4 대비 상향)
         gradient_accumulation_steps=args.grad_accum,
+        eval_accumulation_steps=10,   # 평가 결과 누적으로 인한 OOM 방지
         learning_rate=args.lr,
         num_train_epochs=args.epochs,
         lr_scheduler_type="cosine",

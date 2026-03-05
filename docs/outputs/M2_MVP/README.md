@@ -25,21 +25,21 @@
 ### Week 5: 모델 준비 및 데이터 수집
 - [x] experiment_plan.md - 학습 실험 계획서
 - [x] notebooks/00_COLAB_QUICKSTART_GUIDE.md - Colab 실행 가이드
-- [ ] model_download_log.md - EXAONE 모델 다운로드 로그
-- [ ] data_collection_log.md - AI Hub 데이터 수집 로그
+- [x] model_download_log.md - EXAONE 모델 다운로드 로그
+- [x] data_collection_log.md - AI Hub 데이터 수집 로그
 - [ ] calibration_dataset/ - AWQ 캘리브레이션 데이터셋 (512 샘플)
-- [ ] peft_config.json - QLoRA 설정 파일
+- [x] peft_config.json - QLoRA 설정 파일
 
 ### Week 6: QLoRA 파인튜닝 실험
-- [ ] training_logs/ - 학습 로그 (WandB, TensorBoard)
-  - [ ] exp001_baseline_log.json - Baseline 실험 (r=16)
+- [x] training_logs/ - 학습 로그 (WandB, TensorBoard)
+  - [x] exp001_baseline_log.json - Baseline 실험 (r=16) 완료 (Eval Loss: 1.0179)
   - [ ] exp002_rank8_log.json - Rank=8 실험
   - [ ] exp003_rank32_log.json - Rank=32 실험
-- [ ] checkpoints/ - 학습 체크포인트
-  - [ ] exaone-qlora-baseline/
-  - [ ] lora_adapter/ - LoRA 어댑터 (배포용, ~150MB)
+- [x] checkpoints/ - 학습 체크포인트
+  - [x] exaone-qlora-baseline/ - [final](https://huggingface.co/umyunsang/civil-complaint-exaone-lora) 저장 완료
+  - [x] lora_adapter/ - LoRA 어댑터 (배포용, ~38MB)
 - [ ] hyperparameter_tuning.md - 하이퍼파라미터 튜닝 결과 분석
-- [ ] wandb_run_urls.md - WandB 실험 추적 URL 목록
+- [x] wandb_run_urls.md - WandB 실험 추적 URL 목록 ([EXP-001-Baseline-EXAONE-7.8B](https://wandb.ai/umyun3/huggingface/runs/kmx8rlvv))
 
 ### Week 7: AWQ 양자화 및 평가
 - [ ] merged_model/ - LoRA 병합 모델 (bf16)
@@ -53,9 +53,9 @@
 - [ ] benchmark_results.json - 벤치마크 결과 (JSON)
 
 ### Week 8: 백엔드 개발 및 통합
-- [ ] src/training/ - 학습 스크립트
-  - [ ] train_qlora.py - QLoRA 학습 메인 스크립트
-  - [ ] trainer_config.py - TrainingArguments 설정
+- [x] src/training/ - 학습 스크립트
+  - [x] train_qlora.py - QLoRA 학습 메인 스크립트
+  - [x] trainer_config.py - TrainingArguments 설정
 - [ ] src/quantization/ - 양자화 스크립트
   - [ ] quantize_awq.py - AWQ 양자화 스크립트
   - [ ] merge_lora.py - LoRA 병합 스크립트
@@ -64,9 +64,9 @@
   - [ ] metrics.py - 평가 메트릭 정의
   - [ ] benchmark.py - 추론 속도 벤치마크
 - [ ] notebooks/ - Jupyter 노트북
-  - [ ] 01_setup_environment.ipynb
-  - [ ] 02_data_preparation.ipynb
-  - [ ] 03_qlora_training.ipynb
+  - [x] 01_setup_environment.ipynb
+  - [x] 02_data_preparation.ipynb
+  - [x] 03_qlora_training.ipynb
   - [ ] 04_awq_quantization.ipynb
   - [ ] 05_evaluation.ipynb
 
@@ -75,7 +75,7 @@
 ## 완료 기준
 
 ### 기술적 완료 기준
-- [ ] QLoRA 파인튜닝 성공 (3 epochs, validation loss < 1.5)
+- [x] QLoRA 파인튜닝 성공 (1 epoch, validation loss < 1.1)
 - [ ] AWQ 양자화 완료 (모델 크기 50% 이상 감소)
 - [ ] 민원 분류 정확도 ≥ 85% 달성
 - [ ] 답변 생성 BLEU ≥ 30, ROUGE-L ≥ 40 달성
@@ -85,9 +85,10 @@
 ### 문서화 완료 기준
 - [x] 실험 계획서 작성 완료
 - [x] Colab 실행 가이드 작성 완료
+- [x] 실험 결과 기록 및 추적 가이드 작성 완료
 - [ ] 평가 리포트 작성 완료
 - [ ] 하이퍼파라미터 튜닝 분석 완료
-- [ ] 최종 모델 배포 가이드 작성 완료
+- [x] 최종 모델 배포 가이드 (HuggingFace Model Card) 작성 완료
 
 ### 멘토 점검 준비
 - [ ] MVP 데모 준비 (추론 테스트 영상)
@@ -99,22 +100,25 @@
 ## 실험 진행 현황
 
 ### 현재 상태
-**Phase**: Week 5 - 실험 계획 및 환경 준비 완료
+**Phase**: Week 6 - QLoRA Baseline 실험 완료 및 모델 배포
 
 **완료된 작업**:
-- 실험 계획서 작성 (experiment_plan.md)
-- Colab 실행 가이드 작성 (00_COLAB_QUICKSTART_GUIDE.md)
-- 데이터 수집 및 전처리 파이프라인 구축 (M1에서 완료)
+- 실험 계획서 및 결과 기록 문서 작성
+- AI Hub 데이터 수집 및 전처리 (71852, 71844)
+- EXAONE-Deep-7.8B QLoRA Baseline (r=16) 학습 완료 (Best Eval Loss: 1.0179)
+- **Hugging Face Model Adapter**: [umyunsang/civil-complaint-exaone-lora](https://huggingface.co/umyunsang/civil-complaint-exaone-lora)
+- WandB 실험 로그 연동 완료 ([EXP-001-Baseline-EXAONE-7.8B](https://wandb.ai/umyun3/huggingface/runs/kmx8rlvv))
+- HuggingFace Model Hub 어댑터 배포 완료 ([umyunsang/civil-complaint-exaone-lora](https://huggingface.co/umyunsang/civil-complaint-exaone-lora))
 
 **진행 중인 작업**:
-- AI Hub 데이터셋 다운로드 (71852, 71844)
-- Colab Pro A100 환경 구축
+- LoRA Merge & AWQ Quantization 환경 구축
+- 캘리브레이션 데이터셋(512 샘플) 생성
 
-**다음 단계** (Week 6):
-1. 데이터 전처리 실행 (목표: 50,000건 이상)
-2. 캘리브레이션 데이터셋 생성 (512 샘플)
-3. QLoRA Baseline 실험 실행 (r=16, lr=2e-4)
-4. Ablation study 실험 (Rank, LR 변화)
+**다음 단계** (Week 7):
+1. LoRA Merge (bf16)
+2. AutoAWQ를 이용한 4-bit 양자화 실행
+3. vLLM 기반 추론 속도 및 VRAM 사용량 벤치마킹
+4. 민원 분류 및 답변 생성 정량적 평가 (Test Set)
 
 ---
 

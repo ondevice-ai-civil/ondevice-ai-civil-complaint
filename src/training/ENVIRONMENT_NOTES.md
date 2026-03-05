@@ -3,17 +3,19 @@
 본 문서는 Google Colab L4 환경에서 `EXAONE-Deep-7.8B` 모델을 QLoRA로 파인튜닝하기 위해 구축된 현재 환경을 기록합니다.
 
 ## 1. 하드웨어 환경
-- **GPU**: NVIDIA L4 (24GB VRAM)
+- **GPU**: NVIDIA A100 (40GB VRAM)
 - **CUDA**: 12.1+ (vLLM 및 QLoRA 학습에 최적화)
 
 ## 2. 주요 라이브러리 버전
 - **transformers**: 5.3.0 (최신 dev/stable 버전, `RopeParameters` 포함)
 - **trl**: 0.12.0 (`DataCollatorForCompletionOnlyLM` 포함 버전으로 다운그레이드)
-- **peft**: 0.14.0+
+- **peft**: 0.18.1+
 - **bitsandbytes**: 0.45.0+ (4-bit 양자화용)
 - **accelerate**: 1.3.0+
 
 ## 3. 핵심 수정 사항 (Compatibility Patches)
+- **L4(24GB) 대비**: A100(40GB)으로 런타임 업그레이드. 이에 따라 `per_device_eval_batch_size=4`로 상향 조정하여 평가 속도 개선.
+- **메모리 파편화**: `PYTORCH_ALLOC_CONF=expandable_segments:True` 설정 권장.
 
 ### 3.1 `transformers` 라이브러리 패치
 `transformers` 5.3.0 버전에서 `check_model_inputs`가 삭제되어 `EXAONE` 모델의 `modeling_exaone.py`에서 임포트 에러가 발생합니다. 이를 해결하기 위해 아래와 같이 수동 패치를 적용했습니다:

@@ -39,7 +39,7 @@
   - [x] exaone-qlora-baseline/ - [final](https://huggingface.co/umyunsang/civil-complaint-exaone-lora) 저장 완료
   - [x] lora_adapter/ - LoRA 어댑터 (배포용, ~38MB)
 - [ ] hyperparameter_tuning.md - 하이퍼파라미터 튜닝 결과 분석
-- [x] wandb_run_urls.md - WandB 실험 추적 URL 목록 ([exp001-baseline-kmx8rlvv](https://wandb.ai/umyun3/huggingface/runs/kmx8rlvv))
+- [x] wandb_run_urls.md - WandB 실험 추적 URL 목록 ([EXP-001-Baseline-EXAONE-7.8B](https://wandb.ai/umyun3/huggingface/runs/kmx8rlvv))
 
 ### Week 7: AWQ 양자화 및 평가
 - [ ] merged_model/ - LoRA 병합 모델 (bf16)
@@ -107,6 +107,7 @@
 - AI Hub 데이터 수집 및 전처리 (71852, 71844)
 - EXAONE-Deep-7.8B QLoRA Baseline (r=16) 학습 완료 (Best Eval Loss: 1.0179)
 - **Hugging Face Model Adapter**: [umyunsang/civil-complaint-exaone-lora](https://huggingface.co/umyunsang/civil-complaint-exaone-lora)
+- WandB 실험 로그 연동 완료 ([EXP-001-Baseline-EXAONE-7.8B](https://wandb.ai/umyun3/huggingface/runs/kmx8rlvv))
 - HuggingFace Model Hub 어댑터 배포 완료 ([umyunsang/civil-complaint-exaone-lora](https://huggingface.co/umyunsang/civil-complaint-exaone-lora))
 
 **진행 중인 작업**:

@@ -37,7 +37,7 @@
   - Step 400: Eval Loss 1.0443
   - **Final (Step 781)**: Training Loss ~1.01 / **Best Eval Loss 1.0179** (at Step 700)
   - **Status**: **Completed**
-- **WandB Run**: [exp001-baseline-kmx8rlvv](https://wandb.ai/umyun3/huggingface/runs/kmx8rlvv)
+- **WandB Run**: [EXP-001-Baseline-EXAONE-7.8B](https://wandb.ai/umyun3/huggingface/runs/kmx8rlvv)
 - **Hugging Face Model**: [umyunsang/civil-complaint-exaone-lora](https://huggingface.co/umyunsang/civil-complaint-exaone-lora)
 - **비고**: 
   - `transformers 5.3.0` 및 `trl 0.12.0` 호환성 패치 적용 후 실행됨.

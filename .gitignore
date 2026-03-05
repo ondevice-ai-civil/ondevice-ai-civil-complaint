@@ -48,11 +48,19 @@ lightning_logs/
 
 # Data
 data/raw/
+!data/raw/**/
+!data/raw/aihub/71852/*.zip
 data/processed/
+!data/processed/*.jsonl
+!data/processed/*.json
+data/calibration/
+!data/calibration/*.json
+!data/calibration/*.txt
 *.csv
 *.json
 *.jsonl
 !configs/*.json
+!src/training/*.json
 
 # Model files (large)
 models/*.bin

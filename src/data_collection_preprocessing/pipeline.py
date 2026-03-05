@@ -28,7 +28,6 @@ from dataclasses import dataclass, asdict
 
 from .config import Config, get_config
 from .aihub_collector import AIHubCollector, create_mock_dataset
-from .seoul_api_collector import SeoulAPICollector, create_mock_seoul_data
 from .pii_masking import PIIMasker
 from .data_preprocessor import DataPreprocessor, ProcessedRecord
 from .calibration_dataset import CalibrationDatasetGenerator
@@ -84,7 +83,6 @@ class DataPipeline:
 
         # Initialize components
         self.aihub_collector = AIHubCollector(self.config.aihub)
-        self.seoul_collector = SeoulAPICollector(self.config.seoul_api)
         self.pii_masker = PIIMasker.create_strict_masker()
         self.preprocessor = DataPreprocessor(self.config.preprocessing, self.pii_masker)
         self.calibration_generator = CalibrationDatasetGenerator(self.config.calibration)
@@ -142,88 +140,29 @@ class DataPipeline:
         logger.info(f"Total AI Hub records collected: {len(collected_data)}")
         return collected_data
 
-    def collect_from_seoul_api(
+    def collect_all(
         self,
         use_mock: bool = False,
-        mock_samples: int = 100,
-        max_records: Optional[int] = None
+        mock_samples: int = 100
     ) -> List[Dict[str, Any]]:
         """
-        Collect data from Seoul Open Data API.
+        Collect data from all sources (AI Hub).
 
         Args:
             use_mock: Use mock data for testing
             mock_samples: Number of mock samples
-            max_records: Maximum records to collect
 
         Returns:
             List of raw data records
         """
-        logger.info("Collecting data from Seoul Open Data API...")
-
-        if use_mock:
-            mock_path = create_mock_seoul_data(
-                Path(self.config.seoul_api.download_dir) / "mock",
-                num_samples=mock_samples
-            )
-            with open(mock_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return data.get("data", [])
-
-        # Real API collection
-        if not self.config.seoul_api.api_key:
-            logger.warning(
-                "Seoul API key not configured. Set SEOUL_API_KEY environment variable."
-            )
-            return []
-
-        # Collect from API
-        collected_data = list(
-            self.seoul_collector.collect_all(
-                endpoint_name="eungdapso",
-                max_records=max_records
-            )
-        )
-
-        logger.info(f"Total Seoul API records collected: {len(collected_data)}")
-        return collected_data
-
-    def collect_all(
-        self,
-        use_mock: bool = False,
-        mock_samples: int = 100,
-        max_seoul_records: Optional[int] = None
-    ) -> List[Dict[str, Any]]:
-        """
-        Collect data from all sources.
-
-        Args:
-            use_mock: Use mock data for testing
-            mock_samples: Number of mock samples per source
-            max_seoul_records: Maximum Seoul API records
-
-        Returns:
-            Combined list of raw data records
-        """
-        all_data = []
-
         # Collect from AI Hub
         aihub_data = self.collect_from_aihub(use_mock, mock_samples)
         for record in aihub_data:
             record["_source"] = "aihub"
-        all_data.extend(aihub_data)
 
-        # Collect from Seoul API
-        seoul_data = self.collect_from_seoul_api(
-            use_mock, mock_samples, max_seoul_records
-        )
-        for record in seoul_data:
-            record["_source"] = "seoul_api"
-        all_data.extend(seoul_data)
-
-        self.raw_data = all_data
-        logger.info(f"Total records collected: {len(all_data)}")
-        return all_data
+        self.raw_data = aihub_data
+        logger.info(f"Total records collected: {len(aihub_data)}")
+        return aihub_data
 
     def preprocess(
         self,
@@ -246,10 +185,9 @@ class DataPipeline:
 
         logger.info(f"Preprocessing {len(raw_data)} records...")
 
-        # Group by source for appropriate field mapping
+        # Group by source
         aihub_data = [r for r in raw_data if r.get("_source") == "aihub"]
-        seoul_data = [r for r in raw_data if r.get("_source") == "seoul_api"]
-        other_data = [r for r in raw_data if r.get("_source") not in ["aihub", "seoul_api"]]
+        other_data = [r for r in raw_data if r.get("_source") != "aihub"]
 
         processed = []
 
@@ -258,22 +196,7 @@ class DataPipeline:
             processed.extend(
                 self.preprocessor.process_raw_data(
                     aihub_data,
-                    source="aihub",
-                    question_field="question",
-                    answer_field="answer",
-                    category_field="category"
-                )
-            )
-
-        # Process Seoul API data
-        if seoul_data:
-            processed.extend(
-                self.preprocessor.process_raw_data(
-                    seoul_data,
-                    source="seoul_api",
-                    question_field="QSTN_CONT",
-                    answer_field="ANSW_CONT",
-                    category_field="MENU_NM"
+                    source="aihub"
                 )
             )
 
@@ -351,7 +274,6 @@ class DataPipeline:
         self,
         use_mock: bool = False,
         mock_samples: int = 100,
-        max_seoul_records: Optional[int] = None,
         output_prefix: str = "civil_complaint"
     ) -> PipelineResult:
         """
@@ -360,7 +282,6 @@ class DataPipeline:
         Args:
             use_mock: Use mock data for testing
             mock_samples: Number of mock samples
-            max_seoul_records: Maximum Seoul API records
             output_prefix: Output filename prefix
 
         Returns:
@@ -380,7 +301,7 @@ class DataPipeline:
             logger.info("=" * 60)
             logger.info("Step 1: Data Collection")
             logger.info("=" * 60)
-            raw_data = self.collect_all(use_mock, mock_samples, max_seoul_records)
+            raw_data = self.collect_all(use_mock, mock_samples)
             result.total_raw_records = len(raw_data)
 
             if not raw_data:
@@ -584,13 +505,6 @@ Examples:
     )
 
     parser.add_argument(
-        "--max-seoul-records",
-        type=int,
-        default=None,
-        help="Maximum Seoul API records to collect"
-    )
-
-    parser.add_argument(
         "--input",
         type=str,
         default=None,
@@ -623,7 +537,6 @@ Examples:
         result = pipeline.run_full_pipeline(
             use_mock=args.mock,
             mock_samples=args.mock_samples,
-            max_seoul_records=args.max_seoul_records,
             output_prefix=args.output_prefix
         )
 

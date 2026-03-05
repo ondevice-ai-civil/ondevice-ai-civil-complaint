@@ -1,0 +1,14 @@
+{
+  "total_raw_records": 1807501,
+  "total_processed_records": 15604,
+  "filtered_too_short": 1785406,
+  "filtered_duplicates": 6483,
+  "filtered_invalid": 8,
+  "category_distribution": {
+    "other": 15604
+  },
+  "avg_question_length": 1185.8840041015123,
+  "avg_answer_length": 96.92040502435273,
+  "pii_masked_count": 15604,
+  "processing_time_seconds": 10.517876
+}

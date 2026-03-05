@@ -49,46 +49,6 @@ class AIHubConfig:
 
 
 @dataclass
-class SeoulAPIConfig:
-    """Seoul Open Data API Configuration"""
-    api_key: str = field(default_factory=lambda: os.getenv("SEOUL_API_KEY", ""))
-
-    # Base URL for Seoul Open Data API
-    base_url: str = "http://openAPI.seoul.go.kr:8088"
-
-    # Available datasets
-    datasets: Dict[str, str] = field(default_factory=lambda: {
-        "eungdapso": "S_EUNGDAPSO_CASE_INFO",  # Civil complaint cases
-        "complaint_stats": "tbCivilComplaint",  # Complaint statistics
-    })
-
-    # Request parameters
-    request_format: str = "json"
-    max_rows_per_request: int = 1000
-    request_delay: float = 0.5  # seconds between requests
-
-    # Download directory
-    download_dir: str = field(default_factory=lambda: os.getenv(
-        "SEOUL_DOWNLOAD_DIR",
-        str(Path(__file__).parent.parent.parent / "data" / "raw" / "seoul_api")
-    ))
-
-
-@dataclass
-class DataGoKrConfig:
-    """Public Data Portal (data.go.kr) Configuration"""
-    api_key: str = field(default_factory=lambda: os.getenv("DATA_GO_KR_API_KEY", ""))
-
-    base_url: str = "http://apis.data.go.kr"
-
-    # Download directory
-    download_dir: str = field(default_factory=lambda: os.getenv(
-        "DATA_GO_KR_DOWNLOAD_DIR",
-        str(Path(__file__).parent.parent.parent / "data" / "raw" / "data_go_kr")
-    ))
-
-
-@dataclass
 class PreprocessingConfig:
     """Data Preprocessing Configuration"""
 
@@ -157,8 +117,6 @@ class Config:
 
     # Sub-configurations
     aihub: AIHubConfig = field(default_factory=AIHubConfig)
-    seoul_api: SeoulAPIConfig = field(default_factory=SeoulAPIConfig)
-    data_go_kr: DataGoKrConfig = field(default_factory=DataGoKrConfig)
     preprocessing: PreprocessingConfig = field(default_factory=PreprocessingConfig)
     calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
 
@@ -177,8 +135,6 @@ class Config:
         """Create necessary directories if they don't exist"""
         directories = [
             self.aihub.download_dir,
-            self.seoul_api.download_dir,
-            self.data_go_kr.download_dir,
             self.preprocessing.processed_dir,
             self.calibration.output_path,
         ]
@@ -204,15 +160,10 @@ class Config:
         if not self.aihub.api_key:
             logger.warning("AI Hub API key is not set. Set AIHUB_API_KEY environment variable.")
 
-        if not self.seoul_api.api_key:
-            logger.warning("Seoul API key is not set. Set SEOUL_API_KEY environment variable.")
-
     def get_api_status(self) -> Dict[str, bool]:
         """Check which API keys are configured"""
         return {
             "aihub": bool(self.aihub.api_key),
-            "seoul_api": bool(self.seoul_api.api_key),
-            "data_go_kr": bool(self.data_go_kr.api_key),
         }
 
     @classmethod

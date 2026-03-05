@@ -53,7 +53,7 @@ def main():
         bnb_4bit_use_double_quant=True,
     )
 
-    # 3. 모델 로드
+    # 3. 모델 로드 (QLoRA)
     print(f"Loading model: {args.model_id}")
     model = AutoModelForCausalLM.from_pretrained(
         args.model_id,
@@ -63,8 +63,23 @@ def main():
         torch_dtype=torch.bfloat16,
     )
 
+    # Monkey-patching for Exaone model (missing in transformers 5.3.0 dev implementation)
+    # Check if they are actually implemented or if they raise NotImplementedError
+    try:
+        model.get_input_embeddings()
+    except (NotImplementedError, AttributeError):
+        model.get_input_embeddings = lambda: model.transformer.wte
+        print("Monkey-patched get_input_embeddings")
+    
+    try:
+        model.get_output_embeddings()
+    except (NotImplementedError, AttributeError):
+        model.get_output_embeddings = lambda: model.lm_head
+        print("Monkey-patched get_output_embeddings")
+
     # 4. LoRA 설정 (Config 파일 또는 인자 반영)
     model = prepare_model_for_kbit_training(model)
+
     
     if os.path.exists(args.peft_config_path):
         print(f"Loading PEFT config from {args.peft_config_path}")
@@ -123,7 +138,7 @@ def main():
         bf16=True,
         tf32=True,
         logging_steps=10,
-        evaluation_strategy="steps",
+        eval_strategy="steps",
         eval_steps=100,
         save_strategy="steps",
         save_steps=100,

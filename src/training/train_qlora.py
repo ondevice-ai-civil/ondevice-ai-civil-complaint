@@ -6,6 +6,7 @@ Optimized for Civil Complaint Dataset & Colab A100/L4 Environment
 import os
 import torch
 import argparse
+import json
 from datetime import datetime
 from datasets import load_dataset
 from transformers import (
@@ -83,9 +84,7 @@ def main():
     
     if os.path.exists(args.peft_config_path):
         print(f"Loading PEFT config from {args.peft_config_path}")
-        from peft import LoraConfig
         # LoraConfig.from_json_file은 dict를 반환하므로 **를 사용하여 초기화
-        import json
         with open(args.peft_config_path, "r") as f:
             config_dict = json.load(f)
         lora_config = LoraConfig(**config_dict)
@@ -102,6 +101,7 @@ def main():
             bias="none",
             task_type="CAUSAL_LM",
         )
+
     
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()

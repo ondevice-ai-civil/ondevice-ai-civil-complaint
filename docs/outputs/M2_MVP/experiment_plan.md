@@ -1,27 +1,11 @@
-# EXAONE-3.5-7.8B-Instruct 실험 계획서
+# EXAONE-Deep-7.8B 실험 계획서
 ## QLoRA 파인튜닝 및 AWQ 양자화
 
-**문서 버전**: 1.0
+**문서 버전**: 2.0 (Updated for EXAONE-Deep-7.8B)
 **작성일**: 2026-03-05
 **프로젝트**: On-Device AI 민원 분석 및 처리 시스템
-**실행 환경**: Google Colab Pro A100 런타임
-**베이스 모델**: [LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct](https://huggingface.co/LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct)
-
----
-
-## 목차
-
-1. [실험 개요 (Experiment Overview)](#1-실험-개요-experiment-overview)
-2. [모델 및 데이터셋 구성 (Model & Dataset Configuration)](#2-모델-및-데이터셋-구성-model--dataset-configuration)
-3. [실험 환경 설정 (Environment Setup)](#3-실험-환경-설정-environment-setup)
-4. [데이터 준비 파이프라인 (Data Preparation)](#4-데이터-준비-파이프라인-data-preparation)
-5. [QLoRA 파인튜닝 실험 설계 (QLoRA Fine-tuning Design)](#5-qlora-파인튜닝-실험-설계-qlora-fine-tuning-design)
-6. [AWQ 양자화 실험 설계 (AWQ Quantization Design)](#6-awq-양자화-실험-설계-awq-quantization-design)
-7. [평가 메트릭 및 벤치마크 (Evaluation Metrics)](#7-평가-메트릭-및-벤치마크-evaluation-metrics)
-8. [실험 추적 및 로깅 (Experiment Tracking)](#8-실험-추적-및-로깅-experiment-tracking)
-9. [컴퓨팅 자원 계획 (Computing Resources)](#9-컴퓨팅-자원-계획-computing-resources)
-10. [실험 일정 및 마일스톤 (Timeline)](#10-실험-일정-및-마일스톤-timeline)
-11. [코드 구조 및 재현성 (Reproducibility)](#11-코드-구조-및-재현성-reproducibility)
+**실행 환경**: Google Colab L4 (24GB VRAM) / A100 (40GB VRAM)
+**베이스 모델**: [LGAI-EXAONE/EXAONE-Deep-7.8B](https://huggingface.co/LGAI-EXAONE/EXAONE-Deep-7.8B)
 
 ---
 
@@ -30,7 +14,7 @@
 ### 1.1 연구 목적 및 가설
 
 #### 연구 목적
-본 실험은 한국어 특화 LLM인 EXAONE-3.5-7.8B-Instruct 모델을 민원 도메인에 특화하여 파인튜닝하고, 온프레미스 환경 배포를 위한 최적의 양자화 기법을 검증하는 것을 목표로 합니다.
+본 실험은 한국어 특화 LLM인 EXAONE-Deep-7.8B 모델을 민원 도메인에 특화하여 파인튜닝하고, 온프레미스 환경 배포를 위한 최적의 양자화 기법을 검증하는 것을 목표로 합니다.
 
 #### 핵심 가설
 1. **H1 (QLoRA 효과성)**: QLoRA 기법을 사용하여 4-bit 양자화 상태에서 파인튜닝해도 민원 분류 및 답변 생성 성능이 85% 이상의 정확도를 달성할 수 있다.
@@ -38,94 +22,90 @@
 3. **H3 (AWQ 양자화 효율성)**: AWQ 4-bit 양자화 적용 시 모델 크기 50% 이상 감소, 추론 속도 2배 이상 향상을 달성하면서도 성능 저하가 5% 미만으로 유지된다.
 4. **H4 (Chat Template 최적화)**: EXAONE 표준 Chat Template (`[|user|]`, `[|assistant|]`) 적용 시 일반 프롬프트 대비 답변 품질이 향상된다.
 
-### 1.2 기대 효과 및 성과 지표
-
-#### 기대 효과
-- **업무 효율성**: 민원 처리 시간 60% 이상 단축 (평균 15분 → 3분 이하)
-- **모델 경량화**: VRAM 사용량 50% 감소 (bfloat16 15GB → AWQ 8GB 미만)
-- **추론 속도**: p50 응답 시간 2초 이하, p95 응답 시간 5초 이하 달성
-- **비용 절감**: 클라우드 API 대비 연간 90% 비용 절감
-
-#### 성과 지표 (KPI)
-| 지표 | 베이스라인 | 목표값 | 측정 방법 |
-|------|-----------|--------|----------|
-| 민원 분류 정확도 | 55% (키워드 기반) | ≥85% | Test set accuracy |
-| 답변 생성 BLEU | N/A | ≥30 | BLEU-4 score |
-| 답변 생성 ROUGE-L | N/A | ≥40 | ROUGE-L F1 |
-| 추론 속도 (p50) | N/A | <2초 | vLLM 벤치마크 |
-| GPU VRAM 사용량 | 15GB (bf16) | <8GB (AWQ) | nvidia-smi |
-| 모델 파일 크기 | 15.6GB (bf16) | <8GB (AWQ) | 파일 크기 측정 |
-
-### 1.3 실험 범위 및 제한사항
-
-#### 실험 범위
-- **모델**: EXAONE-3.5-7.8B-Instruct (단일 모델 집중 연구)
-- **파인튜닝 기법**: QLoRA (4-bit NF4, LoRA rank 실험)
-- **양자화 기법**: AWQ (4-bit, activation-aware)
-- **데이터셋**: AI Hub 공공 민원 상담 LLM 데이터 (71852) + 민간 민원 데이터 (71844) + 콜센터 QA (98) + 업무 자동화 (619)
-
-#### 제한사항
-1. **데이터 규모**: 최대 100,000건 (Colab 디스크 용량 제약)
-2. **학습 시간**: Colab Pro A100 최대 24시간 런타임 제약
-3. **평가 기준**: 실제 공무원 만족도 평가는 제외 (자동 평가 지표만 사용)
-4. **언어**: 한국어 민원 데이터만 다룸 (다국어 미지원)
-5. **도메인**: 지자체 민원으로 한정 (중앙행정 제외)
-
 ---
 
 ## 2. 모델 및 데이터셋 구성 (Model & Dataset Configuration)
 
-### 2.1 베이스 모델: EXAONE-3.5-7.8B-Instruct
+### 2.1 베이스 모델: EXAONE-Deep-7.8B
 
 #### 모델 선정 근거
 | 평가 기준 | 상세 내용 |
 |----------|----------|
 | **한국어 성능** | 한국 표준 테스트 (CSAT Math 2025) 89.9% 달성 |
-| **모델 크기** | 7.8B 파라미터 - A100 40GB 환경에 최적 |
+| **모델 크기** | 7.8B 파라미터 - Colab L4 (24GB VRAM) 환경에 최적 |
 | **컨텍스트 길이** | 32,768 토큰 - 긴 민원 및 유사 사례 참조 가능 |
 | **아키텍처** | Grouped Query Attention (GQA) - 추론 효율성 우수 |
 | **라이선스** | EXAONE AI Model License 1.1-NC (연구/비상업적 사용 허용) |
-| **공식 지원** | Hugging Face Transformers, PEFT, vLLM 공식 지원 |
+| **공식 지원** | vLLM, AutoAWQ 공식 지원 |
 
-#### 모델 상세 정보
+#### QLoRA 학습 상세 설정
 ```python
-MODEL_CONFIG = {
-    "model_id": "LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct",
-    "model_type": "exaone",
-    "architecture": "ExaoneForCausalLM",
-    "num_parameters": "7.8B",
-    "vocab_size": 102400,
-    "hidden_size": 4096,
-    "intermediate_size": 14336,
-    "num_hidden_layers": 32,
-    "num_attention_heads": 32,
-    "num_key_value_heads": 8,  # GQA
-    "max_position_embeddings": 32768,
-    "rope_theta": 10000.0,
-    "torch_dtype": "bfloat16",
-    "use_cache": True
+QLORA_CONFIG = {
+    "load_in_4bit": True,
+    "bnb_4bit_quant_type": "nf4",
+    "bnb_4bit_compute_dtype": "bfloat16",
+    "bnb_4bit_use_double_quant": True,
+    "lora_r": 16,
+    "lora_alpha": 32,
+    "target_modules": [
+        "q_proj", "k_proj", "v_proj", "o_proj",
+        "gate_proj", "up_proj", "down_proj"
+    ],
+    "lora_dropout": 0.05,
+    "task_type": "CAUSAL_LM"
 }
 ```
 
-#### Chat Template 구조
-```python
-EXAONE_CHAT_TEMPLATE = """[|system|]
-{system_message}
+#### Training Hyperparameters (EXP-001 Baseline)
+- **Batch Size**: 2
+- **Gradient Accumulation**: 8 (Effective Batch Size: 16)
+- **Learning Rate**: 2e-4
+- **Epochs**: 1 (Initial Test) / 3 (Full Training)
+- **Max Seq Length**: 2048
+- **Optimizer**: `paged_adamw_8bit`
+- **Scheduler**: `cosine`
+
+---
+
+## 3. 실험 환경 및 호환성 (Environment & Compatibility)
+
+### 3.1 필수 라이브러리 및 버전
+- `transformers==5.3.0` (EXAONE 모델 지원 버전)
+- `trl==0.12.0` (DataCollator 호환 버전)
+- `peft>=0.14.0`
+- `bitsandbytes>=0.45.0`
+
+### 3.2 모델 호환성 패치 (Monkey-patching)
+EXAONE 모델의 원활한 학습을 위해 아래와 같은 패치가 적용되었습니다.
+1. `transformers.utils.generic.check_model_inputs` 삭제 대응 (수동 정의)
+2. `get_input_embeddings` 및 `get_output_embeddings` 몽키 패치 적용
+
+---
+
+## 4. 데이터 준비 및 전처리
+
+### 4.1 데이터 포맷 (EXAONE Chat Template)
+```text
+[|system|]
+당신은 지자체 민원 담당 공무원을 돕는 AI 어시스턴트입니다.
 [|user|]
-{user_message}
+{instruction}\n\n{input}
 [|assistant|]
-{assistant_message}[|endofturn|]"""
-
-# 민원 응답 생성용 시스템 프롬프트
-CIVIL_COMPLAINT_SYSTEM_PROMPT = """당신은 지자체 민원 담당 공무원을 돕는 AI 어시스턴트입니다.
-민원 내용을 단계적으로 분석하고, 공손하고 명확한 표준 답변을 작성해야 합니다.
-
-답변 작성 원칙:
-1. 민원인의 요청사항을 정확히 파악합니다.
-2. 관련 법규 및 정책을 근거로 답변합니다.
-3. 공손하고 존중하는 어투를 사용합니다.
-4. 담당부서와 연락처를 명시합니다."""
+{output}
 ```
+
+---
+
+## 5. 향후 일정 및 목표
+
+### 5.1 Week 6 목표
+- **EXP-001 Baseline QLoRA** 완료 (현재 진행 중)
+- **EXP-002 Rank 변화 실험** (r=8, r=32)
+- **EXP-003 Learning Rate 변화 실험** (lr=1e-4)
+
+### 5.2 Week 7 목표
+- **LoRA Merge & AWQ Quantization**
+- **민원 분류 정확도 및 답변 생성 품질 평가**
 
 ### 2.2 데이터셋 구성
 

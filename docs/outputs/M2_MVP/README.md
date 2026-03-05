@@ -39,7 +39,7 @@
   - [x] exaone-qlora-baseline/ - [final](https://huggingface.co/umyunsang/civil-complaint-exaone-lora) 저장 완료
   - [x] lora_adapter/ - LoRA 어댑터 (배포용, ~38MB)
 - [ ] hyperparameter_tuning.md - 하이퍼파라미터 튜닝 결과 분석
-- [x] wandb_run_urls.md - WandB 실험 추적 URL 목록 (offline-run-kmx8rlvv)
+- [x] wandb_run_urls.md - WandB 실험 추적 URL 목록 ([exp001-baseline-kmx8rlvv](https://wandb.ai/umyun3/huggingface/runs/kmx8rlvv))
 
 ### Week 7: AWQ 양자화 및 평가
 - [ ] merged_model/ - LoRA 병합 모델 (bf16)

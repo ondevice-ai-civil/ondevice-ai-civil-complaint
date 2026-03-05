@@ -48,6 +48,8 @@ lightning_logs/
 
 # Data
 data/raw/
+!data/raw/**/
+!data/raw/aihub/71852/*.zip
 data/processed/
 *.csv
 *.json

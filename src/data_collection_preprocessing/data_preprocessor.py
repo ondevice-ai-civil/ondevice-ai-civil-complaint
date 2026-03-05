@@ -331,17 +331,59 @@ class DataPreprocessor:
             List of processed records
         """
         start_time = datetime.now()
-        self.report.total_raw_records += len(raw_data)
+        
+        # Special handling for 98 (Dasan Call Center) pairing
+        if source == "aihub" and any("도메인" in r and r["도메인"] == "다산콜센터" for r in raw_data[:10]):
+            logger.info("Detected Dasan Call Center format (98). Matching Q&A pairs...")
+            dialog_map = {}
+            for r in raw_data:
+                did = r.get("대화셋일련번호")
+                if not did: continue
+                if did not in dialog_map: dialog_map[did] = {"Q": "", "A": "", "cat": r.get("카테고리", "기타")}
+                if r.get("QA") == "Q":
+                    dialog_map[did]["Q"] = r.get("고객질문(요청)", "")
+                elif r.get("QA") == "A":
+                    dialog_map[did]["A"] = r.get("상담사답변", "")
+            
+            new_raw = []
+            for did, content in dialog_map.items():
+                if content["Q"] and content["A"]:
+                    new_raw.append({
+                        "question": content["Q"],
+                        "answer": content["A"],
+                        "category": content["cat"],
+                        "id": did,
+                        "_source": "aihub"
+                    })
+            raw_data = new_raw
 
+        self.report.total_raw_records += len(raw_data)
         processed_records = []
 
         for idx, raw_record in enumerate(raw_data):
+            # Special handling for 71852/71844 Consulting Content
+            if "consulting_content" in raw_record:
+                content = raw_record["consulting_content"]
+                if "Q :" in content and "A :" in content:
+                    parts = content.split("A :")
+                    q_part = parts[0].replace("제목 :", "").replace("Q :", "").strip()
+                    a_part = parts[1].strip()
+                    raw_record["question"] = q_part
+                    raw_record["answer"] = a_part
+                elif "instructions" in raw_record and raw_record["instructions"]:
+                    instr = raw_record["instructions"][0]
+                    if "data" in instr and instr["data"]:
+                        raw_record["question"] = instr["data"][0].get("input", "")
+                        raw_record["answer"] = instr["data"][0].get("output", "")
+
             # Extract fields (handle various naming conventions)
             question = (
                 raw_record.get(question_field) or
                 raw_record.get("QSTN_CONT") or
+                raw_record.get("Q_refined") or
                 raw_record.get("question_content") or
                 raw_record.get("body") or
+                raw_record.get("question") or
                 ""
             )
 
@@ -350,6 +392,7 @@ class DataPreprocessor:
                 raw_record.get("ANSW_CONT") or
                 raw_record.get("answer_content") or
                 raw_record.get("response") or
+                raw_record.get("answer") or
                 ""
             )
 
@@ -357,6 +400,7 @@ class DataPreprocessor:
                 raw_record.get(category_field) or
                 raw_record.get("MENU_NM") or
                 raw_record.get("category_name") or
+                raw_record.get("카테고리") or
                 "other"
             )
 

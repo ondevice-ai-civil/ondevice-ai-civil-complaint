@@ -62,8 +62,7 @@
 - **모델**: EXAONE-3.5-7.8B-Instruct (단일 모델 집중 연구)
 - **파인튜닝 기법**: QLoRA (4-bit NF4, LoRA rank 실험)
 - **양자화 기법**: AWQ (4-bit, activation-aware)
-- **데이터셋**: AI Hub 공공 민원 상담 LLM 데이터 (71852) + 민간 민원 데이터 (71844)
-- **태스크**: 민원 분류, 답변 생성 (multi-task learning)
+- **데이터셋**: AI Hub 공공 민원 상담 LLM 데이터 (71852) + 민간 민원 데이터 (71844) + 콜센터 QA (98) + 업무 자동화 (619)
 
 #### 제한사항
 1. **데이터 규모**: 최대 100,000건 (Colab 디스크 용량 제약)
@@ -238,7 +237,6 @@ result = pipeline.run_full_pipeline(
 # 실제 데이터로 실행 (AI Hub 다운로드 후)
 result = pipeline.run_full_pipeline(
     use_mock=False,
-    max_seoul_records=10000,
     output_prefix="civil_complaint"
 )
 ```

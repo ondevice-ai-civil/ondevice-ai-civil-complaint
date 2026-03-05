@@ -28,6 +28,7 @@ def parse_args():
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--grad_accum", type=int, default=4)
     parser.add_argument("--lr", type=float, default=2e-4)
+    parser.add_argument("--peft_config_path", type=str, default="src/training/peft_config.json", help="Path to PEFT config JSON")
     parser.add_argument("--lora_r", type=int, default=16)
     parser.add_argument("--lora_alpha", type=int, default=32)
     parser.add_argument("--max_seq_length", type=int, default=2048)
@@ -62,19 +63,31 @@ def main():
         torch_dtype=torch.bfloat16,
     )
 
-    # 4. LoRA 설정 (PRD 명세 반영)
+    # 4. LoRA 설정 (Config 파일 또는 인자 반영)
     model = prepare_model_for_kbit_training(model)
-    lora_config = LoraConfig(
-        r=args.lora_r,
-        lora_alpha=args.lora_alpha,
-        target_modules=[
-            "q_proj", "k_proj", "v_proj", "o_proj",
-            "gate_proj", "up_proj", "down_proj"
-        ],
-        lora_dropout=0.05,
-        bias="none",
-        task_type="CAUSAL_LM",
-    )
+    
+    if os.path.exists(args.peft_config_path):
+        print(f"Loading PEFT config from {args.peft_config_path}")
+        from peft import LoraConfig
+        # LoraConfig.from_json_file은 dict를 반환하므로 **를 사용하여 초기화
+        import json
+        with open(args.peft_config_path, "r") as f:
+            config_dict = json.load(f)
+        lora_config = LoraConfig(**config_dict)
+    else:
+        print(f"Config file not found at {args.peft_config_path}. Using command line arguments.")
+        lora_config = LoraConfig(
+            r=args.lora_r,
+            lora_alpha=args.lora_alpha,
+            target_modules=[
+                "q_proj", "k_proj", "v_proj", "o_proj",
+                "gate_proj", "up_proj", "down_proj"
+            ],
+            lora_dropout=0.05,
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
+    
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
 

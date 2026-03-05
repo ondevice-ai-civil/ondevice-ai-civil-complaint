@@ -55,6 +55,7 @@ data/processed/
 *.json
 *.jsonl
 !configs/*.json
+!src/training/*.json
 
 # Model files (large)
 models/*.bin

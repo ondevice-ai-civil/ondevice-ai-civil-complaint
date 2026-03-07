@@ -1,18 +1,18 @@
 {
-  "timestamp": "2026-03-07T07:07:29.135381",
+  "timestamp": "2026-03-07T12:17:42.129122",
   "model": "EXAONE-Deep-7.8B-AWQ (civil-complaint fine-tuned)",
   "quantization": "AWQ W4A16g128",
   "metrics": {
     "perplexity": 3.1957,
-    "classification_accuracy": 0.02,
-    "bleu_score": 12.29,
-    "rouge_l_score": 21.36
+    "classification_accuracy": 0.0,
+    "bleu_score": 17.32,
+    "rouge_l_score": 18.28
   },
   "inference": {
-    "avg_latency_s": 9.293,
-    "p50_latency_s": 9.291,
-    "p95_latency_s": 9.384,
-    "throughput_tok_s": 13.8,
+    "avg_latency_s": 3.603,
+    "p50_latency_s": 3.61,
+    "p95_latency_s": 3.651,
+    "throughput_tok_s": 13.9,
     "gpu_vram_allocated_gb": 4.95,
     "gpu_vram_max_gb": 7.16
   },
@@ -26,79 +26,89 @@
     {
       "true": "other",
       "predicted": "unknown",
-      "correct": false
+      "correct": false,
+      "response_snippet": "상담사는 카드를 [NAME_MASKED] 금액을 확인[NAME_MASKED] 위해 [NAME_MASKED] [NAME_MASKED] [NAME_MASKED] 확인[NAME_MASKED] 있습니다.\n[NAME_MASKED]는 카드를 [NAME_MASKED] 금액을 확인[NAME_MASKED] 위해 [NAME_MASKED] [NAME_MASKED] 확인[NAM"
     },
     {
       "true": "other",
       "predicted": "unknown",
-      "correct": false
+      "correct": false,
+      "response_snippet": "상담사의 [NAME_MASKED] [NAME_MASKED] [NAME_MASKED] [NAME_MASKED] 원금을 모두 상환하겠다고 했습니다.\n\n상담사는 [NAME_MASKED] 원금을 모두 상환하겠다고 [NAME_MASKED] [NAME_MASKED] 확인했습니다.\n\n상담사는 [NAME_MASKED] 원금을 모두 상환하겠다고 [NAME_MASKED] ["
     },
     {
       "true": "other",
       "predicted": "unknown",
-      "correct": false
+      "correct": false,
+      "response_snippet": "    # 민원내용\n    - [NAME_MASKED] [NAME_MASKED] [NAME_MASKED] [NAME_MASKED] [NAME_MASKED] [NAME_MASKED] [NAME_MASKED] [NAME_MASKED] [NAME_MASKED] [NAME_MASKED] [NAME_MASKED] [NAME_MASKED] [NAME_MASKED] ["
     },
     {
       "true": "other",
       "predicted": "unknown",
-      "correct": false
+      "correct": false,
+      "response_snippet": "상담사의 답변을 통해 카드 결제가 취소되었고, [NAME_MASKED] [NAME_MASKED] [NAME_MASKED] [NAME_MASKED] 있는 것으로 확인되었습니다.\n[NAME_MASKED] [NAME_MASKED] [NAME_MASKED] 있는 것으로 확인되었습니다.\n[NAME_MASKED] [NAME_MASKED] 있는 것으로 확인되었습니다.\n"
     },
     {
       "true": "other",
       "predicted": "unknown",
-      "correct": false
+      "correct": false,
+      "response_snippet": "[NAME_MASKED] 카드를 재발급 받았는데 자동납부가 제대로 연결되어 있는지 확인[NAME_MASKED] 것입니다.\n[NAME_MASKED] 카드로 [NAME_MASKED] 아파트 관리비가 자동납부되고 있는지 확인[NAME_MASKED] 것입니다.\n[NAME_MASKED] 카드로 자동납부가 되지 않았다고 말[NAME_MASKED] 것입니다.\n[NAME"
     },
     {
       "true": "other",
       "predicted": "unknown",
-      "correct": false
-    },
-    {
-      "true": "other",
-      "predicted": "other",
-      "correct": true
+      "correct": false,
+      "response_snippet": "상담사의 답변을 보면, 요금을 카드로 납부[NAME_MASKED] 것에 대해 확인[NAME_MASKED] 있습니다.\n\n상담사는 요금을 카드로 납부[NAME_MASKED] 것에 대해 확인[NAME_MASKED] 있습니다.\n\n상담사는 요금을 카드로 납부[NAME_MASKED] 것에 대해 확인[NAME_MASKED] 있습니다.\n\n상담사는 요금을 카드로 납부[NA"
     },
     {
       "true": "other",
       "predicted": "unknown",
-      "correct": false
+      "correct": false,
+      "response_snippet": "안녕하십니까?\n귀[NAME_MASKED] 응답소(민원상담)를 통해 신청[NAME_MASKED] [NAME_MASKED] 대한 검토 결과를 다음과 같이 알려드립니다.\n귀[NAME_MASKED] 민원내용은 \"킥보드 무단방치 [NAME_MASKED] [NAME_MASKED] [NAME_MASKED] [NAME_MASKED] [NAME_MASKED] [NAME_M"
     },
     {
       "true": "other",
       "predicted": "unknown",
-      "correct": false
+      "correct": false,
+      "response_snippet": "상담사의 답변을 통해 [NAME_MASKED] [NAME_MASKED] [NAME_MASKED] [NAME_MASKED] 있는 것으로 확인되었습니다.\n상담사는 [NAME_MASKED] [NAME_MASKED] 확인[NAME_MASKED] 있는 번호를 확인[NAME_MASKED] 있습니다.\n상담사는 [NAME_MASKED] [NAME_MASKED] 확인[NA"
     },
     {
       "true": "other",
       "predicted": "unknown",
-      "correct": false
+      "correct": false,
+      "response_snippet": "상담사는 [NAME_MASKED] 본인 확인을 위해 핸드폰 번호와 생년월일을 확인했습니다.\n상담사는 [NAME_MASKED] [NAME_MASKED] 확인을 위해 [NAME_MASKED] [NAME_MASKED] [NAME_MASKED] 확인을 요청했습니다.\n상담사는 [NAME_MASKED] 확인을 위해 [NAME_MASKED] [NAME_MASKED] 확"
+    },
+    {
+      "true": "other",
+      "predicted": "unknown",
+      "correct": false,
+      "response_snippet": "상담사는 카드사에서 처리되지 않은 건에 대해 확인[NAME_MASKED] 있습니다.\n상담사는 카드사에서 처리되지 않은 건에 대해 확인[NAME_MASKED] 있습니다.\n상담사는 카드사에서 처리되지 않은 건에 대해 확인[NAME_MASKED] 있습니다.\n상담사는 카드사에서 처리되지 않은 건에 대해 확인[NAME_MASKED] 있습니다.\n상담사는 카드사에서 처"
     }
   ],
   "sample_generations": [
     {
       "input": "[Category: other]\nComplaint Content: 상담사: 상담원 ▲▲▲입니다. 무엇을 도와드릴까요?\n[NAME_MASKED]: 네, [NAME_MASKED] 카드를 [NAME_MASKED]했는데 [NAME_MASKED] 금액이 잘못된 것 같아서 확인 좀 부탁드리려[NAME_MASKED]. \n상담사: 아 네, 먼저 본인 확인 몇 가지 [NA",
       "reference": "아니, 가상 계좌를 받은 후 [NAME_MASKED] 다시 카드사에 연락해서 요청해야 해.",
-      "generated": "예, [NAME_MASKED] 가상 계좌가 부여되지 않았기 때문에 [NAME_MASKED] 요청해야 했어요.\n\n<thought>\n[NAME_MASKED] 가상 계좌가 부여되지 않았기 때문에 [NAME_MASKED] 요청해야 했어요.\n\n<thought>\n[NAME_MASKED] 가상 계좌가 부여되지 않았기 때문에 [NAME_MASKED] 요청해야 했어요.\n\n"
+      "generated": "상담사는 가상 계좌를 부여받았는지 확인을 요청했습니다.\n[NAME_MASKED]는 가상 계좌를 받은 후에야 [NAME_MASKED] 금액을 수정할 수 있다고 안내했습니다.\n[NAME_MASKED]는 가상 계좌를 받은 후에야 [NAME_MASKED] 금액을 수정할 수 있다고 말했습니다.\n[NAME_MASKED]는 가상 계좌를 받은 후에야 [NAME_MASKE"
     },
     {
       "input": "[Category: other]\nComplaint Content: 상담사: 상담원 ▲▲▲입니다.\n[NAME_MASKED]: 네, 안녕[NAME_MASKED].\n상담사: 안녕[NAME_MASKED].\n[NAME_MASKED]: 예, 그 ▲▲카드 대출 건이 있는데 대출 [NAME_MASKED] [NAME_MASKED] 그거를 그냥 다 상환[NAME_MASKED",
       "reference": "아니요, 30분 가량 시간이 [NAME_MASKED] 후 받아볼 수 있을 것으로 보입니다.",
-      "generated": "카드 대출을 완납했어요. 금융거래 확인[NAME_MASKED] 요청했어요."
+      "generated": "[NAME_MASKED] 카드 대출을 모두 상환했습니다.\n[NAME_MASKED] 금융기관에서 금융거래 확인[NAME_MASKED] 요청했습니다.\n[NAME_MASKED] 금융거래 확인을 위해 팩스를 보내달라고 했습니다.\n[NAME_MASKED] 금융거래 확인을 완료한 후에 금융기관에 납부[NAME_MASKED] [NAME_MASKED] 내용을 확인할 수 "
     },
     {
       "input": "[Category: other]\nComplaint Content: 제목: ▲▲▲▲센터 [NAME_MASKED] 확인 요청\n\nQ: ▲▲▲▲센터에 월요일마다 7시부터 9시까지 기관의 시[NAME_MASKED] 이용합니다.\n\n[NAME_MASKED] 일일 2,000원짜리를 사용[NAME_MASKED] 주[NAME_MASKED] 제공해 [NAME_MASKED] 단",
       "reference": "출[NAME_MASKED] 때 할인[NAME_MASKED] [NAME_MASKED] 요금 2,000원을 내면 돼.",
-      "generated": "[NAME_MASKED] 요금이 발생[NAME_MASKED] 않았다고 했는데, [NAME_MASKED] 요금이 발생[NAME_MASKED]?\n\n1일권이 2000원 할인[NAME_MASKED] [NAME_MASKED] 2000원만 내면 되는 거예요?\n\n그리고 [NAME_MASKED] 2023년 8월 14일 [NAME_MASKED] 근무자에게 추가 요금이 발생"
+      "generated": "[NAME_MASKED] 요금 2,000원을 지불했습니다.\n[NAME_MASKED] 요금 2,000원을 지불했습니다.\n[NAME_MASKED] 요금 2,000원을 지불했습니다.\n[NAME_MASKED] 요금 2,000원을 지불했습니다.\n[NAME_MASKED] 요금 2,000원을 지불했습니다.\n[NAME_MASKED] 요금 2,000원을 지불했습니다.\n[N"
     },
     {
       "input": "[Category: other]\nComplaint Content: 상담사: 상담원 ▲▲▲입니다.\n[NAME_MASKED]: 예, 수고 많으십니다. [NAME_MASKED] 좀 드릴게요. 제가 비행기 표를 [NAME_MASKED] 했는데.\n상담사: 네, 네.\n[NAME_MASKED]: 그 캐나다에[NAME_MASKED]. 들어가는 거거든요.\n상담사: 네.\n[",
       "reference": "다른 사람 카드로 결제 시도",
-      "generated": "상담사는 [NAME_MASKED] [NAME_MASKED] 카드가 [NAME_MASKED] 없는 상태로 확인되었습니다.\n[NAME_MASKED] [NAME_MASKED] 카드가 [NAME_MASKED] 없는 상태에서 사용했기 때문에 결제가 되지 않았습니다.\n상담사는 [NAME_MASKED] 카드가 [NAME_MASKED] 있는지 [NAME_MASKED] 확"
+      "generated": "[NAME_MASKED] 카드가 없어 [NAME_MASKED] 카드로 [NAME_MASKED] 불가능했습니다.\n[NAME_MASKED] 카드가 [NAME_MASKED] 없었기 때문에 카드로 [NAME_MASKED] 불가능했습니다.\n[NAME_MASKED] 카드가 없어 [NAME_MASKED] 카드로 [NAME_MASKED] 불가능했습니다.\n[NAME_MAS"
     },
     {
       "input": "[Category: other]\nComplaint Content: 상담사: 상담원 ▲▲▲입니다.\n[NAME_MASKED]: 예, 제가 [NAME_MASKED] 카드를 교체 발급 받았는데요.\n상담사: 아 그러셨어요? \n[NAME_MASKED]: 자동납부가 제대로 연결되어 있는지 여기서 확인[NAME_MASKED] 거 맞아요? \n상담사: 자동납부는 저희가 [N",
       "reference": "예, 무[NAME_MASKED] 할부는 마일리지 적립에서 제외됩니다.",
-      "generated": "예, [NAME_MASKED] 카드를 재발급받은 후 자동납부가 제대로 되었는지 확인했습니다.\n\n[NAME_MASKED] 통신 요금 자동납부는 확인되었으나, 보험 자동납부는 확인되지 않았습니다.\n\n통신 요금은 ▲▲월에 ▲▲▲▲원 승인되었습니다.\n\n무[NAME_MASKED] 할부는 마일리지 적립에서 제외되는 것이 맞다고 확인되었습니다.\n\n[NAME_MASKED"
+      "generated": "상담사의 답변을 통해 무[NAME_MASKED] 할부는 마일리지 적립에서 제외되는 것이 맞다고 확인되었습니다.\n상담사는 무[NAME_MASKED] 할부는 마일리지 적립에서 제외되는 점을 확인해 주었습니다.\n상담사는 고객에게 무[NAME_MASKED] 할부는 마일리지 적립에서 제외되는 점을 확인해 주었습니다.\n[NAME_MASKED] 고객의 문의에 대해 상담"
     }
   ]
 }

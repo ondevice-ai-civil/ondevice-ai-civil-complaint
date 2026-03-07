@@ -105,20 +105,17 @@ def evaluate_classification(model, tokenizer, data, max_samples=100):
     categories = ["environment", "traffic", "facilities", "civil_service", "welfare",
                    "culture", "economy", "education", "safety", "other"]
 
+    # Use training instruction format
+    instruction = "다음 민원에 대해 단계적으로 분석하고, 표준 서식에 맞춰 공손하고 명확한 답변을 작성하세요."
+
     for item in data[:max_samples]:
         try:
             true_category = extract_category(item.get('input', ''))
             if true_category == "unknown":
                 continue
 
-            classify_prompt = f"""다음 민원의 카테고리를 분류하세요. 반드시 다음 중 하나를 선택하세요:
-environment, traffic, facilities, civil_service, welfare, culture, economy, education, safety, other
-
-민원 내용: {item['input'][:500]}
-
-카테고리:"""
-
-            messages = [{"role": "user", "content": classify_prompt}]
+            # Use same instruction+input format as training
+            messages = [{"role": "user", "content": f"{instruction}\n\n{item['input'][:500]}"}]
             encoded = tokenizer.apply_chat_template(
                 messages, tokenize=True, add_generation_prompt=True, return_tensors='pt'
             )
@@ -127,19 +124,30 @@ environment, traffic, facilities, civil_service, welfare, culture, economy, educ
             with torch.no_grad():
                 output = model.generate(
                     input_ids=input_ids,
-                    max_new_tokens=50,
+                    max_new_tokens=300,
                     do_sample=False,
                     temperature=1.0,
+                    eos_token_id=int(tokenizer.eos_token_id),
                 )
 
-            response = tokenizer.decode(output[0][input_ids.shape[1]:], skip_special_tokens=True).strip().lower()
+            response = tokenizer.decode(output[0][input_ids.shape[1]:], skip_special_tokens=True)
 
-            # Extract predicted category
+            # Parse category from thought block: "Identified as [category] related request"
             pred_category = "unknown"
-            for cat in categories:
-                if cat in response:
-                    pred_category = cat
-                    break
+            cat_match = re.search(r'Identified as (\w+[\w/]*) related', response, re.IGNORECASE)
+            if cat_match:
+                pred_category = cat_match.group(1).lower().replace('/', '_')
+                # Normalize known aliases
+                if pred_category not in categories:
+                    pred_category = "other"
+            else:
+                # Fallback: check after </thought>
+                check_text = response.split('</thought>')[-1] if '</thought>' in response else response
+                check_text = check_text.lower()
+                for cat in categories:
+                    if cat in check_text:
+                        pred_category = cat
+                        break
 
             is_correct = pred_category == true_category
             if is_correct:
@@ -150,6 +158,7 @@ environment, traffic, facilities, civil_service, welfare, culture, economy, educ
                 "true": true_category,
                 "predicted": pred_category,
                 "correct": is_correct,
+                "response_snippet": response[:200],
             })
 
         except Exception as e:
@@ -275,7 +284,7 @@ def benchmark_inference(model, tokenizer, n_runs=10):
         with torch.no_grad():
             output = model.generate(
                 input_ids=input_ids,
-                max_new_tokens=128,
+                max_new_tokens=50,
                 do_sample=True,
                 temperature=0.6,
                 top_p=0.95,

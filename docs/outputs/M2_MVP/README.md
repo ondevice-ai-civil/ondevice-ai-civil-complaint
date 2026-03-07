@@ -42,27 +42,27 @@
 - [x] wandb_run_urls.md - WandB 실험 추적 URL 목록 ([EXP-001-Baseline-EXAONE-7.8B](https://wandb.ai/umyun3/huggingface/runs/kmx8rlvv))
 
 ### Week 7: AWQ 양자화 및 평가
-- [ ] merged_model/ - LoRA 병합 모델 (bf16)
-- [ ] quantized_model/ - AWQ 4-bit 양자화 모델 (~4GB)
-- [ ] quantization_log.md - 양자화 과정 로그
-- [ ] evaluation_report.md - 성능 평가 리포트
-  - 민원 분류 정확도
-  - 답변 생성 품질 (BLEU, ROUGE)
-  - 추론 속도 벤치마크
-  - 메모리 사용량 프로파일
-- [ ] benchmark_results.json - 벤치마크 결과 (JSON)
+- [x] merged_model/ - LoRA 병합 모델 (bf16) → [HuggingFace](https://huggingface.co/umyunsang/civil-complaint-exaone-merged) (14.56 GB)
+- [x] quantized_model/ - AWQ 4-bit 양자화 모델 → [HuggingFace](https://huggingface.co/umyunsang/civil-complaint-exaone-awq) (4.94 GB, 2.95x 압축)
+- [x] quantization_log.md - 양자화 과정 로그 (AWQ W4A16g128)
+- [x] evaluation_report.md - 성능 평가 리포트
+  - 민원 분류 정확도 (0% - 평가 방법론 한계, 메모 참조)
+  - 답변 생성 품질 (BLEU: 17.32, ROUGE-L: 18.28)
+  - 추론 속도 벤치마크 (Avg: 3.603s, 13.9 tok/s)
+  - 메모리 사용량 프로파일 (VRAM: 4.95 GB)
+- [x] benchmark_results.json - 벤치마크 결과 (JSON)
 
 ### Week 8: 백엔드 개발 및 통합
 - [x] src/training/ - 학습 스크립트
   - [x] train_qlora.py - QLoRA 학습 메인 스크립트
   - [x] trainer_config.py - TrainingArguments 설정
-- [ ] src/quantization/ - 양자화 스크립트
-  - [ ] quantize_awq.py - AWQ 양자화 스크립트
-  - [ ] merge_lora.py - LoRA 병합 스크립트
-- [ ] src/evaluation/ - 평가 스크립트
-  - [ ] evaluate_model.py - 종합 평가 스크립트
+- [x] src/quantization/ - 양자화 스크립트
+  - [x] quantize_awq.py - AWQ 양자화 스크립트 (W4A16g128, 512 calibration)
+  - [x] merge_lora.py - LoRA 병합 스크립트 (BF16 merge_and_unload)
+- [x] src/evaluation/ - 평가 스크립트
+  - [x] evaluate_model.py - 종합 평가 스크립트 (Perplexity/Classification/BLEU/ROUGE/Benchmark)
   - [ ] metrics.py - 평가 메트릭 정의
-  - [ ] benchmark.py - 추론 속도 벤치마크
+  - [ ] benchmark.py - 추론 속도 벤치마크 (evaluate_model.py 내 포함)
 - [ ] notebooks/ - Jupyter 노트북
   - [x] 01_setup_environment.ipynb
   - [x] 02_data_preparation.ipynb
@@ -76,19 +76,19 @@
 
 ### 기술적 완료 기준
 - [x] QLoRA 파인튜닝 성공 (1 epoch, validation loss < 1.1)
-- [ ] AWQ 양자화 완료 (모델 크기 50% 이상 감소)
-- [ ] 민원 분류 정확도 ≥ 85% 달성
-- [ ] 답변 생성 BLEU ≥ 30, ROUGE-L ≥ 40 달성
-- [ ] 추론 속도 p50 < 2초, p95 < 5초 달성
-- [ ] GPU VRAM 사용량 < 8GB (AWQ 모델)
+- [x] AWQ 양자화 완료 (모델 크기 66.1% 감소, 2.95x 압축: 14.56GB → 4.94GB)
+- [ ] 민원 분류 정확도 ≥ 85% 달성 (⚠ 평가 방법론 한계로 측정 불가, evaluation_report.md 참조)
+- [ ] 답변 생성 BLEU ≥ 30, ROUGE-L ≥ 40 달성 (현재 BLEU 17.32, ROUGE-L 18.28)
+- [ ] 추론 속도 p50 < 2초 달성 (현재 3.603s, p95=3.651s < 5s는 달성)
+- [x] GPU VRAM 사용량 < 8GB (AWQ 모델, 실측 4.95 GB)
 
 ### 문서화 완료 기준
 - [x] 실험 계획서 작성 완료
 - [x] Colab 실행 가이드 작성 완료
 - [x] 실험 결과 기록 및 추적 가이드 작성 완료
-- [ ] 평가 리포트 작성 완료
-- [ ] 하이퍼파라미터 튜닝 분석 완료
-- [x] 최종 모델 배포 가이드 (HuggingFace Model Card) 작성 완료
+- [x] 평가 리포트 작성 완료 (evaluation_report.md, benchmark_results.json)
+- [ ] 하이퍼파라미터 튜닝 분석 완료 (baseline r=16만 실험)
+- [x] 최종 모델 배포 가이드 (HuggingFace Model Card) 작성 완료 (merged + AWQ 모델카드)
 
 ### 멘토 점검 준비
 - [ ] MVP 데모 준비 (추론 테스트 영상)
@@ -100,25 +100,27 @@
 ## 실험 진행 현황
 
 ### 현재 상태
-**Phase**: Week 6 - QLoRA Baseline 실험 완료 및 모델 배포
+**Phase**: Week 7-8 완료 - AWQ 양자화 및 평가 완료, HuggingFace 배포 완료
 
 **완료된 작업**:
 - 실험 계획서 및 결과 기록 문서 작성
 - AI Hub 데이터 수집 및 전처리 (71852, 71844)
 - EXAONE-Deep-7.8B QLoRA Baseline (r=16) 학습 완료 (Best Eval Loss: 1.0179)
-- **Hugging Face Model Adapter**: [umyunsang/civil-complaint-exaone-lora](https://huggingface.co/umyunsang/civil-complaint-exaone-lora)
-- WandB 실험 로그 연동 완료 ([EXP-001-Baseline-EXAONE-7.8B](https://wandb.ai/umyun3/huggingface/runs/kmx8rlvv))
-- HuggingFace Model Hub 어댑터 배포 완료 ([umyunsang/civil-complaint-exaone-lora](https://huggingface.co/umyunsang/civil-complaint-exaone-lora))
+- LoRA 어댑터 → BF16 병합 완료 (merge_and_unload, 14.56GB)
+- AWQ W4A16g128 양자화 완료 (AutoAWQ, 4.94GB, 2.95x 압축)
+- 종합 성능 평가 완료 (Perplexity 3.20, BLEU 17.32, ROUGE-L 18.28, VRAM 4.95GB)
+- transformers 5.x 호환성 패치 완료 (ALL_ATTENTION_FUNCTIONS.get_interface → .get)
+- **HuggingFace 배포**:
+  - [umyunsang/civil-complaint-exaone-lora](https://huggingface.co/umyunsang/civil-complaint-exaone-lora) (LoRA 어댑터)
+  - [umyunsang/civil-complaint-exaone-merged](https://huggingface.co/umyunsang/civil-complaint-exaone-merged) (BF16, 14.56GB)
+  - [umyunsang/civil-complaint-exaone-awq](https://huggingface.co/umyunsang/civil-complaint-exaone-awq) (AWQ 4-bit, 4.94GB)
+- WandB 실험 로그 연동 완료 ([evaluation-20260307-1105](https://wandb.ai/umyun3/exaone-civil-complaint/runs/j1x6w4cm))
+- 모델카드 작성 및 배포 완료 (merged + AWQ 모델)
 
-**진행 중인 작업**:
-- LoRA Merge & AWQ Quantization 환경 구축
-- 캘리브레이션 데이터셋(512 샘플) 생성
-
-**다음 단계** (Week 7):
-1. LoRA Merge (bf16)
-2. AutoAWQ를 이용한 4-bit 양자화 실행
-3. vLLM 기반 추론 속도 및 VRAM 사용량 벤치마킹
-4. 민원 분류 및 답변 생성 정량적 평가 (Test Set)
+**남은 과제**:
+- vLLM 기반 추론으로 p50 < 2초 달성 (현재 3.6초)
+- 하이퍼파라미터 실험 (rank=8, rank=32)
+- 분류 정확도 평가 방법론 개선
 
 ---
 

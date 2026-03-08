@@ -9,6 +9,34 @@ import sys
 import time
 import json
 import torch
+import transformers.utils.generic
+import transformers.modeling_rope_utils
+import transformers.integrations
+import transformers.masking_utils
+import transformers.utils.auto_docstring
+
+# Monkey-patching for EXAONE compatibility
+transformers.utils.auto_docstring.auto_docstring = lambda *args, **kwargs: (lambda obj: obj)
+if not hasattr(transformers.utils.generic, 'check_model_inputs'):
+    transformers.utils.generic.check_model_inputs = lambda *args, **kwargs: (args[1] if len(args) > 1 else kwargs.get('model_inputs'))
+if not hasattr(transformers.utils.generic, 'maybe_autocast'):
+    from contextlib import nullcontext
+    transformers.utils.generic.maybe_autocast = lambda *args, **kwargs: nullcontext()
+if not hasattr(transformers.modeling_rope_utils, 'RopeParameters'):
+    class RopeParameters(dict): pass
+    transformers.modeling_rope_utils.RopeParameters = RopeParameters
+if not hasattr(transformers.integrations, 'use_kernel_forward_from_hub'):
+    transformers.integrations.use_kernel_forward_from_hub = lambda *args, **kwargs: (lambda func: func)
+if not hasattr(transformers.integrations, 'use_kernel_func_from_hub'):
+    transformers.integrations.use_kernel_func_from_hub = lambda *args, **kwargs: (lambda func: func)
+if not hasattr(transformers.integrations, 'use_kernelized_func'):
+    transformers.integrations.use_kernelized_func = lambda *args, **kwargs: (lambda func: func)
+if not hasattr(transformers.masking_utils, 'create_causal_mask'):
+    def create_causal_mask(input_ids, *args, **kwargs):
+        from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
+        return _prepare_4d_causal_attention_mask(input_ids.shape, input_ids.dtype, input_ids.device)
+    transformers.masking_utils.create_causal_mask = create_causal_mask
+
 import wandb
 import gc
 from datetime import datetime

@@ -36,6 +36,9 @@ ondevice-ai-civil-complaint/
 │   ├── toc.md              # 제안서 작성 가이드
 │   ├── prd.md              # PRD (Product Requirements Document)
 │   ├── wbs.md              # WBS (Work Breakdown Structure)
+│   ├── official/           # 공식 문서 (공문)
+│   │   ├── 문제정의서.pdf
+│   │   └── 서식일체.pdf
 │   └── outputs/            # 마일스톤별 산출물
 │       ├── M1_Planning/
 │       ├── M2_MVP/
@@ -87,6 +90,13 @@ pip install -r requirements.txt
 | 팀장 | 엄윤상 | 1705817 | AI학과 | [@umyunsang](https://github.com/umyunsang) |
 | 팀원 | 장시우 | 2143655 | AI학과 | [@siuJang](https://github.com/siuJang) |
 | 팀원 | 이유정 | 2243951 | AI학과 | [@yuujjjj](https://github.com/yuujjjj) |
+
+## 공식 문서
+
+| 문서명 | 설명 | 파일 |
+|--------|------|------|
+| 문제정의서 | On-Device AI 민원분석 및 처리시스템 문제정의서 | [PDF](docs/official/U20260304_164737858_2026-32.On-DeviceAI민원분석및처리시스템.pdf) |
+| 신청서/계획서 | 2026 현장미러형연계프로젝트 서식일체 | [PDF](docs/official/1705817_ai학과_엄윤상_2026%20현장미러형연계프로젝트%20서식일체.pdf) |
 
 ## 라이선스
 

@@ -50,7 +50,8 @@ vLLM 0.17.0 도입으로 추론 속도를 9.29초에서 2.43초로 단축하고,
 
 ### Week 12: 백엔드/프론트엔드 및 Docker 배포
 - [ ] FastAPI 백엔드 서버 구축
-- [ ] Streamlit 웹 UI 구현
+- [ ] Figma UI/UX 디자인 (동서대 디자인학부 협업)
+- [ ] Figma MCP 기반 React/Next.js 웹 UI 구현
 - [ ] Dockerfile - Docker 빌드 파일
 - [ ] docker-compose.yml - Docker Compose 설정
 - [ ] deployment_test.md - 배포 테스트 리포트
@@ -63,7 +64,7 @@ vLLM 0.17.0 도입으로 추론 속도를 9.29초에서 2.43초로 단축하고,
 - [ ] 유사 사례 검색 기능 (Recall@5 >= 80%) - FAISS 미구현
 - [ ] 답변 생성 속도 < 5초 (p95) - vLLM 기반 2.43초 달성, 정식 벤치마크 필요
 - [ ] Docker 컨테이너 배포 성공 - 미구현
-- [ ] 모든 핵심 기능 구현 완료 - 백엔드/프론트엔드 미구현
+- [ ] 모든 핵심 기능 구현 완료 - 백엔드/프론트엔드(Figma MCP 기반) 미구현
 
 ---
 
@@ -96,8 +97,8 @@ vLLM 0.17.0 도입으로 추론 속도를 9.29초에서 2.43초로 단축하고,
 2. **RAG 파이프라인**: 검색 결과 기반 답변 생성 통합
 3. **KR-ELECTRA 전용 분류기**: 경량 분류기로 전처리 단계 분류
 4. **FastAPI 백엔드**: vLLM + RAG 통합 API 서버
-5. **Streamlit 프론트엔드**: 민원 입력/출력 웹 UI
-6. **Docker 컨테이너화**: vLLM + FastAPI + Streamlit 멀티 컨테이너
+5. **Figma MCP 기반 프론트엔드**: 동서대 디자인학부 협업 Figma 디자인 → React/Next.js 웹 UI
+6. **Docker 컨테이너화**: vLLM + FastAPI + React/Next.js 멀티 컨테이너
 
 ---
 

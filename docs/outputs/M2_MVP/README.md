@@ -1,7 +1,7 @@
 # M2: 핵심 기능 구현 - MVP (Week 5-8)
 
 **기간**: 2026-03-31 ~ 2026-04-25
-**상태**: 핵심 완료 (75%) - AI 모델 파이프라인 완료, 백엔드/프론트엔드 미구현
+**상태**: 핵심 완료 (75%) - AI 모델 파이프라인 완료, 백엔드/프론트엔드(Figma MCP 기반) 미구현
 **최종 수정**: 2026-03-09
 
 ---
@@ -10,7 +10,7 @@
 
 M2 단계에서는 EXAONE-Deep-7.8B 모델의 QLoRA 파인튜닝, AWQ 양자화, HuggingFace 배포를 성공적으로 완료했습니다.
 모델 크기를 14.56GB에서 4.94GB로 66% 압축하면서 GPU VRAM 4.95GB 수준의 온디바이스 배포 가능성을 검증했습니다.
-다만 백엔드 API(FastAPI)와 프론트엔드(Streamlit) 구현은 M3 단계로 이월되었습니다.
+다만 백엔드 API(FastAPI)와 프론트엔드(Figma MCP 기반 React/Next.js) 구현은 M3 단계로 이월되었습니다.
 
 ---
 
@@ -58,7 +58,7 @@ M2 단계에서는 EXAONE-Deep-7.8B 모델의 QLoRA 파인튜닝, AWQ 양자화,
 - [x] src/evaluation/evaluate_model.py - 종합 평가 스크립트
 - [ ] FastAPI 백엔드 프로젝트 구축 (M3로 이월)
 - [ ] vLLM OpenAI 호환 API 연동 (M3로 이월)
-- [ ] Streamlit 웹 UI (M3/M4로 이월)
+- [ ] Figma MCP 기반 React/Next.js 웹 UI (M3/M4로 이월)
 - [ ] MVP 통합 테스트 및 데모 (M3/M4로 이월)
 
 ---

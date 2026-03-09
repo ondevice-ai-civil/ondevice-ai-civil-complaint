@@ -6,7 +6,7 @@
 **프로젝트명**: On-Device AI 민원 분석 및 처리 시스템
 **담당 멘토**: 천세진 교수 (sjchun@dau.ac.kr)
 **팀 규모**: 4명
-**주요 변경**: EXAONE-Deep-7.8B 모델 적용, vLLM 서빙 적용
+**주요 변경**: EXAONE-Deep-7.8B 모델 적용, vLLM 서빙 적용, 프론트엔드 전략 변경 (Figma MCP 기반)
 
 ---
 
@@ -48,10 +48,16 @@
 - **프롬프트 엔지니어링**: Step-by-step reasoning 강화 (EXAONE 추론 능력 활용)
 - **하이퍼파라미터**: bfloat16 기반 QLoRA, Target modules 최적화
 
-### 5. 기술 스택 호환성 업데이트
+### 5. 프론트엔드 전략 변경: Figma MCP 기반 개발
+- **변경 전**: Streamlit 기반 프로토타입 웹 UI
+- **변경 후**: **Figma 디자인 + Figma MCP를 활용한 React/Next.js 프론트엔드**
+- **협업**: 동서대학교 디자인학부생과 융합 캡스톤 디자인 협업
+- **워크플로우**: 디자인학부생 Figma UI/UX 디자인 → Figma MCP로 컴포넌트 추출 → React/Next.js 프론트엔드 개발
+
+### 6. 기술 스택 호환성 업데이트
 - **Python 라이브러리**: HuggingFace Transformers 4.40.0+, PEFT 0.10.0+
 - **GPU 요구사항**: CUDA 12.1+, 최소 16GB VRAM (AWQ 사용 시 8GB)
-- **Docker 구성**: vLLM + FastAPI + Streamlit 멀티컨테이너 아키텍처
+- **Docker 구성**: vLLM + FastAPI + React/Next.js 멀티컨테이너 아키텍처
 
 ---
 
@@ -176,7 +182,7 @@
 - **목표값**:
   - bfloat16 모델: ≤ 15GB VRAM
   - AWQ 양자화 모델: ≤ 8GB VRAM
-  - CPU RAM: ≤ 16GB (FastAPI + Streamlit 포함)
+  - CPU RAM: ≤ 16GB (FastAPI + 프론트엔드 포함)
 - **모니터링**: nvidia-smi, vLLM metrics API 활용
 
 ### 3.3 성공 기준 (Success Criteria)
@@ -425,7 +431,9 @@
 
 #### 4.3.6 사용자 인터페이스
 
-##### FR-021: Streamlit 기반 웹 UI 구축
+##### FR-021: Figma MCP 기반 웹 UI 구축
+- 동서대 디자인학부생과 융합 캡스톤 협업으로 Figma UI/UX 디자인
+- Figma MCP를 활용하여 디자인을 React/Next.js 컴포넌트로 변환
 - 직관적이고 심플한 UI 디자인
 - 반응형 레이아웃 (모바일/태블릿 대응 선택적)
 
@@ -459,10 +467,11 @@
 - **멀티컨테이너 아키텍처**:
   - `vllm-service`: vLLM 서버 (GPU 지원, EXAONE-Deep-7.8B 서빙)
   - `backend-service`: FastAPI 서버 (vLLM API 클라이언트, FAISS 검색)
-  - `frontend-service`: Streamlit 웹 UI
+  - `frontend-service`: React/Next.js 웹 UI (Figma MCP 기반)
 - **Dockerfile 작성**:
   - vLLM: `vllm/vllm-openai:latest` 베이스 이미지 활용
-  - Backend/Frontend: `python:3.10-slim` + 멀티스테이지 빌드
+  - Backend: `python:3.10-slim` + 멀티스테이지 빌드
+  - Frontend: `node:20-alpine` + 멀티스테이지 빌드 (React/Next.js)
 - **Docker Compose 설정**:
   - GPU 리소스 할당 (`deploy.resources.reservations.devices`)
   - 볼륨 마운트 (모델 캐시, 벡터 인덱스, 로그)
@@ -503,7 +512,7 @@
   - 권장: 16GB VRAM 이상 (NVIDIA A10G, RTX 4090, A100 등)
 - **CPU 메모리**:
   - vLLM 서버: 8-16GB RAM
-  - FastAPI + Streamlit: 4-8GB RAM
+  - FastAPI + React/Next.js: 4-8GB RAM
   - 총 권장: 32GB RAM
 - **디스크 용량**:
   - 베이스 모델: 15GB
@@ -587,7 +596,7 @@
 - **IS-003**: EXAONE-Deep-7.8B 다운로드 및 QLoRA SFT (Supervised Fine-Tuning)
 - **IS-004**: EXAONE Chat Template 기반 표준 답변 생성 기능
 - **IS-005**: vLLM 서버 구축 및 OpenAI 호환 API 연동
-- **IS-006**: Streamlit 기반 기본 웹 UI (민원 입력, 답변 출력)
+- **IS-006**: Figma MCP 기반 React/Next.js 웹 UI (민원 입력, 답변 출력)
 - **IS-007**: Docker Compose 기반 멀티컨테이너 배포 패키지
 
 #### Phase 2 (고도화 - Week 9-16)
@@ -635,7 +644,7 @@
 │                  폐쇄망 서버 환경                           │
 ├──────────────────────────────────────────────────────────┤
 │  ┌──────────────────────────────────────────────────┐   │
-│  │    Streamlit Web UI (프론트엔드)                  │   │
+│  │    React/Next.js Web UI (프론트엔드, Figma MCP)   │   │
 │  └────────────────┬─────────────────────────────────┘   │
 │                   │ HTTP API                             │
 │  ┌────────────────▼─────────────────────────────────┐   │
@@ -657,7 +666,7 @@
 │  ┌──────────────────────────────────────────────────┐   │
 │  │    Docker Compose 오케스트레이션                  │   │
 │  │    - vLLM 컨테이너 (GPU 지원)                     │   │
-│  │    - FastAPI + Streamlit 컨테이너                 │   │
+│  │    - FastAPI + React/Next.js 컨테이너              │   │
 │  │    - 볼륨 마운트 (모델, 인덱스, 데이터)            │   │
 │  │    - 내부 네트워크 격리                            │   │
 │  └──────────────────────────────────────────────────┘   │
@@ -705,8 +714,11 @@
 #### 6.2.1 프론트엔드 (Frontend)
 | 기술 | 용도 | 버전 |
 |------|------|------|
-| Streamlit | 웹 UI 프레임워크 | ≥ 1.30.0 |
-| Python | 프로그래밍 언어 | 3.10+ |
+| React / Next.js | 웹 UI 프레임워크 | React 18+ / Next.js 14+ |
+| Figma | UI/UX 디자인 (동서대 디자인학부 협업) | - |
+| Figma MCP | 디자인 → 코드 변환 | - |
+| TypeScript | 프로그래밍 언어 | 5.0+ |
+| Node.js | 런타임 환경 | 20+ |
 
 #### 6.2.2 백엔드 (Backend)
 | 기술 | 용도 | 버전 |
@@ -1061,7 +1073,7 @@
 - vLLM 컨테이너가 GPU를 인식하고 정상 시작된다
 - EXAONE-Deep-7.8B 모델이 vLLM에 로드된다 (약 30-60초 소요)
 - FastAPI 백엔드 컨테이너가 vLLM API와 연결된다
-- Streamlit 웹 UI가 지정된 포트(예: 8501)에서 접근 가능하다
+- React/Next.js 웹 UI가 지정된 포트(예: 3000)에서 접근 가능하다
 - 인터넷 연결 없이도 정상 작동한다 (모델 및 인덱스 사전 포함)
 - `/health` 엔드포인트가 200 응답을 반환한다
 
@@ -1142,7 +1154,7 @@
 | **W5** | - EXAONE-Deep-7.8B 모델 다운로드 및 검증<br>- 학습 데이터 EXAONE Chat Template 포맷 변환<br>- QLoRA 파인튜닝 환경 설정 | - EXAONE-Deep-7.8B 모델 (15GB)<br>- Chat Template 적용 학습 데이터<br>- PEFT 설정 파일 | AI 엔지니어 |
 | **W6** | - QLoRA SFT 실행 (bfloat16)<br>- 하이퍼파라미터 튜닝<br>- 모델 평가 및 벤치마킹 | - 파인튜닝된 LoRA 어댑터<br>- 성능 평가 리포트<br>- 병합된 모델 | AI 엔지니어 |
 | **W7** | - FastAPI 백엔드 구축<br>- vLLM OpenAI 호환 API 연동<br>- EXAONE 표준 프롬프트 설계 | - 백엔드 API 서버<br>- vLLM 클라이언트 통합<br>- API 엔드포인트 | 백엔드 개발자 |
-| **W8** | - Streamlit 웹 UI 구축<br>- 민원 입력/출력 화면 구현<br>- MVP 통합 테스트 | - 기본 웹 UI<br>- MVP 데모 | 프론트엔드 개발자 |
+| **W8** | - Figma UI/UX 디자인 (동서대 디자인학부 협업)<br>- Figma MCP 기반 React/Next.js 웹 UI 구축<br>- 민원 입력/출력 화면 구현<br>- MVP 통합 테스트 | - Figma 디자인 파일<br>- 기본 웹 UI<br>- MVP 데모 | 프론트엔드 개발자 + 디자인학부 |
 
 **마일스톤 2 완료 기준**:
 - ✅ 파인튜닝된 모델 답변 생성 성공
@@ -1159,7 +1171,7 @@
 | **W9** | - [완료] 모델 평가 지표 고도화 (BERTScore 도입, 분류 파서 개선)<br>- [완료] vLLM 서버 구축 및 레이턴시 최적화 벤치마킹 | - M3 최종 평가 리포트<br>- vLLM 서빙 스크립트 | AI 엔지니어 |
 | **W10** | - FAISS 벡터 인덱스 구축 및 문서 임베딩 생성<br>- 유사도 검색 API 구현 | - FAISS 인덱스 파일<br>- 임베딩 모델 (multilingual-e5-large 등)<br>- 검색 API | 데이터 엔지니어 |
 | **W11** | - RAG 파이프라인 통합 (검색 결과 기반 답변 생성)<br>- 전용 분류기(KR-ELECTRA 등) 도입 검토 및 모델 추가 최적화 | - RAG 통합 파이프라인<br>- 분류 전용 모델 (선택적) | AI 엔지니어 |
-| **W12** | - UI 개선 (유사 사례 표시, 피드백 기능)<br>- 클립보드 복사 기능<br>- Docker 컨테이너화 (vLLM + FastAPI + Streamlit) | - 최종 웹 UI<br>- Dockerfile (멀티스테이지)<br>- docker-compose.yml (GPU 지원) | 프론트엔드 + DevOps |
+| **W12** | - Figma 디자인 고도화 및 UI 개선 (유사 사례 표시, 피드백 기능)<br>- Figma MCP로 컴포넌트 추출 및 프론트엔드 고도화<br>- Docker 컨테이너화 (vLLM + FastAPI + React/Next.js) | - 최종 웹 UI (Figma MCP 기반)<br>- Dockerfile (멀티스테이지)<br>- docker-compose.yml (GPU 지원) | 프론트엔드 + 디자인학부 + DevOps |
 
 **마일스톤 3 완료 기준**:
 - ✅ [완료] 답변 생성 추론 속도 < 2.5초 (p50) 달성 및 분류 정확도 90% 확보
@@ -1192,7 +1204,7 @@
 #### 의존성 (Dependencies)
 - **DEP-M1**: 데이터 크롤링 완료 → 모델 학습 시작 가능
 - **DEP-M2**: 모델 학습 완료 → 백엔드 API 구현 가능
-- **DEP-M3**: 백엔드 API 완료 → 프론트엔드 통합 가능
+- **DEP-M3**: 백엔드 API 완료 + Figma 디자인 완료 → Figma MCP 기반 프론트엔드 통합 가능
 - **DEP-M4**: 벡터 인덱스 구축 완료 → RAG 파이프라인 통합 가능
 
 #### 잠재적 블로커 (Potential Blockers)
@@ -1395,7 +1407,8 @@
 | **Embedding** | 임베딩 - 텍스트를 고차원 벡터로 변환한 수치 표현 (의미적 유사도 계산 가능) |
 | **bfloat16** | Brain Floating Point 16-bit - GPU 학습에 최적화된 반정밀도 데이터 타입 |
 | **Chat Template** | 대화형 모델의 입력 포맷 (시스템/유저/어시스턴트 메시지 구조화) |
-| **Streamlit** | Python 기반 웹 UI 프레임워크 (데이터 사이언스 및 ML 앱 구축에 특화) |
+| **Figma MCP** | Figma 디자인을 프론트엔드 코드(React/Next.js)로 변환하는 Model Context Protocol 기반 도구 |
+| **Figma** | 협업 기반 UI/UX 디자인 도구 (동서대 디자인학부 협업에 활용) |
 | **폐쇄망** | 인터넷 연결이 차단된 내부 네트워크 환경 (온프레미스) |
 | **비식별화** | 개인정보를 식별할 수 없도록 가명 처리 또는 마스킹하는 작업 |
 
@@ -1408,7 +1421,9 @@
 - HuggingFace Transformers: https://huggingface.co/docs/transformers
 - PEFT (QLoRA) 문서: https://huggingface.co/docs/peft
 - FAISS 문서: https://github.com/facebookresearch/faiss
-- Streamlit 문서: https://docs.streamlit.io
+- Figma MCP: https://www.figma.com/community
+- React 문서: https://react.dev
+- Next.js 문서: https://nextjs.org/docs
 
 #### 관련 논문
 - **"EXAONE Deep: Reasoning Enhanced Language Models"** (LG AI Research, arXiv:2503.12524, 2025)
@@ -1428,6 +1443,7 @@
 |------|------|--------|-----------|
 | 1.0 | 2026-03-04 | 엄윤상 | 초안 작성 - 전체 PRD 구조 및 내용 작성 |
 | 2.0 | 2026-03-05 | 엄윤상 | 주요 기술 스택 변경: EXAONE-Deep-7.8B 모델 적용, vLLM 서빙 적용, AWQ 양자화 적용, 한국어 특화 최적화 |
+| 3.0 | 2026-03-09 | 엄윤상 | 프론트엔드 전략 변경: Streamlit → Figma MCP 기반 React/Next.js 개발, 동서대 디자인학부 융합 캡스톤 협업 반영 |
 
 ---
 

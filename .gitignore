@@ -89,6 +89,7 @@ htmlcov/
 .gemini/
 .claude_bak/
 .gemini_bak/
+CLAUDE.md
 
 
 # Large model files (AWQ quantized, merged)

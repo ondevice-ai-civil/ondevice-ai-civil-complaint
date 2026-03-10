@@ -86,7 +86,7 @@ pip install --upgrade pip
 
 ```bash
 # 프로젝트 루트 디렉토리에서 실행
-cd /path/to/ondevice-ai-civil-complaint
+cd /path/to/GovOn
 
 # 전체 의존성 설치 (개발 의존성 포함)
 pip install -r requirements.txt
@@ -110,7 +110,7 @@ pip install pytest pytest-cov pytest-asyncio
 
 ```bash
 # 프로젝트 루트에서 실행
-cd /path/to/ondevice-ai-civil-complaint
+cd /path/to/GovOn
 
 # 전체 테스트 실행
 pytest tests/test_data_collection_preprocessing/ -v
@@ -239,7 +239,7 @@ ModuleNotFoundError: No module named 'src'
 **해결방법:**
 ```bash
 # PYTHONPATH 설정
-export PYTHONPATH="${PYTHONPATH}:/path/to/ondevice-ai-civil-complaint"
+export PYTHONPATH="${PYTHONPATH}:/path/to/GovOn"
 
 # 또는 pytest.ini 생성
 echo "[pytest]

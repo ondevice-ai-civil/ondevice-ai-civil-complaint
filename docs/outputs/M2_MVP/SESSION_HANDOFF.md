@@ -11,19 +11,19 @@
 ### Stage 1: QLoRA 어댑터 병합 ✅
 - 베이스 모델: `LGAI-EXAONE/EXAONE-Deep-7.8B-AWQ`
 - 어댑터: `umyunsang/exaone-civil-complaint-qlora` (HuggingFace)
-- 병합 모델 저장: `/content/ondevice-ai-civil-complaint/models/merged_model`
+- 병합 모델 저장: `/content/GovOn/models/merged_model`
 - 병합 모델 크기: **14.56 GB** (BF16)
 
 ### Stage 2: AWQ 양자화 ✅
 - 방식: W4A16g128 (4-bit weights, 16-bit activations, group_size=128)
 - 양자화 시간: **10.5분** (632.9초)
-- 양자화 모델 저장: `/content/ondevice-ai-civil-complaint/models/awq_quantized_model`
+- 양자화 모델 저장: `/content/GovOn/models/awq_quantized_model`
 - AWQ 모델 크기: **4.94 GB** (압축률 2.95x, 66.1% 감소)
 - WandB 런: https://wandb.ai/umyun3/exaone-civil-complaint/runs/4jxb31v4
 
 ### Stage 3: 평가 ⚠️ 완료되었으나 성능 미달
 - 최종 사용 방법: AutoAWQ 로딩 (`AwqConfig` 사용)
-- 평가 결과 저장: `/content/ondevice-ai-civil-complaint/docs/outputs/M2_MVP/benchmark_results.json`
+- 평가 결과 저장: `/content/GovOn/docs/outputs/M2_MVP/benchmark_results.json`
 - WandB 런: https://wandb.ai/umyun3/exaone-civil-complaint/runs/706jqzmk
 
 ---
@@ -74,7 +74,7 @@
 ## 4. 다음 세션에서 할 일 (우선순위 순)
 
 ### 4-1. 평가 스크립트 수정 (최우선) 🔴
-파일: `/content/ondevice-ai-civil-complaint/src/evaluation/evaluate_model.py`
+파일: `/content/GovOn/src/evaluation/evaluate_model.py`
 
 ```python
 # 현재 (잘못된 방식)
@@ -130,7 +130,7 @@ def parse_category(output_text):
 from huggingface_hub import HfApi
 api = HfApi()
 api.upload_folder(
-    folder_path="/content/ondevice-ai-civil-complaint/models/awq_quantized_model",
+    folder_path="/content/GovOn/models/awq_quantized_model",
     repo_id="umyunsang/exaone-civil-complaint-awq",
     repo_type="model"
 )
@@ -151,7 +151,7 @@ api.upload_folder(
 from awq import AutoAWQForCausalLM
 from transformers import AutoTokenizer
 
-model_path = "/content/ondevice-ai-civil-complaint/models/awq_quantized_model"
+model_path = "/content/GovOn/models/awq_quantized_model"
 tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
 model = AutoAWQForCausalLM.from_quantized(
     model_path,
@@ -163,11 +163,11 @@ model = model.to("cuda")
 ```
 
 ### 파일 경로 참조
-- 병합 모델: `/content/ondevice-ai-civil-complaint/models/merged_model`
-- AWQ 양자화 모델: `/content/ondevice-ai-civil-complaint/models/awq_quantized_model`
-- 평가 스크립트: `/content/ondevice-ai-civil-complaint/src/evaluation/evaluate_model.py`
-- 벤치마크 결과: `/content/ondevice-ai-civil-complaint/docs/outputs/M2_MVP/benchmark_results.json`
-- 양자화 로그: `/content/ondevice-ai-civil-complaint/models/awq_quantized_model/quantization_log.json`
+- 병합 모델: `/content/GovOn/models/merged_model`
+- AWQ 양자화 모델: `/content/GovOn/models/awq_quantized_model`
+- 평가 스크립트: `/content/GovOn/src/evaluation/evaluate_model.py`
+- 벤치마크 결과: `/content/GovOn/docs/outputs/M2_MVP/benchmark_results.json`
+- 양자화 로그: `/content/GovOn/models/awq_quantized_model/quantization_log.json`
 
 ---
 

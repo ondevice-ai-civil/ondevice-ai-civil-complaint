@@ -114,7 +114,7 @@ attn_interface = ALL_ATTENTION_FUNCTIONS.get(config.attn_implementation)
 ```
 
 **적용 위치**:
-- `/content/ondevice-ai-civil-complaint/models/merged_model/modeling_exaone.py`
+- `/content/GovOn/models/merged_model/modeling_exaone.py`
 - `/root/.cache/huggingface/modules/transformers_modules/merged_model/modeling_exaone.py` (캐시)
 
 ### 이슈: `apply_chat_template()` BatchEncoding 반환 (transformers 5.x)

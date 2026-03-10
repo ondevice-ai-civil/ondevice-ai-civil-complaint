@@ -17,8 +17,8 @@
 ### 3. 프로젝트 클론 및 환경 설정
 ```python
 # 1. 저장소 클론 (본인의 레포지토리 주소로 변경)
-!git clone https://github.com/umyunsang/ondevice-ai-civil-complaint.git
-%cd ondevice-ai-civil-complaint
+!git clone https://github.com/GovOn-org/GovOn.git
+%cd GovOn
 
 # 2. PYTHONPATH 설정
 import sys

@@ -112,8 +112,8 @@ echo "✓ Installation complete!"
 %%bash
 
 cd /content
-git clone https://github.com/YOUR_USERNAME/ondevice-ai-civil-complaint.git
-cd ondevice-ai-civil-complaint
+git clone https://github.com/GovOn-org/GovOn.git
+cd GovOn
 echo "✓ Project cloned!"
 ```
 
@@ -141,7 +141,7 @@ except:
 ```bash
 %%bash
 
-cd /content/ondevice-ai-civil-complaint
+cd /content/GovOn
 mkdir -p data/raw/aihub data/raw/seoul_api
 mkdir -p data/processed data/calibration
 mkdir -p models/base models/checkpoints models/merged models/quantized
@@ -186,7 +186,7 @@ echo "✓ Dataset download started. This may take 1-2 hours."
 
 ```python
 import sys
-sys.path.append('/content/ondevice-ai-civil-complaint')
+sys.path.append('/content/GovOn')
 
 from src.data_collection_preprocessing.pipeline import DataPipeline
 from src.data_collection_preprocessing.config import get_config
@@ -218,7 +218,7 @@ AI Hub 다운로드가 완료되면 실제 데이터로 전처리를 실행합�
 
 ```python
 import sys
-sys.path.append('/content/ondevice-ai-civil-complaint')
+sys.path.append('/content/GovOn')
 
 from src.data_collection_preprocessing.pipeline import DataPipeline
 from src.data_collection_preprocessing.config import get_config
@@ -253,14 +253,14 @@ print("\n" + pipeline.get_quality_report())
 import json
 
 # Train 데이터 샘플 확인
-with open('/content/ondevice-ai-civil-complaint/data/processed/civil_complaint_train.jsonl', 'r') as f:
+with open('/content/GovOn/data/processed/civil_complaint_train.jsonl', 'r') as f:
     sample = json.loads(f.readline())
 
 print("Sample training data:")
 print(json.dumps(sample, indent=2, ensure_ascii=False))
 
 # 데이터 통계
-!wc -l /content/ondevice-ai-civil-complaint/data/processed/civil_complaint_*.jsonl
+!wc -l /content/GovOn/data/processed/civil_complaint_*.jsonl
 ```
 
 ---
@@ -387,8 +387,8 @@ from datasets import load_dataset
 # 데이터셋 로드
 print("Loading datasets...")
 data_files = {
-    "train": "/content/ondevice-ai-civil-complaint/data/processed/civil_complaint_train.jsonl",
-    "validation": "/content/ondevice-ai-civil-complaint/data/processed/civil_complaint_val.jsonl"
+    "train": "/content/GovOn/data/processed/civil_complaint_train.jsonl",
+    "validation": "/content/GovOn/data/processed/civil_complaint_val.jsonl"
 }
 
 dataset = load_dataset("json", data_files=data_files)
@@ -597,7 +597,7 @@ tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
 
 # 2. 캘리브레이션 데이터 로드
 print("\n[2/5] Loading calibration data...")
-calib_file = "/content/ondevice-ai-civil-complaint/data/calibration/exaone_civil_calibration.txt"
+calib_file = "/content/GovOn/data/calibration/exaone_civil_calibration.txt"
 
 with open(calib_file, "r", encoding="utf-8") as f:
     calib_data = [line.strip() for line in f if line.strip()][:512]
@@ -728,7 +728,7 @@ rouge = load("rouge")
 # Test 데이터 로드
 test_dataset = load_dataset(
     "json",
-    data_files="/content/ondevice-ai-civil-complaint/data/processed/civil_complaint_test.jsonl"
+    data_files="/content/GovOn/data/processed/civil_complaint_test.jsonl"
 )["train"]
 
 print(f"Evaluating on {len(test_dataset)} test samples...")

@@ -25,6 +25,7 @@ outputs/
 
 | 날짜 | 마일스톤 | 산출물 | 파일 |
 |------|----------|--------|------|
+| 2026-03-12 | M1_Planning | 3/16 미팅 발표자료 v1.1 | [W02_0316_project_presentation_v1.1.pptx](M1_Planning/04_Presentation/W02_0316_project_presentation_v1.1.pptx) |
 | 2026-03-11 | M1_Planning | 3/16 미팅 발표자료 v1.0 | [W02_0316_project_presentation_v1.0.pptx](M1_Planning/04_Presentation/W02_0316_project_presentation_v1.0.pptx) |
 
 ## 핵심 KPI 현황 (2026-03-09 기준)
@@ -52,4 +53,4 @@ outputs/
 - **v2.0**: 최종 승인
 
 ---
-**최종 수정**: 2026-03-11
+**최종 수정**: 2026-03-12

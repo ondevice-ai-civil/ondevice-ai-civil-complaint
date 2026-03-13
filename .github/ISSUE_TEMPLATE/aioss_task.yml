@@ -1,0 +1,52 @@
+name: "AIOSS 수업 과제"
+description: "AI OSS 수업 주차별 과제 이슈에 사용합니다."
+title: "[AIOSS-Wxx] "
+labels: ["aioss"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > 제목 형식: `[AIOSS-W01]` ~ `[AIOSS-W14]` 중 해당 주차를 작성해 주세요.
+
+  - type: textarea
+    id: objective
+    attributes:
+      label: "과제 목표"
+      description: "이번 주차 과제의 목표를 작성해 주세요."
+      placeholder: "예: GitHub 기반 개발 환경을 구축하고 프로젝트 제안서를 작성한다."
+    validations:
+      required: true
+
+  - type: textarea
+    id: project_relation
+    attributes:
+      label: "프로젝트 연관성"
+      description: "이 과제가 본 프로젝트(GovOn)와 어떻게 연결되는지 설명해 주세요."
+      placeholder: |
+        - 민원 시스템의 어떤 기능/구조에 적용되는지
+        - 기술 스택 선정 근거 등
+    validations:
+      required: false
+
+  - type: textarea
+    id: checklist
+    attributes:
+      label: "과제 체크리스트"
+      description: "완료해야 할 항목을 체크리스트로 작성해 주세요."
+      value: |
+        - [ ]
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: textarea
+    id: outputs
+    attributes:
+      label: "산출물"
+      description: "과제 결과로 제출하거나 생성할 파일/문서를 작성해 주세요."
+      placeholder: |
+        - docs/outputs/...
+        - GitHub 저장소 설정 완료
+    validations:
+      required: false

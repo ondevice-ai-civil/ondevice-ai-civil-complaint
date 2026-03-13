@@ -1,0 +1,65 @@
+name: "버그 리포트"
+description: "버그 또는 예상치 못한 동작을 보고할 때 사용합니다."
+title: "[BUG] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: "버그 설명"
+      description: "어떤 문제가 발생했는지 명확하게 설명해 주세요."
+      placeholder: "예: vLLM 서버 기동 시 CUDA OOM 오류 발생"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: "재현 방법"
+      description: "버그를 재현하는 단계를 작성해 주세요."
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: "기대 동작"
+      description: "정상적으로 동작했다면 어떤 결과가 나와야 했나요?"
+      placeholder: "예: 모델이 정상적으로 로드되고 추론 결과를 반환해야 함"
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: "실제 동작"
+      description: "실제로 어떤 결과가 나왔나요? 에러 로그나 스크린샷을 첨부해 주세요."
+      placeholder: "예: RuntimeError: CUDA out of memory..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: "환경 정보"
+      description: "발생 환경을 작성해 주세요."
+      value: |
+        - OS:
+        - GPU / VRAM:
+        - Python 버전:
+        - 관련 패키지 버전 (vLLM, PyTorch 등):
+        - 브랜치:
+    validations:
+      required: false
+
+  - type: textarea
+    id: related
+    attributes:
+      label: "관련 이슈 / PR"
+      placeholder: "- #"
+    validations:
+      required: false

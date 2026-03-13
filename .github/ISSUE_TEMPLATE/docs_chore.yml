@@ -1,0 +1,48 @@
+name: "문서화 / 기타 작업"
+description: "문서 작성, 발표 자료 준비, 환경 설정 등 기타 작업에 사용합니다."
+title: "docs/chore: "
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > 제목 prefix 예시: `docs:` (문서화), `chore:` (환경설정/기타)
+
+  - type: textarea
+    id: objective
+    attributes:
+      label: "목표"
+      description: "이 작업의 목적을 간략히 작성해 주세요."
+      placeholder: "예: 3/16 미팅 발표자료 준비"
+    validations:
+      required: true
+
+  - type: textarea
+    id: tasks
+    attributes:
+      label: "작업 내용"
+      description: "수행할 작업을 체크리스트로 작성해 주세요."
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: textarea
+    id: outputs
+    attributes:
+      label: "산출물"
+      description: "작업 결과 파일이나 링크를 작성해 주세요."
+      placeholder: |
+        - docs/presentations/...
+        - README.md 업데이트
+    validations:
+      required: false
+
+  - type: textarea
+    id: related
+    attributes:
+      label: "관련 이슈 / PR"
+      placeholder: "- #"
+    validations:
+      required: false

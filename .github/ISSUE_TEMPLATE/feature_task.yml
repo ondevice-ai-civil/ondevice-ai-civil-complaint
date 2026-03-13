@@ -1,0 +1,82 @@
+name: "기능 구현 / 마일스톤 태스크"
+description: "마일스톤 기능 구현, 실험, 개선 작업에 사용합니다."
+title: "[Mx] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > 제목 형식: `[M1]`, `[M2]`, `[M3]`, `[M4]` 중 해당 마일스톤을 선택해 작성해 주세요.
+
+  - type: textarea
+    id: background
+    attributes:
+      label: "배경"
+      description: "이 작업이 필요한 배경 또는 문제 상황을 설명해 주세요."
+      placeholder: "예: M2 평가에서 데이터 품질 문제가 확인되었습니다..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: objective
+    attributes:
+      label: "목표"
+      description: "이 이슈를 통해 달성하려는 목표를 한 줄로 작성해 주세요."
+      placeholder: "예: EXAONE-Deep-7.8B 모델을 민원 도메인에 특화하여 QLoRA 파인튜닝 실행"
+    validations:
+      required: true
+
+  - type: textarea
+    id: tasks
+    attributes:
+      label: "작업 내용"
+      description: "수행할 작업을 체크리스트 형태로 작성해 주세요."
+      value: |
+        - [ ]
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: textarea
+    id: done_criteria
+    attributes:
+      label: "완료 기준"
+      description: "이슈가 완료되었다고 볼 수 있는 기준을 작성해 주세요."
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: false
+
+  - type: textarea
+    id: outputs
+    attributes:
+      label: "산출물"
+      description: "작업 결과로 생성되는 파일, 문서, 모델 등을 작성해 주세요."
+      placeholder: |
+        - src/training/train_qlora.py
+        - docs/outputs/M2_MVP/...
+    validations:
+      required: false
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: "의존성"
+      description: "이 이슈와 연관된 다른 이슈를 작성해 주세요."
+      placeholder: |
+        - #67 QLoRA 하이퍼파라미터 최적화
+        - #68 답변 생성 품질 고도화
+    validations:
+      required: false
+
+  - type: textarea
+    id: related
+    attributes:
+      label: "관련 이슈 / PR"
+      description: "참고할 이슈나 PR 번호를 작성해 주세요."
+      placeholder: |
+        - #10, #11
+    validations:
+      required: false

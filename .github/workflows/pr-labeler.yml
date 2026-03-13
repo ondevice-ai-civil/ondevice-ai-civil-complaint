@@ -1,0 +1,62 @@
+name: PR Auto Labeler
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  # 1) 파일 경로 기반 라벨링
+  label-by-files:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/labeler@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          configuration-path: .github/labeler.yml
+          sync-labels: false
+
+  # 2) PR 제목 기반 라벨링
+  label-by-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label by PR title
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const title = context.payload.pull_request.title;
+            const prNumber = context.payload.pull_request.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const labelsToAdd = new Set();
+
+            // 마일스톤 라벨
+            if (/\[M1\]/i.test(title)) labelsToAdd.add('M1-planning');
+            if (/\[M2\]/i.test(title)) labelsToAdd.add('M2-mvp');
+            if (/\[M3\]/i.test(title)) labelsToAdd.add('M3-optimization');
+            if (/\[M4\]/i.test(title)) labelsToAdd.add('M4-testing');
+
+            // 타입 라벨
+            if (/\[BUG\]/i.test(title) || /^fix(\(.+\))?:/i.test(title)) labelsToAdd.add('bug');
+            if (/\[AIOSS\]/i.test(title) || /\[AIOSS-W\d+\]/i.test(title))  labelsToAdd.add('aioss');
+            if (/^docs(\(.+\))?:/i.test(title) || /\[M4\]/i.test(title))    labelsToAdd.add('documentation');
+            if (/^feat(\(.+\))?:/i.test(title))                              labelsToAdd.add('enhancement');
+            if (/^chore(\(.+\))?:/i.test(title) || /^infra(\(.+\))?:/i.test(title)) labelsToAdd.add('infra');
+
+            if (labelsToAdd.size === 0) {
+              console.log('No title-based labels matched.');
+              return;
+            }
+
+            console.log('Adding labels:', [...labelsToAdd]);
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number: prNumber,
+              labels: [...labelsToAdd],
+            });

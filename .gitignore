@@ -86,6 +86,7 @@ Thumbs.db
 htmlcov/
 # Tool contexts
 .gemini/
+.claude/
 .claude_bak/
 .gemini_bak/
 CLAUDE.md

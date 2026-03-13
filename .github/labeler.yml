@@ -1,0 +1,87 @@
+# 파일 경로 기반 자동 라벨 매핑
+# actions/labeler@v5 에서 사용
+
+ai-model:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "src/training/**"
+      - "src/evaluation/**"
+      - "src/inference/**"
+      - "src/quantization/**"
+      - "src/utils/**"
+      - "training/**"
+      - "evaluation/**"
+      - "inference/**"
+      - "quantization/**"
+      - "models/**"
+      - "notebooks/**"
+      - "configs/**"
+      - "*.ipynb"
+
+backend:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "src/backend/**"
+      - "src/api/**"
+      - "src/server/**"
+      - "**/api/**"
+      - "**/server/**"
+      - "**/routers/**"
+      - "**/*_server.py"
+      - "**/*_api.py"
+      - "**/main.py"
+      - "**/app.py"
+
+frontend:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "frontend/**"
+      - "web/**"
+      - "**/*.html"
+      - "**/*.css"
+      - "**/*.js"
+      - "**/*.ts"
+      - "**/*.tsx"
+      - "**/*.vue"
+
+data:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "data/**"
+      - "src/data_collection_preprocessing/**"
+      - "data_collection_preprocessing/**"
+      - "src/preprocessing/**"
+      - "preprocessing/**"
+      - "**/*.csv"
+      - "**/*.json"
+      - "**/*.jsonl"
+
+preprocessing:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "src/preprocessing/**"
+      - "src/data_collection_preprocessing/**"
+      - "preprocessing/**"
+      - "data_collection_preprocessing/**"
+
+infra:
+  - changed-files:
+    - any-glob-to-any-file:
+      - ".github/**"
+      - "Dockerfile"
+      - "Dockerfile.*"
+      - "docker-compose*.yml"
+      - "docker-compose*.yaml"
+      - ".dockerignore"
+      - "**/*.sh"
+      - "requirements*.txt"
+      - "pyproject.toml"
+      - "setup.py"
+      - "setup.cfg"
+
+documentation:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "docs/**"
+      - "**/*.md"
+      - "assets/**"

@@ -85,8 +85,8 @@ Thumbs.db
 .coverage
 htmlcov/
 # Tool contexts
-.claude/
 .gemini/
+.claude/
 .claude_bak/
 .gemini_bak/
 CLAUDE.md

@@ -1,14 +1,27 @@
 {
-  "total_raw_records": 1807501,
-  "total_processed_records": 15604,
-  "filtered_too_short": 1785406,
-  "filtered_duplicates": 6483,
-  "filtered_invalid": 8,
-  "category_distribution": {
-    "other": 15604
+  "version": "v2_reconstructed",
+  "total_records": 8952,
+  "train": 7127,
+  "val": 905,
+  "test": 920,
+  "sources": {
+    "71852_label": 3278,
+    "71852_source": 0,
+    "98": 5674,
+    "71844": "전량 제거"
   },
-  "avg_question_length": 1185.8840041015123,
-  "avg_answer_length": 96.92040502435273,
-  "pii_masked_count": 15604,
-  "processing_time_seconds": 10.517876
+  "category_distribution": {
+    "안전": 57,
+    "환경": 2040,
+    "교통": 2555,
+    "복지": 196,
+    "행정": 2458,
+    "건축": 312,
+    "기타": 1320,
+    "세금": 14
+  },
+  "unique_categories": 8,
+  "avg_output_length": 330.10098302055405,
+  "median_output_length": 246.0,
+  "pii_density_percent": 0.5340167447202755
 }

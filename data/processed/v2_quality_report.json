@@ -1,36 +1,50 @@
 {
-  "version": "v2_chat_template",
+  "version": "v2.1_balanced",
   "format": "EXAONE chat template with [|endofturn|]",
-  "total_records": 62077,
-  "train": 49628,
-  "val": 6217,
-  "test": 6232,
+  "changes_from_v2": [
+    "71847 카테고리 세분화 (title/caseTypeName/agenda 기반)",
+    "71847 샘플링 제한 (전체의 30%)",
+    "프롬프트 통일 (모든 소스 동일 instruction)",
+    "답변 길이 필터 강화 (71847: 100자, 전체: 50자)",
+    "테스트셋 균형화 (71852 우선 + 카테고리 균등)"
+  ],
+  "total_records": 12678,
+  "train": 10148,
+  "val": 1265,
+  "test": 1265,
   "sources": {
     "71852": 13164,
-    "98": 6525,
-    "71847": 53948,
-    "71844": "전량 제거"
+    "98": 6479,
+    "71847_total": 42315,
+    "71847_sampled": 3803,
+    "71847_ratio_percent": 30.0
   },
   "category_distribution": {
-    "안전": 57,
-    "환경": 2036,
-    "교통": 2546,
-    "복지": 196,
-    "행정": 55601,
-    "건축": 311,
+    "안전": 402,
+    "환경": 2356,
+    "교통": 2766,
+    "복지": 682,
+    "행정": 2433,
+    "건축": 862,
     "기타": 1316,
-    "세금": 14
+    "세금": 1861
+  },
+  "source_distribution": {
+    "71852_label": 3271,
+    "98": 5604,
+    "71847": 3803
   },
   "unique_categories": 8,
   "answer_length": {
-    "mean": 195.69979219356605,
-    "median": 166.0,
-    "min": 30,
+    "mean": 290.4899037703108,
+    "median": 218.0,
+    "min": 50,
     "max": 4670
   },
-  "pii_density_percent": 0.000574888938583127,
+  "pii_density_percent": 0.00014039558882165216,
   "quality_filters": [
-    "answer < 30 chars removed",
+    "71847 answer < 100 chars removed",
+    "other answer < 50 chars removed",
     "question < 10 chars removed",
     "Jaccard similarity > 0.8 removed",
     "repetition pattern (3+ consecutive) removed",
@@ -40,5 +54,19 @@
     "train_val": 0,
     "train_test": 0,
     "val_test": 0
+  },
+  "test_category_counts": {
+    "행정": 243,
+    "환경": 235,
+    "복지": 68,
+    "기타": 131,
+    "안전": 40,
+    "건축": 86,
+    "교통": 276,
+    "세금": 186
+  },
+  "test_source_counts": {
+    "71852_label": 1093,
+    "71847": 172
   }
 }

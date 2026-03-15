@@ -1,11 +1,12 @@
 """
 Issue #70 - 학습 데이터 전면 재구성 v2 (로컬 실행)
 
-v1 대비 개선사항:
-- EXAONE Chat Template 포맷으로 직접 변환 (text 필드 하나)
-- PII 마스킹 v2: 특수문자 마스킹 제거, PII 밀도 50% 초과 샘플 제거
-- 품질 필터링 강화: Jaccard 유사도, 반복 패턴 제거
-- 출력: v2_train.jsonl, v2_val.jsonl, v2_test.jsonl
+v2.1 개선사항 (편향 분석 반영):
+- 71847 카테고리 재매핑: 법률 title/caseTypeName/agenda 기반 세분화
+- 71847 샘플링 제한: 전체의 25~35%로 축소 (민원 데이터 주축)
+- 프롬프트 통일: 모든 소스에 동일 instruction 적용
+- 답변 길이 필터: 71847 최소 100자, 전체 최소 50자
+- 테스트셋 균형: 카테고리별 균등 + 71852 소스 우선
 
 사용법:
     python src/data_collection_preprocessing/reconstruct_data_v2.py
@@ -45,13 +46,19 @@ DATASET_71847_JSON = os.path.join(RAW_DIR, "71847/json")
 
 MIN_PER_CATEGORY = 30
 
+# 71847 비율 제한: 전체의 25~35%
+MAX_71847_RATIO = 0.30
+
+# 답변 길이 필터
+MIN_ANSWER_LEN_71847 = 100   # 71847 최소 답변 길이
+MIN_ANSWER_LEN_GLOBAL = 50   # 전체 최소 답변 길이
+
 STANDARD_CATEGORIES = ["교통", "환경", "복지", "건축", "행정", "세금", "안전", "기타"]
 
 SYSTEM_MESSAGE = "당신은 지자체 민원 담당 공무원을 돕는 AI 어시스턴트입니다."
 INSTRUCTION = "다음 민원에 대해 공손하고 명확한 답변을 작성하세요."
 
 # ─── EXAONE Chat Template ─────────────────────────────────────────────
-# tokenizer.apply_chat_template() 대신 직접 포맷 (로컬에서 tokenizer 불필요)
 def format_chat_template(system: str, user: str, assistant: str) -> str:
     """EXAONE chat template 포맷으로 변환. 마지막에 [|endofturn|] 포함."""
     return (
@@ -61,7 +68,7 @@ def format_chat_template(system: str, user: str, assistant: str) -> str:
     )
 
 
-# ─── 카테고리 매핑 ─────────────────────────────────────────────────────
+# ─── 카테고리 매핑 (71852/98용) ────────────────────────────────────────
 CATEGORY_MAP = {
     "교통": "교통", "교통행정": "교통", "교통과": "교통",
     "대중교통": "교통", "도로교통": "교통", "교통정책": "교통",
@@ -108,6 +115,77 @@ DASAN_CATEGORY_MAP = {
     "생활하수도 관련 문의": "환경",
     "일반행정 문의": "행정",
 }
+
+
+# ─── 71847 법률 제목 기반 카테고리 매핑 ─────────────────────────────────
+# 키워드 → 카테고리 (우선순위 순서대로 매칭)
+LAW_TITLE_CATEGORY_KEYWORDS = {
+    "교통": [
+        "도로교통", "교통", "자동차", "여객", "운수", "운송", "화물",
+        "철도", "항공", "항만", "해운", "선박", "도로법", "고속도로",
+        "주차", "면허", "운전",
+    ],
+    "환경": [
+        "환경", "대기", "수질", "폐기물", "소음", "진동", "토양오염",
+        "자연환경", "생태", "녹색", "탄소", "기후", "물관리",
+        "하수", "상수", "수도", "공원", "녹지", "산림", "산지",
+        "야생", "동물보호",
+    ],
+    "건축": [
+        "건축", "주택", "도시계획", "국토", "도시개발", "택지",
+        "공동주택", "임대주택", "부동산", "토지", "건설",
+        "개발제한", "도시정비", "주거환경", "재건축", "재개발",
+        "산업단지", "공장설립", "공유재산",
+    ],
+    "복지": [
+        "복지", "기초생활", "아동", "노인", "장애인", "보육",
+        "의료", "건강보험", "국민연금", "연금", "고용보험",
+        "산업재해", "보건", "사회보장", "양육", "출산",
+        "보훈", "국가유공자", "청년기본",
+    ],
+    "세금": [
+        "세법", "세금", "국세", "지방세", "소득세", "법인세",
+        "부가가치세", "상속세", "증여세", "관세", "조세",
+        "세징수", "세특례", "세기본",
+    ],
+    "안전": [
+        "안전", "재난", "소방", "방재", "민방위", "위험물",
+        "승강기", "원자력", "화재", "방화", "보행안전",
+        "어린이 식생활안전",
+    ],
+}
+
+# P 파일(판결문)의 caseTypeName 매핑
+CASE_TYPE_CATEGORY_MAP = {
+    "세무": "세금",
+    "일반행정": "행정",
+    "특허": "기타",
+}
+
+
+def map_71847_category_by_title(title: str) -> str:
+    """법률 제목(title) 기반으로 71847 카테고리를 매핑."""
+    if not title:
+        return "행정"
+    for category, keywords in LAW_TITLE_CATEGORY_KEYWORDS.items():
+        for kw in keywords:
+            if kw in title:
+                return category
+    return "행정"
+
+
+def map_71847_category_by_agenda(agenda: str) -> str:
+    """해석례(H)의 agenda 필드에서 법률명을 추출하여 카테고리 매핑."""
+    if not agenda:
+        return "행정"
+    # 「법률명」 패턴에서 첫 번째 법률명 추출
+    matches = re.findall(r'「([^」]+)」', agenda)
+    for law_name in matches:
+        cat = map_71847_category_by_title(law_name)
+        if cat != "행정":
+            return cat
+    # 법률명 패턴이 없으면 agenda 전체에서 키워드 검색
+    return map_71847_category_by_title(agenda)
 
 
 # ─── 유틸리티 함수 ─────────────────────────────────────────────────────
@@ -210,9 +288,9 @@ def has_repetition_pattern(text: str) -> bool:
     return False
 
 
-def is_low_quality(question: str, answer: str) -> Optional[str]:
+def is_low_quality(question: str, answer: str, min_answer_len: int = 50) -> Optional[str]:
     """저품질 판정. 제거 사유를 반환. None이면 통과."""
-    if len(answer) < 30:
+    if len(answer) < min_answer_len:
         return "answer_too_short"
     if len(question) < 10:
         return "question_too_short"
@@ -299,8 +377,8 @@ def process_71852() -> list:
         question = improve_pii_masking_v2(question)
         answer = improve_pii_masking_v2(answer)
 
-        # 품질 필터링
-        reason = is_low_quality(question, answer)
+        # 품질 필터링 (전체 최소 답변 길이 적용)
+        reason = is_low_quality(question, answer, min_answer_len=MIN_ANSWER_LEN_GLOBAL)
         if reason:
             stats[reason] += 1
             continue
@@ -381,7 +459,7 @@ def process_98() -> list:
             full_q = improve_pii_masking_v2(full_q)
             full_a = improve_pii_masking_v2(full_a)
 
-            reason = is_low_quality(full_q, full_a)
+            reason = is_low_quality(full_q, full_a, min_answer_len=MIN_ANSWER_LEN_GLOBAL)
             if reason:
                 filtered += 1
                 continue
@@ -398,20 +476,16 @@ def process_98() -> list:
     return records
 
 
-# ─── 3. 71847 행정법 QA 데이터 처리 ───────────────────────────────────
+# ─── 3. 71847 행정법 QA 데이터 처리 (카테고리 세분화 + 샘플링) ────────
 
-# 71847 데이터 유형별 카테고리 매핑
-LAWTYPE_CATEGORY_MAP = {
-    "B": "행정",   # 법령 QA → 행정
-    "K": "행정",   # 결정례 QA → 행정
-    "P": "행정",   # 판결문 QA → 행정
-    "H": "행정",   # 해석례 QA → 행정
-}
+def process_71847(max_records: int = None) -> list:
+    """71847 데이터를 카테고리 세분화하여 처리.
 
-
-def process_71847() -> list:
+    Args:
+        max_records: 최대 반환 레코드 수 (None이면 제한 없음, 이후 sampling에서 제한)
+    """
     print("\n" + "=" * 60)
-    print("  3. 71847 행정법 QA 데이터 처리")
+    print("  3. 71847 행정법 QA 데이터 처리 (카테고리 세분화)")
     print("=" * 60)
 
     if not os.path.exists(DATASET_71847_JSON):
@@ -423,6 +497,7 @@ def process_71847() -> list:
 
     records = []
     stats = defaultdict(int)
+    cat_stats = defaultdict(int)
 
     for fpath in tqdm(json_files, desc="71847 처리"):
         try:
@@ -432,6 +507,7 @@ def process_71847() -> list:
             stats["parse_fail"] += 1
             continue
 
+        info = data.get("info", {})
         label = data.get("label", {})
         question = label.get("input", "").strip()
         answer = label.get("output", "").strip()
@@ -440,14 +516,34 @@ def process_71847() -> list:
         # 유형 추출 (HJ_B_xxx → B)
         parts = filename.split("_")
         law_type = parts[1] if len(parts) > 1 else ""
-        category = LAWTYPE_CATEGORY_MAP.get(law_type, "행정")
 
-        # 품질 필터링
-        reason = is_low_quality(question, answer)
+        # 카테고리 세분화: 소스 유형별 다른 전략
+        if law_type == "B":
+            # 법령: title 기반 매핑
+            title = info.get("title", "")
+            category = map_71847_category_by_title(title)
+        elif law_type == "P":
+            # 판결문: caseTypeName 기반 매핑
+            case_type = info.get("caseTypeName", "")
+            category = CASE_TYPE_CATEGORY_MAP.get(case_type, "행정")
+        elif law_type == "H":
+            # 해석례: agenda 필드에서 법률명 추출
+            agenda = info.get("agenda", "")
+            category = map_71847_category_by_agenda(agenda)
+        elif law_type == "K":
+            # 결정례: caseName에서 법률 키워드 추출
+            case_name = info.get("caseName", "")
+            category = map_71847_category_by_title(case_name)
+        else:
+            category = "행정"
+
+        # 품질 필터링 (71847 전용 최소 답변 길이)
+        reason = is_low_quality(question, answer, min_answer_len=MIN_ANSWER_LEN_71847)
         if reason:
             stats[reason] += 1
             continue
 
+        cat_stats[category] += 1
         records.append({
             "id": f"71847_{filename}",
             "question": question,
@@ -456,15 +552,87 @@ def process_71847() -> list:
             "source_dataset": "71847",
         })
 
-    print(f"유효: {len(records)}")
+    print(f"품질 필터 통과: {len(records)}")
     for k, v in sorted(stats.items(), key=lambda x: -x[1]):
         print(f"  제거({k}): {v}")
+
+    print(f"\n카테고리 분포 (필터 전):")
+    for cat, cnt in sorted(cat_stats.items(), key=lambda x: -x[1]):
+        print(f"  {cat}: {cnt} ({cnt / len(records) * 100:.1f}%)")
 
     if records:
         a_lens = [len(r["answer"]) for r in records]
         print(f"답변 길이 - 평균: {np.mean(a_lens):.0f}, 중앙값: {np.median(a_lens):.0f}")
 
     return records
+
+
+def sample_71847(records_71847: list, other_count: int) -> list:
+    """71847 데이터를 전체의 25~35% 비율로 샘플링.
+
+    민원 관련 카테고리(교통, 환경, 건축, 복지, 세금, 안전) 우선 선별.
+    순수 행정/기타 카테고리는 비율 제한.
+    """
+    if not records_71847:
+        return []
+
+    # 목표: 전체의 MAX_71847_RATIO
+    # other_count + sampled_71847 = total
+    # sampled_71847 / total = MAX_71847_RATIO
+    # sampled_71847 = other_count * MAX_71847_RATIO / (1 - MAX_71847_RATIO)
+    target_count = int(other_count * MAX_71847_RATIO / (1 - MAX_71847_RATIO))
+    target_count = min(target_count, len(records_71847))
+
+    print(f"\n71847 샘플링: {len(records_71847)} -> {target_count} (목표 비율 {MAX_71847_RATIO*100:.0f}%)")
+
+    # 카테고리별 그룹핑
+    cat_groups = defaultdict(list)
+    for rec in records_71847:
+        cat_groups[rec["category"]].append(rec)
+
+    # 민원 관련 카테고리 우선 (비-행정, 비-기타)
+    civil_categories = ["교통", "환경", "건축", "복지", "세금", "안전"]
+    admin_categories = ["행정", "기타"]
+
+    # 1단계: 민원 관련 카테고리는 전량 포함 (target 범위 내)
+    sampled = []
+    civil_total = sum(len(cat_groups.get(cat, [])) for cat in civil_categories)
+    admin_total = sum(len(cat_groups.get(cat, [])) for cat in admin_categories)
+
+    print(f"  민원 관련 카테고리: {civil_total}건")
+    print(f"  행정/기타 카테고리: {admin_total}건")
+
+    # 민원 관련 카테고리 전량 추가
+    for cat in civil_categories:
+        group = cat_groups.get(cat, [])
+        random.shuffle(group)
+        sampled.extend(group)
+
+    # 2단계: 남은 할당량을 행정/기타에서 채움
+    remaining = target_count - len(sampled)
+    if remaining > 0 and admin_total > 0:
+        # 행정/기타 카테고리 비율 배분
+        for cat in admin_categories:
+            group = cat_groups.get(cat, [])
+            if not group:
+                continue
+            # 비례 배분
+            cat_quota = int(remaining * len(group) / admin_total)
+            cat_quota = min(cat_quota, len(group))
+            random.shuffle(group)
+            sampled.extend(group[:cat_quota])
+    elif len(sampled) > target_count:
+        # 민원 관련만으로도 초과 시, 카테고리별 균등 삭감
+        random.shuffle(sampled)
+        sampled = sampled[:target_count]
+
+    # 최종 분포 출력
+    final_dist = Counter(r["category"] for r in sampled)
+    print(f"  샘플링 결과: {len(sampled)}건")
+    for cat, cnt in sorted(final_dist.items(), key=lambda x: -x[1]):
+        print(f"    {cat}: {cnt}")
+
+    return sampled
 
 
 # ─── 4. Chat Template 변환 + Split + 저장 ─────────────────────────────
@@ -474,37 +642,66 @@ def format_and_split(records_71852: list, records_98: list, records_71847: list 
         records_71847 = []
 
     print("\n" + "=" * 60)
-    print("  4. Chat Template 변환 & 층화 분할")
+    print("  4. 중복 제거 & 71847 샘플링 & Chat Template 변환 & 층화 분할")
     print("=" * 60)
 
-    all_qa = records_71852 + records_98 + records_71847
-    print(f"Q&A 레코드: {len(all_qa)} (71852: {len(records_71852)}, 98: {len(records_98)}, 71847: {len(records_71847)})")
-
-    # 중복 제거 (질문 기준)
+    # 1단계: 먼저 각 소스별 중복 제거 (질문 기준)
+    # 71852/98을 먼저 등록하여 우선권 부여 (민원 데이터가 주축)
     seen = set()
-    unique = []
-    for rec in all_qa:
+    unique_71852 = []
+    for rec in records_71852:
         h = hashlib.md5(rec["question"].encode()).hexdigest()
         if h not in seen:
             seen.add(h)
-            unique.append(rec)
-    print(f"중복 제거 후: {len(unique)} (제거: {len(all_qa) - len(unique)})")
+            unique_71852.append(rec)
 
-    # EXAONE Chat Template 포맷 변환
+    unique_98 = []
+    for rec in records_98:
+        h = hashlib.md5(rec["question"].encode()).hexdigest()
+        if h not in seen:
+            seen.add(h)
+            unique_98.append(rec)
+
+    unique_71847_all = []
+    for rec in records_71847:
+        h = hashlib.md5(rec["question"].encode()).hexdigest()
+        if h not in seen:
+            seen.add(h)
+            unique_71847_all.append(rec)
+
+    dedup_removed = (len(records_71852) + len(records_98) + len(records_71847)
+                     - len(unique_71852) - len(unique_98) - len(unique_71847_all))
+    print(f"중복 제거: {dedup_removed}건 제거")
+    print(f"  71852: {len(records_71852)} -> {len(unique_71852)}")
+    print(f"  98: {len(records_98)} -> {len(unique_98)}")
+    print(f"  71847: {len(records_71847)} -> {len(unique_71847_all)}")
+
+    # 2단계: 71847 샘플링 (중복 제거 후 기준)
+    other_count = len(unique_71852) + len(unique_98)
+    sampled_71847 = sample_71847(unique_71847_all, other_count)
+
+    unique = unique_71852 + unique_98 + sampled_71847
+    print(f"\n최종 레코드: {len(unique)} "
+          f"(71852: {len(unique_71852)}, 98: {len(unique_98)}, "
+          f"71847: {len(sampled_71847)}/{len(unique_71847_all)})")
+
+    # 71847 비율 확인
+    ratio_71847 = len(sampled_71847) / len(unique) * 100 if unique else 0
+    print(f"71847 비율: {ratio_71847:.1f}% (목표: {MAX_71847_RATIO*100:.0f}%)")
+
+    # EXAONE Chat Template 포맷 변환 (프롬프트 통일)
     formatted = []
     for rec in unique:
         cat = rec["category"]
-        source = rec.get("source_dataset", "")
-        if source == "71847":
-            user_text = f"다음 행정법 관련 질의에 대해 정확하고 상세하게 답변하세요.\n\n질의: {rec['question']}"
-        else:
-            user_text = f"{INSTRUCTION}\n\n[카테고리: {cat}]\n민원 내용: {rec['question']}"
+        # 모든 소스에 동일한 instruction 적용 (프롬프트 통일)
+        user_text = f"{INSTRUCTION}\n\n[카테고리: {cat}]\n민원 내용: {rec['question']}"
         text = format_chat_template(SYSTEM_MESSAGE, user_text, rec["answer"])
 
         formatted.append({
             "text": text,
             "category": cat,
             "id": rec["id"],
+            "source": rec.get("source_dataset", ""),
         })
 
     print(f"최종 레코드: {len(formatted)}")
@@ -514,7 +711,13 @@ def format_and_split(records_71852: list, records_98: list, records_71847: list 
     for cat, cnt in sorted(cat_dist.items(), key=lambda x: -x[1]):
         print(f"  {cat}: {cnt} ({cnt / len(formatted) * 100:.1f}%)")
 
-    # ─── 층화 분할 ───
+    # 소스별 분포
+    source_dist = Counter(r["source"] for r in formatted)
+    print(f"\n소스별 분포:")
+    for src, cnt in sorted(source_dist.items(), key=lambda x: -x[1]):
+        print(f"  {src}: {cnt} ({cnt / len(formatted) * 100:.1f}%)")
+
+    # ─── 층화 분할 (테스트셋 균형화) ───
     cat_groups = defaultdict(list)
     for rec in formatted:
         cat_groups[rec["category"]].append(rec)
@@ -533,6 +736,7 @@ def format_and_split(records_71852: list, records_98: list, records_71847: list 
             train.extend(data)
             continue
 
+        # 테스트셋: 카테고리별 균형 (각 카테고리에서 최소 30건)
         test_size = max(MIN_PER_CATEGORY, int(n * 0.1))
         test_size = min(test_size, n // 3)
         val_size = max(MIN_PER_CATEGORY // 2, int(n * 0.1))
@@ -544,9 +748,16 @@ def format_and_split(records_71852: list, records_98: list, records_71847: list 
             test_size = 1
             val_size = n - train_size - test_size
 
-        test.extend(data[:test_size])
-        val.extend(data[test_size:test_size + val_size])
-        train.extend(data[test_size + val_size:])
+        # 테스트셋에서 71852 소스 우선 배치
+        data_71852 = [r for r in data if r.get("source", "").startswith("71852")]
+        data_other = [r for r in data if not r.get("source", "").startswith("71852")]
+
+        # 71852를 테스트셋 앞쪽에 배치하여 우선 선택되도록
+        reordered = data_71852 + data_other
+
+        test.extend(reordered[:test_size])
+        val.extend(reordered[test_size:test_size + val_size])
+        train.extend(reordered[test_size + val_size:])
 
     random.shuffle(train)
     random.shuffle(val)
@@ -561,6 +772,12 @@ def format_and_split(records_71852: list, records_98: list, records_71847: list 
         status = "OK" if cnt >= MIN_PER_CATEGORY else f"WARN (<{MIN_PER_CATEGORY})"
         print(f"  Test [{cat}]: {cnt} {status}")
 
+    # Test set 소스 분포
+    test_sources = Counter(r.get("source", "") for r in test)
+    print(f"\nTest 소스 분포:")
+    for src, cnt in sorted(test_sources.items(), key=lambda x: -x[1]):
+        print(f"  {src}: {cnt}")
+
     # ─── 데이터 누출 검증 ───
     train_h = {hashlib.md5(r["text"].encode()).hexdigest() for r in train}
     val_h = {hashlib.md5(r["text"].encode()).hexdigest() for r in val}
@@ -571,13 +788,16 @@ def format_and_split(records_71852: list, records_98: list, records_71847: list 
     print(f"\n데이터 누출: train-val={leak_tv}, train-test={leak_tt}, val-test={leak_vt}")
 
     # ─── 저장 ───
+    # 저장 시 source 필드 제거 (학습에 불필요)
+    def strip_source(records):
+        return [{"text": r["text"], "category": r["category"], "id": r["id"]} for r in records]
+
     print(f"\n파일 저장 중...")
-    save_jsonl(train, os.path.join(OUTPUT_DIR, "v2_train.jsonl"))
-    save_jsonl(val, os.path.join(OUTPUT_DIR, "v2_val.jsonl"))
-    save_jsonl(test, os.path.join(OUTPUT_DIR, "v2_test.jsonl"))
+    save_jsonl(strip_source(train), os.path.join(OUTPUT_DIR, "v2_train.jsonl"))
+    save_jsonl(strip_source(val), os.path.join(OUTPUT_DIR, "v2_val.jsonl"))
+    save_jsonl(strip_source(test), os.path.join(OUTPUT_DIR, "v2_test.jsonl"))
 
     # ─── 품질 리포트 ───
-    # text에서 assistant 답변 부분만 추출하여 길이 계산
     def extract_answer(text):
         marker = "[|assistant|]"
         idx = text.rfind(marker)
@@ -592,8 +812,15 @@ def format_and_split(records_71852: list, records_98: list, records_71847: list 
     all_pii = [calculate_pii_density(a) for a in all_answers]
 
     report = {
-        "version": "v2_chat_template",
+        "version": "v2.1_balanced",
         "format": "EXAONE chat template with [|endofturn|]",
+        "changes_from_v2": [
+            "71847 카테고리 세분화 (title/caseTypeName/agenda 기반)",
+            f"71847 샘플링 제한 (전체의 {MAX_71847_RATIO*100:.0f}%)",
+            "프롬프트 통일 (모든 소스 동일 instruction)",
+            f"답변 길이 필터 강화 (71847: {MIN_ANSWER_LEN_71847}자, 전체: {MIN_ANSWER_LEN_GLOBAL}자)",
+            "테스트셋 균형화 (71852 우선 + 카테고리 균등)",
+        ],
         "total_records": len(formatted),
         "train": len(train),
         "val": len(val),
@@ -601,10 +828,12 @@ def format_and_split(records_71852: list, records_98: list, records_71847: list 
         "sources": {
             "71852": len(records_71852),
             "98": len(records_98),
-            "71847": len(records_71847),
-            "71844": "전량 제거",
+            "71847_total": len(records_71847),
+            "71847_sampled": len(sampled_71847),
+            "71847_ratio_percent": round(ratio_71847, 1),
         },
         "category_distribution": dict(cat_dist),
+        "source_distribution": dict(source_dist),
         "unique_categories": len(cat_dist),
         "answer_length": {
             "mean": float(np.mean(all_answer_lens)),
@@ -614,7 +843,8 @@ def format_and_split(records_71852: list, records_98: list, records_71847: list 
         },
         "pii_density_percent": float(np.mean(all_pii) * 100),
         "quality_filters": [
-            "answer < 30 chars removed",
+            f"71847 answer < {MIN_ANSWER_LEN_71847} chars removed",
+            f"other answer < {MIN_ANSWER_LEN_GLOBAL} chars removed",
             "question < 10 chars removed",
             "Jaccard similarity > 0.8 removed",
             "repetition pattern (3+ consecutive) removed",
@@ -625,6 +855,8 @@ def format_and_split(records_71852: list, records_98: list, records_71847: list 
             "train_test": leak_tt,
             "val_test": leak_vt,
         },
+        "test_category_counts": dict(test_cats),
+        "test_source_counts": dict(test_sources),
     }
 
     report_path = os.path.join(OUTPUT_DIR, "v2_quality_report.json")
@@ -644,11 +876,12 @@ def format_and_split(records_71852: list, records_98: list, records_71847: list 
 
     # 결과 요약
     print("\n" + "=" * 60)
-    print("  데이터 재구성 v2 완료")
+    print("  데이터 재구성 v2.1 (균형화) 완료")
     print("=" * 60)
     print(f"총 레코드: {report['total_records']:,}")
     print(f"Train/Val/Test: {report['train']:,} / {report['val']:,} / {report['test']:,}")
     print(f"카테고리: {report['unique_categories']}개")
+    print(f"71847 비율: {ratio_71847:.1f}% (v2: 85.7% -> v2.1: {ratio_71847:.1f}%)")
     print(f"답변 길이: 평균 {report['answer_length']['mean']:.0f}자, "
           f"중앙값 {report['answer_length']['median']:.0f}자")
     print(f"PII 밀도: {report['pii_density_percent']:.2f}%")
@@ -660,11 +893,13 @@ def format_and_split(records_71852: list, records_98: list, records_71847: list 
 
 def main():
     print("=" * 60)
-    print("  Issue #70 - 학습 데이터 전면 재구성 v2")
+    print("  Issue #70 - 학습 데이터 전면 재구성 v2.1 (균형화)")
     print("=" * 60)
     print(f"Base: {BASE_DIR}")
     print(f"Output: {OUTPUT_DIR}")
     print(f"포맷: EXAONE Chat Template (text 필드)")
+    print(f"71847 비율 제한: {MAX_71847_RATIO*100:.0f}%")
+    print(f"답변 최소 길이: 71847={MIN_ANSWER_LEN_71847}자, 기타={MIN_ANSWER_LEN_GLOBAL}자")
 
     records_71852 = process_71852()
     records_98 = process_98()

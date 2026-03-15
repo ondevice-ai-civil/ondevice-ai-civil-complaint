@@ -50,7 +50,7 @@ lightning_logs/
 data/raw/
 !data/raw/**/
 !data/raw/aihub/71852/*.zip
-data/processed/
+data/processed/*
 !data/processed/*.jsonl
 !data/processed/*.json
 data/calibration/
@@ -62,6 +62,9 @@ data/calibration/
 !configs/*.json
 !docs/outputs/M2_MVP/*.json
 !src/training/*.json
+!data/processed/*.jsonl
+!data/processed/*.json
+!data/calibration/*.json
 
 # Model files (large)
 models/*.bin

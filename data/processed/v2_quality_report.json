@@ -1,13 +1,14 @@
 {
   "version": "v2_chat_template",
   "format": "EXAONE chat template with [|endofturn|]",
-  "total_records": 8919,
-  "train": 7102,
-  "val": 901,
-  "test": 916,
+  "total_records": 62077,
+  "train": 49628,
+  "val": 6217,
+  "test": 6232,
   "sources": {
     "71852": 13164,
     "98": 6525,
+    "71847": 53948,
     "71844": "전량 제거"
   },
   "category_distribution": {
@@ -15,19 +16,19 @@
     "환경": 2036,
     "교통": 2546,
     "복지": 196,
-    "행정": 2443,
+    "행정": 55601,
     "건축": 311,
     "기타": 1316,
     "세금": 14
   },
   "unique_categories": 8,
   "answer_length": {
-    "mean": 326.42986881937435,
-    "median": 245.0,
+    "mean": 195.69979219356605,
+    "median": 166.0,
     "min": 30,
-    "max": 3566
+    "max": 4670
   },
-  "pii_density_percent": 0.0,
+  "pii_density_percent": 0.000574888938583127,
   "quality_filters": [
     "answer < 30 chars removed",
     "question < 10 chars removed",

@@ -41,6 +41,7 @@ DATASET_71852_LABEL = os.path.join(RAW_DIR, "71852/label")
 DATASET_71852_SOURCE = os.path.join(RAW_DIR, "71852/source")
 DATASET_619_LABEL = os.path.join(RAW_DIR, "619/label")
 DATASET_98_LABEL = os.path.join(RAW_DIR, "98/label")
+DATASET_71847_JSON = os.path.join(RAW_DIR, "71847/json")
 
 MIN_PER_CATEGORY = 30
 
@@ -397,15 +398,87 @@ def process_98() -> list:
     return records
 
 
-# ─── 3. Chat Template 변환 + Split + 저장 ─────────────────────────────
+# ─── 3. 71847 행정법 QA 데이터 처리 ───────────────────────────────────
 
-def format_and_split(records_71852: list, records_98: list):
+# 71847 데이터 유형별 카테고리 매핑
+LAWTYPE_CATEGORY_MAP = {
+    "B": "행정",   # 법령 QA → 행정
+    "K": "행정",   # 결정례 QA → 행정
+    "P": "행정",   # 판결문 QA → 행정
+    "H": "행정",   # 해석례 QA → 행정
+}
+
+
+def process_71847() -> list:
     print("\n" + "=" * 60)
-    print("  3. Chat Template 변환 & 층화 분할")
+    print("  3. 71847 행정법 QA 데이터 처리")
     print("=" * 60)
 
-    all_qa = records_71852 + records_98
-    print(f"Q&A 레코드: {len(all_qa)} (71852: {len(records_71852)}, 98: {len(records_98)})")
+    if not os.path.exists(DATASET_71847_JSON):
+        print("71847 데이터 없음 - 스킵")
+        return []
+
+    json_files = sorted(glob.glob(os.path.join(DATASET_71847_JSON, "*.json")))
+    print(f"JSON 파일 수: {len(json_files)}")
+
+    records = []
+    stats = defaultdict(int)
+
+    for fpath in tqdm(json_files, desc="71847 처리"):
+        try:
+            with open(fpath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            stats["parse_fail"] += 1
+            continue
+
+        label = data.get("label", {})
+        question = label.get("input", "").strip()
+        answer = label.get("output", "").strip()
+        filename = os.path.basename(fpath).replace(".json", "")
+
+        # 유형 추출 (HJ_B_xxx → B)
+        parts = filename.split("_")
+        law_type = parts[1] if len(parts) > 1 else ""
+        category = LAWTYPE_CATEGORY_MAP.get(law_type, "행정")
+
+        # 품질 필터링
+        reason = is_low_quality(question, answer)
+        if reason:
+            stats[reason] += 1
+            continue
+
+        records.append({
+            "id": f"71847_{filename}",
+            "question": question,
+            "answer": answer,
+            "category": category,
+            "source_dataset": "71847",
+        })
+
+    print(f"유효: {len(records)}")
+    for k, v in sorted(stats.items(), key=lambda x: -x[1]):
+        print(f"  제거({k}): {v}")
+
+    if records:
+        a_lens = [len(r["answer"]) for r in records]
+        print(f"답변 길이 - 평균: {np.mean(a_lens):.0f}, 중앙값: {np.median(a_lens):.0f}")
+
+    return records
+
+
+# ─── 4. Chat Template 변환 + Split + 저장 ─────────────────────────────
+
+def format_and_split(records_71852: list, records_98: list, records_71847: list = None):
+    if records_71847 is None:
+        records_71847 = []
+
+    print("\n" + "=" * 60)
+    print("  4. Chat Template 변환 & 층화 분할")
+    print("=" * 60)
+
+    all_qa = records_71852 + records_98 + records_71847
+    print(f"Q&A 레코드: {len(all_qa)} (71852: {len(records_71852)}, 98: {len(records_98)}, 71847: {len(records_71847)})")
 
     # 중복 제거 (질문 기준)
     seen = set()
@@ -421,7 +494,11 @@ def format_and_split(records_71852: list, records_98: list):
     formatted = []
     for rec in unique:
         cat = rec["category"]
-        user_text = f"{INSTRUCTION}\n\n[카테고리: {cat}]\n민원 내용: {rec['question']}"
+        source = rec.get("source_dataset", "")
+        if source == "71847":
+            user_text = f"다음 행정법 관련 질의에 대해 정확하고 상세하게 답변하세요.\n\n질의: {rec['question']}"
+        else:
+            user_text = f"{INSTRUCTION}\n\n[카테고리: {cat}]\n민원 내용: {rec['question']}"
         text = format_chat_template(SYSTEM_MESSAGE, user_text, rec["answer"])
 
         formatted.append({
@@ -524,6 +601,7 @@ def format_and_split(records_71852: list, records_98: list):
         "sources": {
             "71852": len(records_71852),
             "98": len(records_98),
+            "71847": len(records_71847),
             "71844": "전량 제거",
         },
         "category_distribution": dict(cat_dist),
@@ -590,7 +668,8 @@ def main():
 
     records_71852 = process_71852()
     records_98 = process_98()
-    format_and_split(records_71852, records_98)
+    records_71847 = process_71847()
+    format_and_split(records_71852, records_98, records_71847)
 
 
 if __name__ == "__main__":

@@ -48,6 +48,21 @@ GovOn/
 └── tests/                  # 테스트 코드
 ```
 
+## DORA Metrics 대시보드
+
+프로젝트의 DevOps 성숙도를 DORA 4대 지표로 측정하고 Grafana Cloud에서 실시간 모니터링합니다.
+
+**[DORA Metrics Dashboard (공개 링크)](https://umyunsang.grafana.net/public-dashboards/a7672d6682fb498eb4578a8634262280)**
+
+| 지표 | 설명 |
+|------|------|
+| 배포 빈도 | main 브랜치 머지 PR 수 / 주 |
+| 리드 타임 | PR 생성 → 머지 평균 시간 |
+| 변경 실패율 | hotfix/revert 커밋 비율 |
+| MTTR | bug 이슈 open → close 평균 시간 |
+
+> 데이터 수집: GitHub Actions 자동 실행 (매주 월요일 + main push)
+
 ## 개발 환경 설정
 
 ```bash
@@ -98,6 +113,16 @@ pip install -r requirements.txt
 | 문제정의서 | On-Device AI 민원분석 및 처리시스템 문제정의서 | [PDF](docs/official/U20260304_164737858_2026-32.On-DeviceAI민원분석및처리시스템.pdf) |
 | 신청서/계획서 | 2026 현장미러형연계프로젝트 서식일체 | [PDF](docs/official/1705817_ai학과_엄윤상_2026%20현장미러형연계프로젝트%20서식일체.pdf) |
 
+## 기여하기
+
+프로젝트에 기여하고 싶으시다면 [기여 가이드](CONTRIBUTING.md)를 참고해 주세요.
+
+- [기여 가이드](CONTRIBUTING.md) - 기여 방법, 커밋 컨벤션, PR 규칙
+- [행동 강령](CODE_OF_CONDUCT.md) - 커뮤니티 행동 강령
+- [보안 정책](SECURITY.md) - 보안 취약점 신고 방법
+
 ## 라이선스
 
-MIT License
+이 프로젝트는 [MIT License](LICENSE)로 배포됩니다.
+
+> **참고**: 이 프로젝트에서 사용하는 EXAONE 모델은 [LGAI EXAONE License](https://huggingface.co/LGAI-EXAONE/EXAONE-Deep-7.8B)의 적용을 받습니다. 모델 사용 시 해당 라이선스를 확인해 주세요.

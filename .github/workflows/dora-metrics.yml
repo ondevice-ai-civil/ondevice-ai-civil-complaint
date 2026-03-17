@@ -1,0 +1,279 @@
+name: DORA Metrics Collector
+
+on:
+  # 매주 월요일 09:00 KST (00:00 UTC) 자동 수집
+  schedule:
+    - cron: '0 0 * * 1'
+  # 수동 실행
+  workflow_dispatch:
+  # main 머지 시에도 실행 (배포 빈도 실시간 반영)
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  issues: read
+  pull-requests: read
+
+jobs:
+  collect-dora-metrics:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Collect DORA 4 Metrics
+        id: dora
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          WEEK_AGO=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          MONTH_AGO=$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ)
+
+          echo "=== DORA Metrics Collection: $NOW ==="
+
+          # -------------------------------------------------------
+          # 1. Deployment Frequency (배포 빈도)
+          #    main 브랜치에 머지된 PR 수 / 주
+          # -------------------------------------------------------
+          DEPLOYS_WEEK=$(gh pr list --repo "$REPO" --state merged --base main \
+            --search "merged:>=$WEEK_AGO" --json number --jq 'length' 2>/dev/null || echo "0")
+          DEPLOYS_MONTH=$(gh pr list --repo "$REPO" --state merged --base main \
+            --search "merged:>=$MONTH_AGO" --json number --jq 'length' 2>/dev/null || echo "0")
+          DEPLOYS_PER_WEEK=$(echo "scale=2; $DEPLOYS_MONTH / 4" | bc)
+          echo "배포 빈도: 주간 $DEPLOYS_WEEK건, 월간 $DEPLOYS_MONTH건 (주 평균 ${DEPLOYS_PER_WEEK}건)"
+
+          # -------------------------------------------------------
+          # 2. Lead Time for Changes (변경 리드 타임)
+          #    PR 첫 커밋 → 머지까지 평균 시간 (최근 30일)
+          # -------------------------------------------------------
+          LEAD_TIMES=()
+          while IFS= read -r line; do
+            CREATED=$(echo "$line" | jq -r '.createdAt')
+            MERGED=$(echo "$line" | jq -r '.mergedAt')
+            if [ "$MERGED" != "null" ] && [ -n "$MERGED" ]; then
+              CREATED_TS=$(date -d "$CREATED" +%s 2>/dev/null || echo "0")
+              MERGED_TS=$(date -d "$MERGED" +%s 2>/dev/null || echo "0")
+              if [ "$CREATED_TS" -gt 0 ] && [ "$MERGED_TS" -gt 0 ]; then
+                DIFF=$(( MERGED_TS - CREATED_TS ))
+                LEAD_TIMES+=($DIFF)
+              fi
+            fi
+          done < <(gh pr list --repo "$REPO" --state merged --base main \
+            --search "merged:>=$MONTH_AGO" --json createdAt,mergedAt --jq '.[]' 2>/dev/null)
+
+          if [ ${#LEAD_TIMES[@]} -gt 0 ]; then
+            SUM=0
+            for t in "${LEAD_TIMES[@]}"; do SUM=$((SUM + t)); done
+            AVG_LEAD_TIME=$((SUM / ${#LEAD_TIMES[@]}))
+            AVG_LEAD_HOURS=$(echo "scale=1; $AVG_LEAD_TIME / 3600" | bc)
+          else
+            AVG_LEAD_TIME=0
+            AVG_LEAD_HOURS="0"
+          fi
+          echo "리드 타임: 평균 ${AVG_LEAD_HOURS}시간 (${#LEAD_TIMES[@]}건 기준)"
+
+          # -------------------------------------------------------
+          # 3. Change Failure Rate (변경 실패율)
+          #    hotfix/revert 커밋 비율 (최근 30일 main 커밋 대비)
+          # -------------------------------------------------------
+          TOTAL_COMMITS=$(git log --oneline --since="30 days ago" origin/main 2>/dev/null | wc -l | tr -d ' ')
+          FAILURE_COMMITS=$(git log --oneline --since="30 days ago" origin/main --grep="fix\|hotfix\|revert\|rollback" -i 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$TOTAL_COMMITS" -gt 0 ]; then
+            CFR=$(echo "scale=1; $FAILURE_COMMITS * 100 / $TOTAL_COMMITS" | bc)
+          else
+            CFR="0"
+          fi
+          echo "변경 실패율: ${CFR}% ($FAILURE_COMMITS/$TOTAL_COMMITS)"
+
+          # -------------------------------------------------------
+          # 4. Mean Time to Recovery (평균 복구 시간)
+          #    bug/hotfix 라벨 이슈의 open → close 평균 시간
+          # -------------------------------------------------------
+          MTTR_TIMES=()
+          while IFS= read -r line; do
+            CREATED=$(echo "$line" | jq -r '.createdAt')
+            CLOSED=$(echo "$line" | jq -r '.closedAt')
+            if [ "$CLOSED" != "null" ] && [ -n "$CLOSED" ]; then
+              CREATED_TS=$(date -d "$CREATED" +%s 2>/dev/null || echo "0")
+              CLOSED_TS=$(date -d "$CLOSED" +%s 2>/dev/null || echo "0")
+              if [ "$CREATED_TS" -gt 0 ] && [ "$CLOSED_TS" -gt 0 ]; then
+                DIFF=$(( CLOSED_TS - CREATED_TS ))
+                MTTR_TIMES+=($DIFF)
+              fi
+            fi
+          done < <(gh issue list --repo "$REPO" --state closed --label "bug" \
+            --search "closed:>=$MONTH_AGO" --json createdAt,closedAt --jq '.[]' 2>/dev/null)
+
+          if [ ${#MTTR_TIMES[@]} -gt 0 ]; then
+            SUM=0
+            for t in "${MTTR_TIMES[@]}"; do SUM=$((SUM + t)); done
+            AVG_MTTR=$((SUM / ${#MTTR_TIMES[@]}))
+            AVG_MTTR_HOURS=$(echo "scale=1; $AVG_MTTR / 3600" | bc)
+          else
+            AVG_MTTR=0
+            AVG_MTTR_HOURS="0"
+          fi
+          echo "평균 복구 시간: ${AVG_MTTR_HOURS}시간 (${#MTTR_TIMES[@]}건 기준)"
+
+          # -------------------------------------------------------
+          # DORA 등급 판정
+          # -------------------------------------------------------
+          if [ "$(echo "$DEPLOYS_PER_WEEK >= 1" | bc)" -eq 1 ] && \
+             [ "$(echo "$AVG_LEAD_HOURS < 24" | bc)" -eq 1 ]; then
+            GRADE="Elite"
+          elif [ "$(echo "$DEPLOYS_PER_WEEK >= 0.5" | bc)" -eq 1 ]; then
+            GRADE="High"
+          elif [ "$DEPLOYS_MONTH" -gt 0 ]; then
+            GRADE="Medium"
+          else
+            GRADE="Low"
+          fi
+
+          # -------------------------------------------------------
+          # JSON 아티팩트 저장
+          # -------------------------------------------------------
+          mkdir -p metrics/dora
+          FILENAME="metrics/dora/dora-$(date -u +%Y%m%d).json"
+          cat > "$FILENAME" << EOJSON
+          {
+            "timestamp": "$NOW",
+            "period": "last_30_days",
+            "deployment_frequency": {
+              "weekly": $DEPLOYS_WEEK,
+              "monthly": $DEPLOYS_MONTH,
+              "avg_per_week": $DEPLOYS_PER_WEEK
+            },
+            "lead_time_for_changes": {
+              "avg_seconds": $AVG_LEAD_TIME,
+              "avg_hours": $AVG_LEAD_HOURS,
+              "sample_count": ${#LEAD_TIMES[@]}
+            },
+            "change_failure_rate": {
+              "rate_percent": $CFR,
+              "failure_commits": $FAILURE_COMMITS,
+              "total_commits": $TOTAL_COMMITS
+            },
+            "mean_time_to_recovery": {
+              "avg_seconds": $AVG_MTTR,
+              "avg_hours": $AVG_MTTR_HOURS,
+              "sample_count": ${#MTTR_TIMES[@]}
+            },
+            "grade": "$GRADE"
+          }
+          EOJSON
+
+          # 들여쓰기 정리
+          python3 -c "
+          import json
+          with open('$FILENAME') as f:
+              data = json.load(f)
+          with open('$FILENAME', 'w') as f:
+              json.dump(data, f, indent=2, ensure_ascii=False)
+          "
+
+          echo "JSON 저장: $FILENAME"
+
+          # GitHub Actions 출력
+          echo "deploys_week=$DEPLOYS_WEEK" >> $GITHUB_OUTPUT
+          echo "deploys_month=$DEPLOYS_MONTH" >> $GITHUB_OUTPUT
+          echo "lead_time_hours=$AVG_LEAD_HOURS" >> $GITHUB_OUTPUT
+          echo "cfr=$CFR" >> $GITHUB_OUTPUT
+          echo "mttr_hours=$AVG_MTTR_HOURS" >> $GITHUB_OUTPUT
+          echo "grade=$GRADE" >> $GITHUB_OUTPUT
+          echo "filename=$FILENAME" >> $GITHUB_OUTPUT
+
+      - name: Generate Step Summary
+        env:
+          DEPLOYS_WEEK: ${{ steps.dora.outputs.deploys_week }}
+          DEPLOYS_MONTH: ${{ steps.dora.outputs.deploys_month }}
+          LEAD_TIME: ${{ steps.dora.outputs.lead_time_hours }}
+          CFR: ${{ steps.dora.outputs.cfr }}
+          MTTR: ${{ steps.dora.outputs.mttr_hours }}
+          GRADE: ${{ steps.dora.outputs.grade }}
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## DORA Metrics Report
+
+          | 지표 | 값 | 등급 기준 |
+          |------|-----|----------|
+          | **배포 빈도** | 주 ${DEPLOYS_WEEK}건 / 월 ${DEPLOYS_MONTH}건 | Elite: 일 1회+ |
+          | **리드 타임** | ${LEAD_TIME}시간 | Elite: < 1일 |
+          | **변경 실패율** | ${CFR}% | Elite: < 15% |
+          | **평균 복구 시간** | ${MTTR}시간 | Elite: < 1시간 |
+
+          **종합 등급: ${GRADE}**
+          EOF
+
+      - name: Commit metrics data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add metrics/dora/
+          git diff --staged --quiet || git commit -m "chore: DORA 메트릭 수집 $(date -u +%Y-%m-%d)"
+          git push || echo "No changes to push"
+
+      - name: Push to Grafana Cloud
+        if: env.GRAFANA_CLOUD_URL != ''
+        env:
+          GRAFANA_CLOUD_URL: ${{ secrets.GRAFANA_CLOUD_URL }}
+          GRAFANA_CLOUD_USER: ${{ secrets.GRAFANA_CLOUD_USER }}
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          DEPLOYS_WEEK: ${{ steps.dora.outputs.deploys_week }}
+          DEPLOYS_MONTH: ${{ steps.dora.outputs.deploys_month }}
+          LEAD_TIME: ${{ steps.dora.outputs.lead_time_hours }}
+          CFR: ${{ steps.dora.outputs.cfr }}
+          MTTR: ${{ steps.dora.outputs.mttr_hours }}
+          GRADE: ${{ steps.dora.outputs.grade }}
+        run: |
+          # Grafana Cloud Prometheus에 InfluxDB line protocol로 메트릭 전송
+          INFLUX_URL="${GRAFANA_CLOUD_URL/api\/prom\/push/api/v1/push/influx/write}"
+
+          # 등급을 숫자로 변환 (시각화용)
+          case "$GRADE" in
+            Elite) GRADE_NUM=4 ;;
+            High)  GRADE_NUM=3 ;;
+            Medium) GRADE_NUM=2 ;;
+            *)     GRADE_NUM=1 ;;
+          esac
+
+          TIMESTAMP=$(date +%s)000000000
+
+          BODY="dora_deployment_frequency,project=govon,period=weekly value=${DEPLOYS_WEEK} ${TIMESTAMP}
+          dora_deployment_frequency,project=govon,period=monthly value=${DEPLOYS_MONTH} ${TIMESTAMP}
+          dora_lead_time_hours,project=govon value=${LEAD_TIME} ${TIMESTAMP}
+          dora_change_failure_rate,project=govon value=${CFR} ${TIMESTAMP}
+          dora_mttr_hours,project=govon value=${MTTR} ${TIMESTAMP}
+          dora_grade,project=govon value=${GRADE_NUM} ${TIMESTAMP}"
+
+          # Grafana Cloud는 Basic Auth (user:apikey)
+          HTTP_CODE=$(curl -s -o /tmp/grafana_response.txt -w "%{http_code}" \
+            -X POST "$INFLUX_URL" \
+            -u "${GRAFANA_CLOUD_USER}:${GRAFANA_CLOUD_API_KEY}" \
+            -H "Content-Type: text/plain" \
+            --data-binary "$BODY")
+
+          if [ "$HTTP_CODE" -eq 204 ] || [ "$HTTP_CODE" -eq 200 ]; then
+            echo "✅ Grafana Cloud 메트릭 전송 성공 (HTTP $HTTP_CODE)"
+          else
+            echo "❌ Grafana Cloud 전송 실패 (HTTP $HTTP_CODE)"
+            cat /tmp/grafana_response.txt
+            exit 1
+          fi
+
+          echo "Grafana Cloud에 메트릭 전송 완료"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dora-metrics-${{ github.run_number }}
+          path: metrics/dora/
+          retention-days: 90

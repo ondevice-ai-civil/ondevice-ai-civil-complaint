@@ -48,6 +48,21 @@ GovOn/
 └── tests/                  # 테스트 코드
 ```
 
+## DORA Metrics 대시보드
+
+프로젝트의 DevOps 성숙도를 DORA 4대 지표로 측정하고 Grafana Cloud에서 실시간 모니터링합니다.
+
+**[DORA Metrics Dashboard (공개 링크)](https://umyunsang.grafana.net/public-dashboards/a7672d6682fb498eb4578a8634262280)**
+
+| 지표 | 설명 |
+|------|------|
+| 배포 빈도 | main 브랜치 머지 PR 수 / 주 |
+| 리드 타임 | PR 생성 → 머지 평균 시간 |
+| 변경 실패율 | hotfix/revert 커밋 비율 |
+| MTTR | bug 이슈 open → close 평균 시간 |
+
+> 데이터 수집: GitHub Actions 자동 실행 (매주 월요일 + main push)
+
 ## 개발 환경 설정
 
 ```bash

@@ -1,8 +1,8 @@
 {
-  "timestamp": "2026-03-17T02:35:16Z",
+  "timestamp": "2026-03-17T02:39:19Z",
   "period": "last_30_days",
   "deployment_frequency": {
-    "weekly": 21,
+    "weekly": 22,
     "monthly": 30,
     "avg_per_week": 7.5
   },
@@ -12,9 +12,9 @@
     "sample_count": 30
   },
   "change_failure_rate": {
-    "rate_percent": 10.3,
-    "failure_commits": 14,
-    "total_commits": 136
+    "rate_percent": 11.5,
+    "failure_commits": 16,
+    "total_commits": 139
   },
   "mean_time_to_recovery": {
     "avg_seconds": 21688,

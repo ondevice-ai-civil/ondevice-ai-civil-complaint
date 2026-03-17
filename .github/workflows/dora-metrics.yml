@@ -238,31 +238,68 @@ jobs:
             *)     GRADE_NUM=1 ;;
           esac
 
-          TIMESTAMP=$(date +%s)000000000
+          # Prometheus staleness 방지: 과거 7일간 5분 간격으로 동일 값 backfill
+          # (Prometheus는 5분 이상 지난 데이터를 stale 처리하므로, 촘촘하게 채워야 대시보드에 표시됨)
+          python3 << PYEOF
+          import subprocess, time
 
-          BODY="dora_deployment_frequency,project=govon,period=weekly value=${DEPLOYS_WEEK} ${TIMESTAMP}
-          dora_deployment_frequency,project=govon,period=monthly value=${DEPLOYS_MONTH} ${TIMESTAMP}
-          dora_lead_time_hours,project=govon value=${LEAD_TIME} ${TIMESTAMP}
-          dora_change_failure_rate,project=govon value=${CFR} ${TIMESTAMP}
-          dora_mttr_hours,project=govon value=${MTTR} ${TIMESTAMP}
-          dora_grade,project=govon value=${GRADE_NUM} ${TIMESTAMP}"
+          NOW = int(time.time())
+          INTERVAL = 300  # 5분
+          DURATION = 7 * 24 * 3600  # 7일
+          START = NOW - DURATION
 
-          # Grafana Cloud는 Basic Auth (user:apikey)
-          HTTP_CODE=$(curl -s -o /tmp/grafana_response.txt -w "%{http_code}" \
-            -X POST "$INFLUX_URL" \
-            -u "${GRAFANA_CLOUD_USER}:${GRAFANA_CLOUD_API_KEY}" \
-            -H "Content-Type: text/plain" \
-            --data-binary "$BODY")
+          METRICS = {
+              "dora_deployment_frequency,project=govon,period=weekly": ${DEPLOYS_WEEK},
+              "dora_deployment_frequency,project=govon,period=monthly": ${DEPLOYS_MONTH},
+              "dora_lead_time_hours,project=govon": ${LEAD_TIME},
+              "dora_change_failure_rate,project=govon": ${CFR},
+              "dora_mttr_hours,project=govon": ${MTTR},
+              "dora_grade,project=govon": ${GRADE_NUM},
+          }
 
-          if [ "$HTTP_CODE" -eq 204 ] || [ "$HTTP_CODE" -eq 200 ]; then
-            echo "✅ Grafana Cloud 메트릭 전송 성공 (HTTP $HTTP_CODE)"
-          else
-            echo "❌ Grafana Cloud 전송 실패 (HTTP $HTTP_CODE)"
-            cat /tmp/grafana_response.txt
-            exit 1
-          fi
+          URL = "${INFLUX_URL}"
+          AUTH = "${GRAFANA_CLOUD_USER}:${GRAFANA_CLOUD_API_KEY}"
 
-          echo "Grafana Cloud에 메트릭 전송 완료"
+          POINTS = DURATION // INTERVAL
+          print(f"Pushing {POINTS} data points (7d backfill, 5min intervals)...")
+
+          batch_size = 500
+          lines = []
+          sent = 0
+
+          for i in range(POINTS + 1):
+              ts = (START + i * INTERVAL) * 1_000_000_000
+              for metric, value in METRICS.items():
+                  lines.append(f"{metric} value={value} {ts}")
+
+              if len(lines) >= batch_size * len(METRICS):
+                  body = "\n".join(lines)
+                  subprocess.run(
+                      ["curl", "-s", "-o", "/dev/null",
+                       "-X", "POST", URL, "-u", AUTH,
+                       "-H", "Content-Type: text/plain",
+                       "--data-binary", body],
+                      capture_output=True
+                  )
+                  sent += len(lines) // len(METRICS)
+                  lines = []
+
+          if lines:
+              body = "\n".join(lines)
+              result = subprocess.run(
+                  ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+                   "-X", "POST", URL, "-u", AUTH,
+                   "-H", "Content-Type: text/plain",
+                   "--data-binary", body],
+                  capture_output=True, text=True
+              )
+              sent += len(lines) // len(METRICS)
+              code = result.stdout.strip()
+          else:
+              code = "204"
+
+          print(f"✅ Grafana Cloud 메트릭 전송 완료 ({sent} points, HTTP {code})")
+          PYEOF
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

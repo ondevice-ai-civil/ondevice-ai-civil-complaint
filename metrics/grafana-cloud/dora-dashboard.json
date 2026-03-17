@@ -1,5 +1,7 @@
 {
-  "annotations": { "list": [] },
+  "annotations": {
+    "list": []
+  },
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -11,12 +13,26 @@
       "title": "DORA 종합 등급",
       "description": "4=Elite, 3=High, 2=Medium, 1=Low",
       "type": "stat",
-      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "${DS_GRAFANACLOUD}" },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "grafanacloud-prom"
+      },
       "targets": [
         {
           "expr": "dora_grade{project=\"govon\"}",
-          "legendFormat": "등급"
+          "legendFormat": "등급",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "interval": "5m"
         }
       ],
       "options": {
@@ -24,23 +40,71 @@
         "colorMode": "background",
         "graphMode": "none",
         "justifyMode": "center",
-        "reduceOptions": { "calcs": ["lastNotNull"] }
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
       },
       "fieldConfig": {
         "defaults": {
           "mappings": [
-            { "type": "value", "options": { "4": { "color": "green", "text": "Elite" } } },
-            { "type": "value", "options": { "3": { "color": "blue", "text": "High" } } },
-            { "type": "value", "options": { "2": { "color": "yellow", "text": "Medium" } } },
-            { "type": "value", "options": { "1": { "color": "red", "text": "Low" } } }
+            {
+              "type": "value",
+              "options": {
+                "4": {
+                  "color": "green",
+                  "text": "Elite"
+                }
+              }
+            },
+            {
+              "type": "value",
+              "options": {
+                "3": {
+                  "color": "blue",
+                  "text": "High"
+                }
+              }
+            },
+            {
+              "type": "value",
+              "options": {
+                "2": {
+                  "color": "yellow",
+                  "text": "Medium"
+                }
+              }
+            },
+            {
+              "type": "value",
+              "options": {
+                "1": {
+                  "color": "red",
+                  "text": "Low"
+                }
+              }
+            }
           ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "red", "value": null },
-              { "color": "yellow", "value": 2 },
-              { "color": "blue", "value": 3 },
-              { "color": "green", "value": 4 }
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 2
+              },
+              {
+                "color": "blue",
+                "value": 3
+              },
+              {
+                "color": "green",
+                "value": 4
+              }
             ]
           }
         }
@@ -51,12 +115,26 @@
       "title": "배포 빈도 (월간)",
       "description": "main 브랜치 머지 PR 수",
       "type": "stat",
-      "gridPos": { "h": 5, "w": 4, "x": 6, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "${DS_GRAFANACLOUD}" },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 6,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "grafanacloud-prom"
+      },
       "targets": [
         {
           "expr": "dora_deployment_frequency{project=\"govon\", period=\"monthly\"}",
-          "legendFormat": "월간 배포"
+          "legendFormat": "월간 배포",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "interval": "5m"
         }
       ],
       "options": {
@@ -64,7 +142,11 @@
         "colorMode": "background",
         "graphMode": "area",
         "justifyMode": "center",
-        "reduceOptions": { "calcs": ["lastNotNull"] }
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
       },
       "fieldConfig": {
         "defaults": {
@@ -73,9 +155,18 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "red", "value": null },
-              { "color": "yellow", "value": 2 },
-              { "color": "green", "value": 4 }
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 2
+              },
+              {
+                "color": "green",
+                "value": 4
+              }
             ]
           }
         }
@@ -86,12 +177,26 @@
       "title": "리드 타임",
       "description": "PR 생성 → 머지 평균 시간",
       "type": "stat",
-      "gridPos": { "h": 5, "w": 5, "x": 10, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "${DS_GRAFANACLOUD}" },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 10,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "grafanacloud-prom"
+      },
       "targets": [
         {
           "expr": "dora_lead_time_hours{project=\"govon\"}",
-          "legendFormat": "리드타임"
+          "legendFormat": "리드타임",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "interval": "5m"
         }
       ],
       "options": {
@@ -99,7 +204,11 @@
         "colorMode": "background",
         "graphMode": "area",
         "justifyMode": "center",
-        "reduceOptions": { "calcs": ["lastNotNull"] }
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
       },
       "fieldConfig": {
         "defaults": {
@@ -108,9 +217,18 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 24 },
-              { "color": "red", "value": 168 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 24
+              },
+              {
+                "color": "red",
+                "value": 168
+              }
             ]
           }
         }
@@ -121,12 +239,26 @@
       "title": "변경 실패율",
       "description": "hotfix/revert 커밋 비율",
       "type": "stat",
-      "gridPos": { "h": 5, "w": 5, "x": 15, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "${DS_GRAFANACLOUD}" },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 15,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "grafanacloud-prom"
+      },
       "targets": [
         {
           "expr": "dora_change_failure_rate{project=\"govon\"}",
-          "legendFormat": "실패율"
+          "legendFormat": "실패율",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "interval": "5m"
         }
       ],
       "options": {
@@ -134,7 +266,11 @@
         "colorMode": "background",
         "graphMode": "area",
         "justifyMode": "center",
-        "reduceOptions": { "calcs": ["lastNotNull"] }
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
       },
       "fieldConfig": {
         "defaults": {
@@ -143,9 +279,18 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 15 },
-              { "color": "red", "value": 46 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 15
+              },
+              {
+                "color": "red",
+                "value": 46
+              }
             ]
           }
         }
@@ -156,12 +301,26 @@
       "title": "MTTR",
       "description": "bug 이슈 복구 평균 시간",
       "type": "stat",
-      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "${DS_GRAFANACLOUD}" },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 20,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "grafanacloud-prom"
+      },
       "targets": [
         {
           "expr": "dora_mttr_hours{project=\"govon\"}",
-          "legendFormat": "MTTR"
+          "legendFormat": "MTTR",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "interval": "5m"
         }
       ],
       "options": {
@@ -169,7 +328,11 @@
         "colorMode": "background",
         "graphMode": "area",
         "justifyMode": "center",
-        "reduceOptions": { "calcs": ["lastNotNull"] }
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
       },
       "fieldConfig": {
         "defaults": {
@@ -178,9 +341,18 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 1 },
-              { "color": "red", "value": 24 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 24
+              }
             ]
           }
         }
@@ -190,16 +362,36 @@
       "id": 6,
       "title": "배포 빈도 추이",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
-      "datasource": { "type": "prometheus", "uid": "${DS_GRAFANACLOUD}" },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "grafanacloud-prom"
+      },
       "targets": [
         {
           "expr": "dora_deployment_frequency{project=\"govon\", period=\"weekly\"}",
-          "legendFormat": "주간 배포"
+          "legendFormat": "주간 배포",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "interval": "5m"
         },
         {
           "expr": "dora_deployment_frequency{project=\"govon\", period=\"monthly\"}",
-          "legendFormat": "월간 배포"
+          "legendFormat": "월간 배포",
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "interval": "5m"
         }
       ],
       "fieldConfig": {
@@ -214,20 +406,39 @@
         }
       },
       "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" },
-        "tooltip": { "mode": "multi" }
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
       }
     },
     {
       "id": 7,
       "title": "리드 타임 추이",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
-      "datasource": { "type": "prometheus", "uid": "${DS_GRAFANACLOUD}" },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "grafanacloud-prom"
+      },
       "targets": [
         {
           "expr": "dora_lead_time_hours{project=\"govon\"}",
-          "legendFormat": "리드타임 (시간)"
+          "legendFormat": "리드타임 (시간)",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "interval": "5m"
         }
       ],
       "fieldConfig": {
@@ -239,17 +450,31 @@
             "pointSize": 6,
             "showPoints": "always",
             "spanNulls": true,
-            "thresholdsStyle": { "mode": "dashed" }
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 24 },
-              { "color": "red", "value": 168 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 24
+              },
+              {
+                "color": "red",
+                "value": 168
+              }
             ]
           },
-          "color": { "mode": "fixed", "fixedColor": "green" }
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          }
         }
       }
     },
@@ -257,12 +482,26 @@
       "id": 8,
       "title": "변경 실패율 추이",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
-      "datasource": { "type": "prometheus", "uid": "${DS_GRAFANACLOUD}" },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 13
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "grafanacloud-prom"
+      },
       "targets": [
         {
           "expr": "dora_change_failure_rate{project=\"govon\"}",
-          "legendFormat": "실패율 (%)"
+          "legendFormat": "실패율 (%)",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "interval": "5m"
         }
       ],
       "fieldConfig": {
@@ -274,17 +513,31 @@
             "pointSize": 6,
             "showPoints": "always",
             "spanNulls": true,
-            "thresholdsStyle": { "mode": "dashed" }
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 15 },
-              { "color": "red", "value": 46 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 15
+              },
+              {
+                "color": "red",
+                "value": 46
+              }
             ]
           },
-          "color": { "mode": "fixed", "fixedColor": "orange" }
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "orange"
+          }
         }
       }
     },
@@ -292,12 +545,26 @@
       "id": 9,
       "title": "MTTR 추이",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
-      "datasource": { "type": "prometheus", "uid": "${DS_GRAFANACLOUD}" },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 13
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "grafanacloud-prom"
+      },
       "targets": [
         {
           "expr": "dora_mttr_hours{project=\"govon\"}",
-          "legendFormat": "MTTR (시간)"
+          "legendFormat": "MTTR (시간)",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "interval": "5m"
         }
       ],
       "fieldConfig": {
@@ -309,17 +576,31 @@
             "pointSize": 6,
             "showPoints": "always",
             "spanNulls": true,
-            "thresholdsStyle": { "mode": "dashed" }
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 1 },
-              { "color": "red", "value": 24 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 24
+              }
             ]
           },
-          "color": { "mode": "fixed", "fixedColor": "red" }
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          }
         }
       }
     },
@@ -327,7 +608,12 @@
       "id": 10,
       "title": "DORA 등급 기준",
       "type": "text",
-      "gridPos": { "h": 5, "w": 24, "x": 0, "y": 21 },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      },
       "options": {
         "mode": "markdown",
         "content": "| 등급 | 배포 빈도 | 리드 타임 | 변경 실패율 | MTTR |\n|:---:|:---:|:---:|:---:|:---:|\n| **Elite** | 일 1회+ | < 1일 | < 15% | < 1시간 |\n| **High** | 주 1회+ | < 1주 | 15~30% | < 24시간 |\n| **Medium** | 월 1회+ | < 1개월 | 30~45% | < 1주 |\n| **Low** | 월 1회 미만 | > 1개월 | > 45% | > 1주 |\n\n> 데이터 수집: GitHub Actions (`dora-metrics.yml`) → Grafana Cloud Prometheus"
@@ -335,19 +621,18 @@
     }
   ],
   "schemaVersion": 39,
-  "tags": ["dora", "devops", "govon"],
+  "tags": [
+    "dora",
+    "devops",
+    "govon"
+  ],
   "templating": {
-    "list": [
-      {
-        "name": "DS_GRAFANACLOUD",
-        "type": "datasource",
-        "query": "prometheus",
-        "current": {},
-        "hide": 0
-      }
-    ]
+    "list": []
   },
-  "time": { "from": "now-90d", "to": "now" },
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
   "timepicker": {},
   "timezone": "Asia/Seoul",
   "title": "GovOn DORA Metrics Dashboard",

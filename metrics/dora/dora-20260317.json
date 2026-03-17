@@ -1,0 +1,25 @@
+{
+  "timestamp": "2026-03-17T01:55:14Z",
+  "period": "last_30_days",
+  "deployment_frequency": {
+    "weekly": 17,
+    "monthly": 28,
+    "avg_per_week": 7.0
+  },
+  "lead_time_for_changes": {
+    "avg_seconds": 1809,
+    "avg_hours": 0.5,
+    "sample_count": 28
+  },
+  "change_failure_rate": {
+    "rate_percent": 9.8,
+    "failure_commits": 12,
+    "total_commits": 122
+  },
+  "mean_time_to_recovery": {
+    "avg_seconds": 21688,
+    "avg_hours": 6.0,
+    "sample_count": 1
+  },
+  "grade": "Elite"
+}

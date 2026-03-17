@@ -1,7 +1,8 @@
 # On-device AI 민원 처리 및 분석 시스템
 
 [![DORA Dashboard](https://img.shields.io/badge/DORA_Dashboard-Grafana-F46800?logo=grafana)](https://umyunsang.grafana.net/public-dashboards/a7672d6682fb498eb4578a8634262280)
-[![W&B Reports](https://img.shields.io/badge/W%26B_Reports-Experiments-FFBE00?logo=weightsandbiases)](https://wandb.ai/umyun3/GovOn-retrain-v2)
+[![W&B Projects](https://img.shields.io/badge/W%26B_Projects-All_Experiments-FFBE00?logo=weightsandbiases)](https://wandb.ai/umyun3/projects)
+[![W&B Reports](https://img.shields.io/badge/W%26B_Reports-Analysis-EE6C4D?logo=weightsandbiases)](https://wandb.ai/umyun3/reports)
 
 LLM을 경량화하여 온디바이스에서 실행하고, 파인튜닝을 통해 현장 산업체에 최적화된 민원 처리 시스템
 

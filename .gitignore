@@ -65,6 +65,7 @@ data/calibration/
 !data/processed/*.jsonl
 !data/processed/*.json
 !data/calibration/*.json
+!metrics/**/*.json
 
 # Model files (large)
 models/*.bin

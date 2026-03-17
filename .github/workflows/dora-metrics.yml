@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -241,7 +241,7 @@ jobs:
           # Prometheus staleness 방지: 과거 7일간 5분 간격으로 동일 값 backfill
           # (Prometheus는 5분 이상 지난 데이터를 stale 처리하므로, 촘촘하게 채워야 대시보드에 표시됨)
           python3 << PYEOF
-          import subprocess, time
+          import subprocess, time, tempfile, os
 
           NOW = int(time.time())
           INTERVAL = 300  # 5분
@@ -273,24 +273,28 @@ jobs:
                   lines.append(f"{metric} value={value} {ts}")
 
               if len(lines) >= batch_size * len(METRICS):
-                  body = "\n".join(lines)
+                  tmp = "/tmp/metrics_batch.txt"
+                  with open(tmp, "w") as f:
+                      f.write("\n".join(lines))
                   subprocess.run(
                       ["curl", "-s", "-o", "/dev/null",
                        "-X", "POST", URL, "-u", AUTH,
                        "-H", "Content-Type: text/plain",
-                       "--data-binary", body],
+                       "--data-binary", f"@{tmp}"],
                       capture_output=True
                   )
                   sent += len(lines) // len(METRICS)
                   lines = []
 
           if lines:
-              body = "\n".join(lines)
+              tmp = "/tmp/metrics_batch.txt"
+              with open(tmp, "w") as f:
+                  f.write("\n".join(lines))
               result = subprocess.run(
                   ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
                    "-X", "POST", URL, "-u", AUTH,
                    "-H", "Content-Type: text/plain",
-                   "--data-binary", body],
+                   "--data-binary", f"@{tmp}"],
                   capture_output=True, text=True
               )
               sent += len(lines) // len(METRICS)
@@ -302,7 +306,7 @@ jobs:
           PYEOF
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: dora-metrics-${{ github.run_number }}
           path: metrics/dora/

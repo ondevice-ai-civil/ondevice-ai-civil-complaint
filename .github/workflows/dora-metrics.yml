@@ -6,9 +6,9 @@ on:
     - cron: '0 0 * * 1'
   # 수동 실행
   workflow_dispatch:
-  # main 머지 시에도 실행 (배포 빈도 실시간 반영)
+  # main/develop 머지 시에도 실행 (배포 빈도 실시간 반영)
   push:
-    branches: [main]
+    branches: [main, develop]
 
 permissions:
   contents: write
@@ -43,105 +43,178 @@ jobs:
           echo "=== DORA Metrics Collection: $NOW ==="
 
           # -------------------------------------------------------
-          # 1. Deployment Frequency (배포 빈도)
-          #    main 브랜치에 머지된 PR 수 / 주
+          # 수집 대상 브랜치 결정
+          # develop PR 기준으로 메트릭 수집 (팀 실제 워크플로 반영)
+          # main은 프로덕션 배포용으로 별도 라벨링
           # -------------------------------------------------------
-          DEPLOYS_WEEK=$(gh pr list --repo "$REPO" --state merged --base main \
-            --search "merged:>=$WEEK_AGO" --json number --jq 'length' 2>/dev/null || echo "0")
-          DEPLOYS_MONTH=$(gh pr list --repo "$REPO" --state merged --base main \
-            --search "merged:>=$MONTH_AGO" --json number --jq 'length' 2>/dev/null || echo "0")
-          DEPLOYS_PER_WEEK=$(printf "%.2f" "$(echo "scale=2; $DEPLOYS_MONTH / 4" | bc)")
-          echo "배포 빈도: 주간 $DEPLOYS_WEEK건, 월간 $DEPLOYS_MONTH건 (주 평균 ${DEPLOYS_PER_WEEK}건)"
+          BRANCHES=("develop" "main")
 
-          # -------------------------------------------------------
-          # 2. Lead Time for Changes (변경 리드 타임)
-          #    PR 첫 커밋 → 머지까지 평균 시간 (최근 30일)
-          # -------------------------------------------------------
-          LEAD_TIMES=()
-          while IFS= read -r line; do
-            CREATED=$(echo "$line" | jq -r '.createdAt')
-            MERGED=$(echo "$line" | jq -r '.mergedAt')
-            if [ "$MERGED" != "null" ] && [ -n "$MERGED" ]; then
-              CREATED_TS=$(date -d "$CREATED" +%s 2>/dev/null || echo "0")
-              MERGED_TS=$(date -d "$MERGED" +%s 2>/dev/null || echo "0")
-              if [ "$CREATED_TS" -gt 0 ] && [ "$MERGED_TS" -gt 0 ]; then
-                DIFF=$(( MERGED_TS - CREATED_TS ))
-                LEAD_TIMES+=($DIFF)
+          for TARGET_BRANCH in "${BRANCHES[@]}"; do
+            echo ""
+            echo "========== [$TARGET_BRANCH] 브랜치 메트릭 수집 =========="
+
+            # -------------------------------------------------------
+            # 1. Deployment Frequency (배포 빈도)
+            #    대상 브랜치에 머지된 PR 수 / 주
+            # -------------------------------------------------------
+            DEPLOYS_WEEK=$(gh pr list --repo "$REPO" --state merged --base "$TARGET_BRANCH" \
+              --search "merged:>=$WEEK_AGO" --json number --jq 'length' 2>/dev/null || echo "0")
+            DEPLOYS_MONTH=$(gh pr list --repo "$REPO" --state merged --base "$TARGET_BRANCH" \
+              --search "merged:>=$MONTH_AGO" --json number --jq 'length' 2>/dev/null || echo "0")
+            DEPLOYS_PER_WEEK=$(printf "%.2f" "$(echo "scale=2; $DEPLOYS_MONTH / 4" | bc)")
+            echo "[$TARGET_BRANCH] 배포 빈도: 주간 $DEPLOYS_WEEK건, 월간 $DEPLOYS_MONTH건 (주 평균 ${DEPLOYS_PER_WEEK}건)"
+
+            # -------------------------------------------------------
+            # 2. Lead Time for Changes (변경 리드 타임) - 고도화
+            #    PR의 첫 커밋 시점 → 머지 시점까지의 평균 시간
+            #
+            #    기존: PR 생성 시점 → 머지 (개발 시간 미반영, 과소측정)
+            #    개선: PR의 첫 커밋 시점 → 머지 (실제 코딩 시작 반영)
+            #
+            #    gh api로 PR별 커밋 히스토리를 조회하여
+            #    가장 오래된 커밋의 author date를 시작 시점으로 사용
+            # -------------------------------------------------------
+            LEAD_TIMES=()
+            PR_NUMBERS=()
+
+            # 머지된 PR 목록 조회
+            while IFS= read -r line; do
+              PR_NUM=$(echo "$line" | jq -r '.number')
+              MERGED=$(echo "$line" | jq -r '.mergedAt')
+              CREATED=$(echo "$line" | jq -r '.createdAt')
+              if [ "$MERGED" != "null" ] && [ -n "$MERGED" ] && [ -n "$PR_NUM" ]; then
+                PR_NUMBERS+=("$PR_NUM")
+
+                # PR의 커밋 히스토리에서 첫 커밋(가장 오래된 커밋)의 author date 조회
+                FIRST_COMMIT_DATE=""
+                FIRST_COMMIT_DATE=$(gh api "repos/${REPO}/pulls/${PR_NUM}/commits" \
+                  --jq 'sort_by(.commit.author.date) | .[0].commit.author.date' 2>/dev/null || echo "")
+
+                # 첫 커밋 날짜를 구하지 못한 경우 PR 생성 시점으로 fallback
+                if [ -z "$FIRST_COMMIT_DATE" ] || [ "$FIRST_COMMIT_DATE" = "null" ]; then
+                  START_DATE="$CREATED"
+                  echo "  PR #${PR_NUM}: 커밋 히스토리 조회 실패, PR 생성 시점으로 fallback"
+                else
+                  START_DATE="$FIRST_COMMIT_DATE"
+                fi
+
+                START_TS=$(date -d "$START_DATE" +%s 2>/dev/null || echo "0")
+                MERGED_TS=$(date -d "$MERGED" +%s 2>/dev/null || echo "0")
+                if [ "$START_TS" -gt 0 ] && [ "$MERGED_TS" -gt 0 ] && [ "$MERGED_TS" -ge "$START_TS" ]; then
+                  DIFF=$(( MERGED_TS - START_TS ))
+                  LEAD_TIMES+=($DIFF)
+                  HOURS=$(printf "%.1f" "$(echo "scale=2; $DIFF / 3600" | bc)")
+                  echo "  PR #${PR_NUM}: 첫 커밋 → 머지 = ${HOURS}h"
+                fi
               fi
+            done < <(gh pr list --repo "$REPO" --state merged --base "$TARGET_BRANCH" \
+              --search "merged:>=$MONTH_AGO" --json number,createdAt,mergedAt --jq '.[]' 2>/dev/null)
+
+            if [ ${#LEAD_TIMES[@]} -gt 0 ]; then
+              SUM=0
+              for t in "${LEAD_TIMES[@]}"; do SUM=$((SUM + t)); done
+              AVG_LEAD_TIME=$((SUM / ${#LEAD_TIMES[@]}))
+              AVG_LEAD_HOURS=$(printf "%.1f" "$(echo "scale=2; $AVG_LEAD_TIME / 3600" | bc)")
+            else
+              AVG_LEAD_TIME=0
+              AVG_LEAD_HOURS="0.0"
             fi
-          done < <(gh pr list --repo "$REPO" --state merged --base main \
-            --search "merged:>=$MONTH_AGO" --json createdAt,mergedAt --jq '.[]' 2>/dev/null)
+            echo "[$TARGET_BRANCH] 리드 타임: 평균 ${AVG_LEAD_HOURS}시간 (${#LEAD_TIMES[@]}건 기준, 첫 커밋 → 머지)"
 
-          if [ ${#LEAD_TIMES[@]} -gt 0 ]; then
-            SUM=0
-            for t in "${LEAD_TIMES[@]}"; do SUM=$((SUM + t)); done
-            AVG_LEAD_TIME=$((SUM / ${#LEAD_TIMES[@]}))
-            AVG_LEAD_HOURS=$(printf "%.1f" "$(echo "scale=2; $AVG_LEAD_TIME / 3600" | bc)")
-          else
-            AVG_LEAD_TIME=0
-            AVG_LEAD_HOURS="0.0"
-          fi
-          echo "리드 타임: 평균 ${AVG_LEAD_HOURS}시간 (${#LEAD_TIMES[@]}건 기준)"
+            # -------------------------------------------------------
+            # 3. Change Failure Rate (변경 실패율)
+            #    hotfix/revert 커밋 비율 (최근 30일 대상 브랜치 커밋 대비)
+            # -------------------------------------------------------
+            TOTAL_COMMITS=$(git log --oneline --since="30 days ago" "origin/${TARGET_BRANCH}" 2>/dev/null | wc -l | tr -d ' ')
+            FAILURE_COMMITS=$(git log --oneline --since="30 days ago" "origin/${TARGET_BRANCH}" --grep="fix\|hotfix\|revert\|rollback" -i 2>/dev/null | wc -l | tr -d ' ')
+            if [ "$TOTAL_COMMITS" -gt 0 ]; then
+              CFR=$(printf "%.1f" "$(echo "scale=2; $FAILURE_COMMITS * 100 / $TOTAL_COMMITS" | bc)")
+            else
+              CFR="0.0"
+            fi
+            echo "[$TARGET_BRANCH] 변경 실패율: ${CFR}% ($FAILURE_COMMITS/$TOTAL_COMMITS)"
 
-          # -------------------------------------------------------
-          # 3. Change Failure Rate (변경 실패율)
-          #    hotfix/revert 커밋 비율 (최근 30일 main 커밋 대비)
-          # -------------------------------------------------------
-          TOTAL_COMMITS=$(git log --oneline --since="30 days ago" origin/main 2>/dev/null | wc -l | tr -d ' ')
-          FAILURE_COMMITS=$(git log --oneline --since="30 days ago" origin/main --grep="fix\|hotfix\|revert\|rollback" -i 2>/dev/null | wc -l | tr -d ' ')
-          if [ "$TOTAL_COMMITS" -gt 0 ]; then
-            CFR=$(printf "%.1f" "$(echo "scale=2; $FAILURE_COMMITS * 100 / $TOTAL_COMMITS" | bc)")
-          else
-            CFR="0.0"
-          fi
-          echo "변경 실패율: ${CFR}% ($FAILURE_COMMITS/$TOTAL_COMMITS)"
+            # -------------------------------------------------------
+            # 4. Mean Time to Recovery (평균 복구 시간)
+            #    bug/hotfix 라벨 이슈의 open → close 평균 시간
+            #    (이슈 기반이므로 브랜치 무관 - develop에서만 수집)
+            # -------------------------------------------------------
+            if [ "$TARGET_BRANCH" = "develop" ]; then
+              MTTR_TIMES=()
+              while IFS= read -r line; do
+                CREATED=$(echo "$line" | jq -r '.createdAt')
+                CLOSED=$(echo "$line" | jq -r '.closedAt')
+                if [ "$CLOSED" != "null" ] && [ -n "$CLOSED" ]; then
+                  CREATED_TS=$(date -d "$CREATED" +%s 2>/dev/null || echo "0")
+                  CLOSED_TS=$(date -d "$CLOSED" +%s 2>/dev/null || echo "0")
+                  if [ "$CREATED_TS" -gt 0 ] && [ "$CLOSED_TS" -gt 0 ]; then
+                    DIFF=$(( CLOSED_TS - CREATED_TS ))
+                    MTTR_TIMES+=($DIFF)
+                  fi
+                fi
+              done < <(gh issue list --repo "$REPO" --state closed --label "bug" \
+                --search "closed:>=$MONTH_AGO" --json createdAt,closedAt --jq '.[]' 2>/dev/null)
 
-          # -------------------------------------------------------
-          # 4. Mean Time to Recovery (평균 복구 시간)
-          #    bug/hotfix 라벨 이슈의 open → close 평균 시간
-          # -------------------------------------------------------
-          MTTR_TIMES=()
-          while IFS= read -r line; do
-            CREATED=$(echo "$line" | jq -r '.createdAt')
-            CLOSED=$(echo "$line" | jq -r '.closedAt')
-            if [ "$CLOSED" != "null" ] && [ -n "$CLOSED" ]; then
-              CREATED_TS=$(date -d "$CREATED" +%s 2>/dev/null || echo "0")
-              CLOSED_TS=$(date -d "$CLOSED" +%s 2>/dev/null || echo "0")
-              if [ "$CREATED_TS" -gt 0 ] && [ "$CLOSED_TS" -gt 0 ]; then
-                DIFF=$(( CLOSED_TS - CREATED_TS ))
-                MTTR_TIMES+=($DIFF)
+              if [ ${#MTTR_TIMES[@]} -gt 0 ]; then
+                SUM=0
+                for t in "${MTTR_TIMES[@]}"; do SUM=$((SUM + t)); done
+                AVG_MTTR=$((SUM / ${#MTTR_TIMES[@]}))
+                AVG_MTTR_HOURS=$(printf "%.1f" "$(echo "scale=2; $AVG_MTTR / 3600" | bc)")
+              else
+                AVG_MTTR=0
+                AVG_MTTR_HOURS="0.0"
               fi
+              echo "[$TARGET_BRANCH] 평균 복구 시간: ${AVG_MTTR_HOURS}시간 (${#MTTR_TIMES[@]}건 기준)"
             fi
-          done < <(gh issue list --repo "$REPO" --state closed --label "bug" \
-            --search "closed:>=$MONTH_AGO" --json createdAt,closedAt --jq '.[]' 2>/dev/null)
 
-          if [ ${#MTTR_TIMES[@]} -gt 0 ]; then
-            SUM=0
-            for t in "${MTTR_TIMES[@]}"; do SUM=$((SUM + t)); done
-            AVG_MTTR=$((SUM / ${#MTTR_TIMES[@]}))
-            AVG_MTTR_HOURS=$(printf "%.1f" "$(echo "scale=2; $AVG_MTTR / 3600" | bc)")
-          else
-            AVG_MTTR=0
-            AVG_MTTR_HOURS="0.0"
-          fi
-          echo "평균 복구 시간: ${AVG_MTTR_HOURS}시간 (${#MTTR_TIMES[@]}건 기준)"
+            # -------------------------------------------------------
+            # 브랜치별 변수 저장 (GitHub Actions 출력 및 후속 단계용)
+            # -------------------------------------------------------
+            if [ "$TARGET_BRANCH" = "develop" ]; then
+              DEV_DEPLOYS_WEEK=$DEPLOYS_WEEK
+              DEV_DEPLOYS_MONTH=$DEPLOYS_MONTH
+              DEV_DEPLOYS_PER_WEEK=$DEPLOYS_PER_WEEK
+              DEV_LEAD_TIME=$AVG_LEAD_TIME
+              DEV_LEAD_HOURS=$AVG_LEAD_HOURS
+              DEV_LEAD_COUNT=${#LEAD_TIMES[@]}
+              DEV_CFR=$CFR
+              DEV_FAILURE_COMMITS=$FAILURE_COMMITS
+              DEV_TOTAL_COMMITS=$TOTAL_COMMITS
+              DEV_MTTR=$AVG_MTTR
+              DEV_MTTR_HOURS=$AVG_MTTR_HOURS
+              DEV_MTTR_COUNT=${#MTTR_TIMES[@]}
+            else
+              MAIN_DEPLOYS_WEEK=$DEPLOYS_WEEK
+              MAIN_DEPLOYS_MONTH=$DEPLOYS_MONTH
+              MAIN_DEPLOYS_PER_WEEK=$DEPLOYS_PER_WEEK
+              MAIN_LEAD_TIME=$AVG_LEAD_TIME
+              MAIN_LEAD_HOURS=$AVG_LEAD_HOURS
+              MAIN_LEAD_COUNT=${#LEAD_TIMES[@]}
+              MAIN_CFR=$CFR
+              MAIN_FAILURE_COMMITS=$FAILURE_COMMITS
+              MAIN_TOTAL_COMMITS=$TOTAL_COMMITS
+            fi
+          done
 
           # -------------------------------------------------------
-          # DORA 등급 판정
+          # DORA 등급 판정 (develop 브랜치 기준 - 팀 실제 워크플로 반영)
           # -------------------------------------------------------
-          if [ "$(echo "$DEPLOYS_PER_WEEK >= 1" | bc)" -eq 1 ] && \
-             [ "$(echo "$AVG_LEAD_HOURS < 24" | bc)" -eq 1 ]; then
+          if [ "$(echo "$DEV_DEPLOYS_PER_WEEK >= 1" | bc)" -eq 1 ] && \
+             [ "$(echo "$DEV_LEAD_HOURS < 24" | bc)" -eq 1 ]; then
             GRADE="Elite"
-          elif [ "$(echo "$DEPLOYS_PER_WEEK >= 0.5" | bc)" -eq 1 ]; then
+          elif [ "$(echo "$DEV_DEPLOYS_PER_WEEK >= 0.5" | bc)" -eq 1 ]; then
             GRADE="High"
-          elif [ "$DEPLOYS_MONTH" -gt 0 ]; then
+          elif [ "$DEV_DEPLOYS_MONTH" -gt 0 ]; then
             GRADE="Medium"
           else
             GRADE="Low"
           fi
 
+          echo ""
+          echo "========== DORA 등급: $GRADE (develop 기준) =========="
+
           # -------------------------------------------------------
-          # JSON 아티팩트 저장
+          # JSON 아티팩트 저장 (develop + main 브랜치 모두 포함)
           # -------------------------------------------------------
           mkdir -p metrics/dora
           FILENAME="metrics/dora/dora-$(date -u +%Y%m%d).json"
@@ -150,62 +223,106 @@ jobs:
           data = {
             'timestamp': '$NOW',
             'period': 'last_30_days',
-            'deployment_frequency': {
-              'weekly': $DEPLOYS_WEEK,
-              'monthly': $DEPLOYS_MONTH,
-              'avg_per_week': $DEPLOYS_PER_WEEK
+            'grade': '$GRADE',
+            'primary_branch': 'develop',
+            'develop': {
+              'deployment_frequency': {
+                'weekly': $DEV_DEPLOYS_WEEK,
+                'monthly': $DEV_DEPLOYS_MONTH,
+                'avg_per_week': $DEV_DEPLOYS_PER_WEEK
+              },
+              'lead_time_for_changes': {
+                'method': 'first_commit_to_merge',
+                'avg_seconds': $DEV_LEAD_TIME,
+                'avg_hours': $DEV_LEAD_HOURS,
+                'sample_count': $DEV_LEAD_COUNT
+              },
+              'change_failure_rate': {
+                'rate_percent': $DEV_CFR,
+                'failure_commits': $DEV_FAILURE_COMMITS,
+                'total_commits': $DEV_TOTAL_COMMITS
+              },
+              'mean_time_to_recovery': {
+                'avg_seconds': $DEV_MTTR,
+                'avg_hours': $DEV_MTTR_HOURS,
+                'sample_count': $DEV_MTTR_COUNT
+              }
             },
-            'lead_time_for_changes': {
-              'avg_seconds': $AVG_LEAD_TIME,
-              'avg_hours': $AVG_LEAD_HOURS,
-              'sample_count': ${#LEAD_TIMES[@]}
-            },
-            'change_failure_rate': {
-              'rate_percent': $CFR,
-              'failure_commits': $FAILURE_COMMITS,
-              'total_commits': $TOTAL_COMMITS
-            },
-            'mean_time_to_recovery': {
-              'avg_seconds': $AVG_MTTR,
-              'avg_hours': $AVG_MTTR_HOURS,
-              'sample_count': ${#MTTR_TIMES[@]}
-            },
-            'grade': '$GRADE'
+            'main': {
+              'deployment_frequency': {
+                'weekly': $MAIN_DEPLOYS_WEEK,
+                'monthly': $MAIN_DEPLOYS_MONTH,
+                'avg_per_week': $MAIN_DEPLOYS_PER_WEEK
+              },
+              'lead_time_for_changes': {
+                'method': 'first_commit_to_merge',
+                'avg_seconds': $MAIN_LEAD_TIME,
+                'avg_hours': $MAIN_LEAD_HOURS,
+                'sample_count': $MAIN_LEAD_COUNT
+              },
+              'change_failure_rate': {
+                'rate_percent': $MAIN_CFR,
+                'failure_commits': $MAIN_FAILURE_COMMITS,
+                'total_commits': $MAIN_TOTAL_COMMITS
+              }
+            }
           }
           with open('$FILENAME', 'w') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
           print(f'JSON 저장: $FILENAME')
           "
 
-          # GitHub Actions 출력
-          echo "deploys_week=$DEPLOYS_WEEK" >> $GITHUB_OUTPUT
-          echo "deploys_month=$DEPLOYS_MONTH" >> $GITHUB_OUTPUT
-          echo "lead_time_hours=$AVG_LEAD_HOURS" >> $GITHUB_OUTPUT
-          echo "cfr=$CFR" >> $GITHUB_OUTPUT
-          echo "mttr_hours=$AVG_MTTR_HOURS" >> $GITHUB_OUTPUT
-          echo "grade=$GRADE" >> $GITHUB_OUTPUT
-          echo "filename=$FILENAME" >> $GITHUB_OUTPUT
+          # GitHub Actions 출력 (develop 기준 - primary)
+          {
+            echo "deploys_week=$DEV_DEPLOYS_WEEK"
+            echo "deploys_month=$DEV_DEPLOYS_MONTH"
+            echo "lead_time_hours=$DEV_LEAD_HOURS"
+            echo "lead_time_method=first_commit_to_merge"
+            echo "cfr=$DEV_CFR"
+            echo "mttr_hours=$DEV_MTTR_HOURS"
+            echo "grade=$GRADE"
+            echo "filename=$FILENAME"
+            echo "main_deploys_week=$MAIN_DEPLOYS_WEEK"
+            echo "main_deploys_month=$MAIN_DEPLOYS_MONTH"
+            echo "main_lead_time_hours=$MAIN_LEAD_HOURS"
+            echo "main_cfr=$MAIN_CFR"
+          } >> $GITHUB_OUTPUT
 
       - name: Generate Step Summary
         env:
           DEPLOYS_WEEK: ${{ steps.dora.outputs.deploys_week }}
           DEPLOYS_MONTH: ${{ steps.dora.outputs.deploys_month }}
           LEAD_TIME: ${{ steps.dora.outputs.lead_time_hours }}
+          LEAD_METHOD: ${{ steps.dora.outputs.lead_time_method }}
           CFR: ${{ steps.dora.outputs.cfr }}
           MTTR: ${{ steps.dora.outputs.mttr_hours }}
           GRADE: ${{ steps.dora.outputs.grade }}
+          MAIN_DEPLOYS_WEEK: ${{ steps.dora.outputs.main_deploys_week }}
+          MAIN_DEPLOYS_MONTH: ${{ steps.dora.outputs.main_deploys_month }}
+          MAIN_LEAD_TIME: ${{ steps.dora.outputs.main_lead_time_hours }}
+          MAIN_CFR: ${{ steps.dora.outputs.main_cfr }}
         run: |
           cat >> $GITHUB_STEP_SUMMARY << EOF
           ## DORA Metrics Report
 
+          ### develop 브랜치 (Primary - 팀 워크플로 기준)
           | 지표 | 값 | 등급 기준 |
           |------|-----|----------|
           | **배포 빈도** | 주 ${DEPLOYS_WEEK}건 / 월 ${DEPLOYS_MONTH}건 | Elite: 일 1회+ |
-          | **리드 타임** | ${LEAD_TIME}시간 | Elite: < 1일 |
+          | **리드 타임** | ${LEAD_TIME}시간 (${LEAD_METHOD}) | Elite: < 1일 |
           | **변경 실패율** | ${CFR}% | Elite: < 15% |
           | **평균 복구 시간** | ${MTTR}시간 | Elite: < 1시간 |
 
           **종합 등급: ${GRADE}**
+
+          ### main 브랜치 (프로덕션 배포)
+          | 지표 | 값 |
+          |------|-----|
+          | **배포 빈도** | 주 ${MAIN_DEPLOYS_WEEK}건 / 월 ${MAIN_DEPLOYS_MONTH}건 |
+          | **리드 타임** | ${MAIN_LEAD_TIME}시간 |
+          | **변경 실패율** | ${MAIN_CFR}% |
+
+          > 리드 타임 측정 방식: PR의 첫 커밋 시점 → 머지 시점 (실제 개발 시작 반영)
           EOF
 
       - name: Commit metrics data
@@ -228,6 +345,10 @@ jobs:
           CFR: ${{ steps.dora.outputs.cfr }}
           MTTR: ${{ steps.dora.outputs.mttr_hours }}
           GRADE: ${{ steps.dora.outputs.grade }}
+          MAIN_DEPLOYS_WEEK: ${{ steps.dora.outputs.main_deploys_week }}
+          MAIN_DEPLOYS_MONTH: ${{ steps.dora.outputs.main_deploys_month }}
+          MAIN_LEAD_TIME: ${{ steps.dora.outputs.main_lead_time_hours }}
+          MAIN_CFR: ${{ steps.dora.outputs.main_cfr }}
         run: |
           # Grafana Cloud Prometheus에 InfluxDB line protocol로 메트릭 전송
           INFLUX_URL="${GRAFANA_CLOUD_URL/api\/prom\/push/api/v1/push/influx/write}"
@@ -241,7 +362,7 @@ jobs:
           esac
 
           # Prometheus staleness 방지: 과거 7일간 5분 간격으로 동일 값 backfill
-          # (Prometheus는 5분 이상 지난 데이터를 stale 처리하므로, 촘촘하게 채워야 대시보드에 표시됨)
+          # develop + main 브랜치 메트릭 모두 전송 (branch 라벨로 구분)
           python3 << PYEOF
           import subprocess, time, tempfile, os
 
@@ -250,20 +371,29 @@ jobs:
           DURATION = 7 * 24 * 3600  # 7일
           START = NOW - DURATION
 
+          # develop 브랜치 메트릭 (branch 라벨 추가)
           METRICS = {
-              "dora_deployment_frequency,project=govon,period=weekly": ${DEPLOYS_WEEK},
-              "dora_deployment_frequency,project=govon,period=monthly": ${DEPLOYS_MONTH},
-              "dora_lead_time_hours,project=govon": ${LEAD_TIME},
-              "dora_change_failure_rate,project=govon": ${CFR},
-              "dora_mttr_hours,project=govon": ${MTTR},
-              "dora_grade,project=govon": ${GRADE_NUM},
+              "dora_deployment_frequency,project=govon,branch=develop,period=weekly": ${DEPLOYS_WEEK},
+              "dora_deployment_frequency,project=govon,branch=develop,period=monthly": ${DEPLOYS_MONTH},
+              "dora_lead_time_hours,project=govon,branch=develop": ${LEAD_TIME},
+              "dora_change_failure_rate,project=govon,branch=develop": ${CFR},
+              "dora_mttr_hours,project=govon,branch=develop": ${MTTR},
+              "dora_grade,project=govon,branch=develop": ${GRADE_NUM},
           }
+
+          # main 브랜치 메트릭
+          METRICS.update({
+              "dora_deployment_frequency,project=govon,branch=main,period=weekly": ${MAIN_DEPLOYS_WEEK},
+              "dora_deployment_frequency,project=govon,branch=main,period=monthly": ${MAIN_DEPLOYS_MONTH},
+              "dora_lead_time_hours,project=govon,branch=main": ${MAIN_LEAD_TIME},
+              "dora_change_failure_rate,project=govon,branch=main": ${MAIN_CFR},
+          })
 
           URL = "${INFLUX_URL}"
           AUTH = "${GRAFANA_CLOUD_USER}:${GRAFANA_CLOUD_API_KEY}"
 
           POINTS = DURATION // INTERVAL
-          print(f"Pushing {POINTS} data points (7d backfill, 5min intervals)...")
+          print(f"Pushing {POINTS} data points (7d backfill, 5min intervals) for develop + main...")
 
           batch_size = 500
           lines = []
@@ -304,7 +434,7 @@ jobs:
           else:
               code = "204"
 
-          print(f"✅ Grafana Cloud 메트릭 전송 완료 ({sent} points, HTTP {code})")
+          print(f"Grafana Cloud 메트릭 전송 완료 ({sent} points, HTTP {code})")
           PYEOF
 
       - name: Upload artifact

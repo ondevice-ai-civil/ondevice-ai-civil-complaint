@@ -10,8 +10,8 @@
   "panels": [
     {
       "id": 1,
-      "title": "DORA 종합 등급",
-      "description": "4=Elite, 3=High, 2=Medium, 1=Low",
+      "title": "DORA 종합 등급 (develop)",
+      "description": "4=Elite, 3=High, 2=Medium, 1=Low\ndevelop 브랜치 기준 (팀 실제 워크플로)",
       "type": "stat",
       "gridPos": {
         "h": 5,
@@ -25,7 +25,7 @@
       },
       "targets": [
         {
-          "expr": "dora_grade{project=\"govon\"}",
+          "expr": "dora_grade{project=\"govon\", branch=\"develop\"}",
           "legendFormat": "등급",
           "refId": "A",
           "datasource": {
@@ -113,7 +113,7 @@
     {
       "id": 2,
       "title": "배포 빈도 (월간)",
-      "description": "main 브랜치 머지 PR 수",
+      "description": "develop 브랜치 머지 PR 수",
       "type": "stat",
       "gridPos": {
         "h": 5,
@@ -127,7 +127,7 @@
       },
       "targets": [
         {
-          "expr": "dora_deployment_frequency{project=\"govon\", period=\"monthly\"}",
+          "expr": "dora_deployment_frequency{project=\"govon\", branch=\"develop\", period=\"monthly\"}",
           "legendFormat": "월간 배포",
           "refId": "A",
           "datasource": {
@@ -175,7 +175,7 @@
     {
       "id": 3,
       "title": "리드 타임",
-      "description": "PR 생성 → 머지 평균 시간",
+      "description": "PR 첫 커밋 → 머지 평균 시간 (develop 기준)",
       "type": "stat",
       "gridPos": {
         "h": 5,
@@ -189,7 +189,7 @@
       },
       "targets": [
         {
-          "expr": "dora_lead_time_hours{project=\"govon\"}",
+          "expr": "dora_lead_time_hours{project=\"govon\", branch=\"develop\"}",
           "legendFormat": "리드타임",
           "refId": "A",
           "datasource": {
@@ -237,7 +237,7 @@
     {
       "id": 4,
       "title": "변경 실패율",
-      "description": "hotfix/revert 커밋 비율",
+      "description": "hotfix/revert 커밋 비율 (develop 기준)",
       "type": "stat",
       "gridPos": {
         "h": 5,
@@ -251,7 +251,7 @@
       },
       "targets": [
         {
-          "expr": "dora_change_failure_rate{project=\"govon\"}",
+          "expr": "dora_change_failure_rate{project=\"govon\", branch=\"develop\"}",
           "legendFormat": "실패율",
           "refId": "A",
           "datasource": {
@@ -313,7 +313,7 @@
       },
       "targets": [
         {
-          "expr": "dora_mttr_hours{project=\"govon\"}",
+          "expr": "dora_mttr_hours{project=\"govon\", branch=\"develop\"}",
           "legendFormat": "MTTR",
           "refId": "A",
           "datasource": {
@@ -360,7 +360,7 @@
     },
     {
       "id": 6,
-      "title": "배포 빈도 추이",
+      "title": "배포 빈도 추이 (develop vs main)",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -374,8 +374,8 @@
       },
       "targets": [
         {
-          "expr": "dora_deployment_frequency{project=\"govon\", period=\"weekly\"}",
-          "legendFormat": "주간 배포",
+          "expr": "dora_deployment_frequency{project=\"govon\", branch=\"develop\", period=\"weekly\"}",
+          "legendFormat": "develop 주간",
           "refId": "A",
           "datasource": {
             "type": "prometheus",
@@ -384,9 +384,29 @@
           "interval": "5m"
         },
         {
-          "expr": "dora_deployment_frequency{project=\"govon\", period=\"monthly\"}",
-          "legendFormat": "월간 배포",
+          "expr": "dora_deployment_frequency{project=\"govon\", branch=\"develop\", period=\"monthly\"}",
+          "legendFormat": "develop 월간",
           "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "interval": "5m"
+        },
+        {
+          "expr": "dora_deployment_frequency{project=\"govon\", branch=\"main\", period=\"weekly\"}",
+          "legendFormat": "main 주간",
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "interval": "5m"
+        },
+        {
+          "expr": "dora_deployment_frequency{project=\"govon\", branch=\"main\", period=\"monthly\"}",
+          "legendFormat": "main 월간",
+          "refId": "D",
           "datasource": {
             "type": "prometheus",
             "uid": "grafanacloud-prom"
@@ -403,7 +423,16 @@
             "showPoints": "always",
             "spanNulls": true
           }
-        }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byRegexp", "options": "main.*" },
+            "properties": [
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } },
+              { "id": "custom.fillOpacity", "value": 5 }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
@@ -417,7 +446,8 @@
     },
     {
       "id": 7,
-      "title": "리드 타임 추이",
+      "title": "리드 타임 추이 (develop vs main)",
+      "description": "PR 첫 커밋 → 머지 시간",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -431,9 +461,19 @@
       },
       "targets": [
         {
-          "expr": "dora_lead_time_hours{project=\"govon\"}",
-          "legendFormat": "리드타임 (시간)",
+          "expr": "dora_lead_time_hours{project=\"govon\", branch=\"develop\"}",
+          "legendFormat": "develop 리드타임",
           "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "interval": "5m"
+        },
+        {
+          "expr": "dora_lead_time_hours{project=\"govon\", branch=\"main\"}",
+          "legendFormat": "main 리드타임",
+          "refId": "B",
           "datasource": {
             "type": "prometheus",
             "uid": "grafanacloud-prom"
@@ -472,15 +512,22 @@
             ]
           },
           "color": {
-            "mode": "fixed",
-            "fixedColor": "green"
+            "mode": "palette-classic"
           }
-        }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "main 리드타임" },
+            "properties": [
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }
+            ]
+          }
+        ]
       }
     },
     {
       "id": 8,
-      "title": "변경 실패율 추이",
+      "title": "변경 실패율 추이 (develop vs main)",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -494,9 +541,19 @@
       },
       "targets": [
         {
-          "expr": "dora_change_failure_rate{project=\"govon\"}",
-          "legendFormat": "실패율 (%)",
+          "expr": "dora_change_failure_rate{project=\"govon\", branch=\"develop\"}",
+          "legendFormat": "develop 실패율",
           "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "interval": "5m"
+        },
+        {
+          "expr": "dora_change_failure_rate{project=\"govon\", branch=\"main\"}",
+          "legendFormat": "main 실패율",
+          "refId": "B",
           "datasource": {
             "type": "prometheus",
             "uid": "grafanacloud-prom"
@@ -535,10 +592,17 @@
             ]
           },
           "color": {
-            "mode": "fixed",
-            "fixedColor": "orange"
+            "mode": "palette-classic"
           }
-        }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "main 실패율" },
+            "properties": [
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }
+            ]
+          }
+        ]
       }
     },
     {
@@ -557,7 +621,7 @@
       },
       "targets": [
         {
-          "expr": "dora_mttr_hours{project=\"govon\"}",
+          "expr": "dora_mttr_hours{project=\"govon\", branch=\"develop\"}",
           "legendFormat": "MTTR (시간)",
           "refId": "A",
           "datasource": {
@@ -616,7 +680,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "| 등급 | 배포 빈도 | 리드 타임 | 변경 실패율 | MTTR |\n|:---:|:---:|:---:|:---:|:---:|\n| **Elite** | 일 1회+ | < 1일 | < 15% | < 1시간 |\n| **High** | 주 1회+ | < 1주 | 15~30% | < 24시간 |\n| **Medium** | 월 1회+ | < 1개월 | 30~45% | < 1주 |\n| **Low** | 월 1회 미만 | > 1개월 | > 45% | > 1주 |\n\n> 데이터 수집: GitHub Actions (`dora-metrics.yml`) → Grafana Cloud Prometheus"
+        "content": "| 등급 | 배포 빈도 | 리드 타임 | 변경 실패율 | MTTR |\n|:---:|:---:|:---:|:---:|:---:|\n| **Elite** | 일 1회+ | < 1일 | < 15% | < 1시간 |\n| **High** | 주 1회+ | < 1주 | 15~30% | < 24시간 |\n| **Medium** | 월 1회+ | < 1개월 | 30~45% | < 1주 |\n| **Low** | 월 1회 미만 | > 1개월 | > 45% | > 1주 |\n\n> **측정 기준 브랜치**: develop (팀 실제 워크플로) + main (프로덕션 배포) 이중 수집\n> **리드 타임 측정**: PR의 첫 커밋 시점 → 머지 시점 (실제 개발 시작 반영)\n> **데이터 수집**: GitHub Actions (`dora-metrics.yml`) → Grafana Cloud Prometheus"
       }
     }
   ],
@@ -637,5 +701,5 @@
   "timezone": "Asia/Seoul",
   "title": "GovOn DORA Metrics Dashboard",
   "uid": "govon-dora",
-  "version": 1
+  "version": 2
 }

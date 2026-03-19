@@ -325,13 +325,25 @@ jobs:
           > 리드 타임 측정 방식: PR의 첫 커밋 시점 → 머지 시점 (실제 개발 시작 반영)
           EOF
 
-      - name: Commit metrics data
+      - name: Commit metrics data to main
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # 메트릭 파일을 임시 저장
+          cp -r metrics/dora/ /tmp/dora-metrics/
+
+          # main 브랜치로 전환하여 커밋 (충돌 방지)
+          git fetch origin main
+          git checkout main
+          git pull origin main
+
+          # 메트릭 파일 복사 및 커밋
+          mkdir -p metrics/dora
+          cp -r /tmp/dora-metrics/* metrics/dora/
           git add metrics/dora/
           git diff --staged --quiet || git commit -m "chore: DORA 메트릭 수집 $(date -u +%Y-%m-%d)"
-          git push || echo "No changes to push"
+          git push origin main || echo "No changes to push"
 
       - name: Push to Grafana Cloud
         if: env.GRAFANA_CLOUD_URL != ''

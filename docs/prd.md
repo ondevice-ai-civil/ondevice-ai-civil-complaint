@@ -417,6 +417,8 @@ LLM 학습 데이터 고정 (지식 컷오프 존재)
 
 실측 결과: AWQ 4-bit 양자화 적용 시 모델 크기 15.6GB → 4.94GB (-68.3%), 분류 정확도는 90.0%로 목표(85%) 초과 달성.
 
+> **⚠ 모델 현황 (2026-03-19)**: 기존 HuggingFace의 AWQ 모델(`umyunsang/civil-complaint-exaone-awq`)은 잘못 학습된 LoRA v1 기반 병합 모델로 생성되어 **폐기** 처리되었다. 현재 재학습된 LoRA v2(`umyunsang/GovOn-EXAONE-LoRA-v2`)를 기반으로 AWQ 양자화 모델을 재생성할 예정이다.
+
 #### 전체 기술 레이어
 
 ```

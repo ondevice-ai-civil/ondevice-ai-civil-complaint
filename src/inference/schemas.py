@@ -1,6 +1,13 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 
+class RetrievedCase(BaseModel):
+    id: Optional[str] = None
+    category: Optional[str] = None
+    complaint: str
+    answer: str
+    score: float
+
 class GenerateRequest(BaseModel):
     prompt: str = Field(..., description="The input prompt for generation.")
     max_tokens: int = Field(default=512, gt=0, description="Maximum number of tokens to generate.")
@@ -8,14 +15,17 @@ class GenerateRequest(BaseModel):
     top_p: float = Field(default=0.9, ge=0.0, le=1.0, description="Top-p sampling parameter.")
     stream: bool = Field(default=False, description="Whether to stream the output using SSE.")
     stop: Optional[List[str]] = Field(default=None, description="List of stop sequences.")
+    use_rag: bool = Field(default=True, description="Whether to use RAG (Retrieval-Augmented Generation).")
 
 class GenerateResponse(BaseModel):
     request_id: str
     text: str
     prompt_tokens: int
     completion_tokens: int
+    retrieved_cases: Optional[List[RetrievedCase]] = None
 
 class StreamResponse(BaseModel):
     request_id: str
     text: str
     finished: bool = False
+    retrieved_cases: Optional[List[RetrievedCase]] = None

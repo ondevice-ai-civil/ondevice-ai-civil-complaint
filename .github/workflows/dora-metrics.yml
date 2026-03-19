@@ -333,10 +333,11 @@ jobs:
           # 메트릭 파일을 임시 저장
           cp -r metrics/dora/ /tmp/dora-metrics/
 
-          # main 브랜치로 전환하여 커밋 (충돌 방지)
+          # 워킹 디렉토리 정리 후 main 브랜치로 전환
+          git checkout -- .
+          git clean -fd
           git fetch origin main
-          git checkout main
-          git pull origin main
+          git checkout -B main origin/main
 
           # 메트릭 파일 복사 및 커밋
           mkdir -p metrics/dora

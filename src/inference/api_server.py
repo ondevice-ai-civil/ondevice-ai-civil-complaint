@@ -14,13 +14,13 @@ from .schemas import GenerateRequest, GenerateResponse, StreamResponse, Retrieve
 from .retriever import CivilComplaintRetriever
 
 # --- M3 Optimized Configuration ---
-MODEL_PATH = "umyunsang/civil-complaint-exaone-awq"
-DATA_PATH = "GovOn/data/processed/v2_train.jsonl"
-INDEX_PATH = "GovOn/models/faiss_index/complaints.index"
+MODEL_PATH = os.getenv("MODEL_PATH", "umyunsang/GovOn-EXAONE-LoRA-v2")
+DATA_PATH = os.getenv("DATA_PATH", "data/processed/v2_train.jsonl")
+INDEX_PATH = os.getenv("INDEX_PATH", "models/faiss_index/complaints.index")
 
 # Optimized for 16GB VRAM with AWQ INT4 model
-GPU_UTILIZATION = 0.8  # Increased for AWQ efficiency
-MAX_MODEL_LEN = 8192    # Optimized for EXAONE 32K but capped for stability
+GPU_UTILIZATION = float(os.getenv("GPU_UTILIZATION", "0.8"))
+MAX_MODEL_LEN = int(os.getenv("MAX_MODEL_LEN", "8192"))
 TRUST_REMOTE_CODE = True
 
 # Apply EXAONE-specific runtime patches
@@ -33,6 +33,9 @@ class vLLMEngineManager:
         self.retriever: CivilComplaintRetriever = None
 
     async def initialize(self):
+        # Resolve paths relative to project root if necessary
+        # Assuming the server is run from the project root
+        
         # 1. Initialize Optimized vLLM Engine
         engine_args = AsyncEngineArgs(
             model=MODEL_PATH,
@@ -51,8 +54,15 @@ class vLLMEngineManager:
             index_path=INDEX_PATH if os.path.exists(INDEX_PATH) else None,
             data_path=DATA_PATH if not os.path.exists(INDEX_PATH) else None
         )
-        if not os.path.exists(INDEX_PATH) and self.retriever.index is not None:
+        if self.retriever.index is not None and not os.path.exists(INDEX_PATH):
             self.retriever.save_index(INDEX_PATH)
+
+    def _escape_special_tokens(self, text: str) -> str:
+        """Escape EXAONE chat template tokens to prevent prompt injection."""
+        tokens = ["[|user|]", "[|assistant|]", "[|system|]", "[|endofturn|]", "<thought>", "</thought>"]
+        for token in tokens:
+            text = text.replace(token, token.replace("[", "\[").replace("]", "\]").replace("<", "\<").replace(">", "\>"))
+        return text
 
     def _augment_prompt(self, prompt: str, retrieved_cases: List[dict]) -> str:
         """Augment the prompt with retrieved similar cases (RAG)."""
@@ -61,7 +71,10 @@ class vLLMEngineManager:
             
         rag_context = "\n\n### 참고 사례 (유사 민원 및 답변):\n"
         for i, case in enumerate(retrieved_cases):
-            rag_context += f"{i+1}. [민원]: {case['complaint']}\n   [답변]: {case['answer']}\n\n"
+            # Escape retrieved content to prevent prompt injection
+            safe_complaint = self._escape_special_tokens(case['complaint'])
+            safe_answer = self._escape_special_tokens(case['answer'])
+            rag_context += f"{i+1}. [민원]: {safe_complaint}\n   [답변]: {safe_answer}\n\n"
         
         # Structure the prompt for EXAONE Chat Template
         if "[|user|]" in prompt:
@@ -69,7 +82,7 @@ class vLLMEngineManager:
             return f"{parts[0]}[|user|]{rag_context}위 참고 사례를 바탕으로 다음 민원에 대해 답변해 주세요.\n\n{parts[1]}"
         return f"{rag_context}\n\n{prompt}"
 
-    async def generate(self, request: GenerateRequest, request_id: str):
+    async def generate(self, request: GenerateRequest, request_id: str) -> tuple:
         # 1. RAG: Retrieve similar cases if enabled
         retrieved_cases = []
         augmented_prompt = request.prompt
@@ -148,7 +161,7 @@ async def stream_generate(request: GenerateRequest):
     results_generator, retrieved_cases = await manager.generate(request, request_id)
     
     async def stream_results() -> AsyncGenerator[str, None]:
-        cases_data = [RetrievedCase(**c).dict() for c in retrieved_cases]
+        cases_data = [RetrievedCase(**c).model_dump() for c in retrieved_cases]
         
         async for request_output in results_generator:
             text = request_output.outputs[0].text

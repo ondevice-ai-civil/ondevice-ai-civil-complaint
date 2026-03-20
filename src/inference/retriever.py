@@ -72,6 +72,7 @@ class CivilComplaintRetriever:
                         "answer": answer
                     })
                 except Exception as e:
+                    logger.warning(f"Skipping line due to parsing error: {e}. Data might be corrupted or in wrong format.")
                     continue
         
         if not complaints:

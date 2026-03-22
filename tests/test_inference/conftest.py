@@ -91,12 +91,14 @@ def _patch_columns_for_sqlite():
                 elif "::jsonb" in default_text:
                     column.server_default = None
 
-        # postgresql_using GIN 인덱스는 SQLite에서 지원하지 않으므로 제거
+        # PostgreSQL 전용 인덱스는 SQLite에서 지원하지 않으므로 제거
+        # - GIN 인덱스 (postgresql_using="gin")
+        # - Partial unique index (postgresql_where)
         indexes_to_remove = set()
         for idx in table.indexes:
             dialect_opts = getattr(idx, "dialect_options", {})
             pg_opts = dialect_opts.get("postgresql", {})
-            if pg_opts.get("using") == "gin":
+            if pg_opts.get("using") == "gin" or pg_opts.get("where") is not None:
                 indexes_to_remove.add(idx)
         table.indexes -= indexes_to_remove
 

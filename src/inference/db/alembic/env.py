@@ -4,6 +4,7 @@ Alembic 환경 설정.
 DATABASE_URL 환경변수를 통해 PostgreSQL 연결 문자열을 주입받는다.
 """
 
+import logging
 import os
 import sys
 from logging.config import fileConfig
@@ -27,10 +28,15 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 # 환경변수에서 DB URL 가져오기
-database_url = os.getenv(
-    "DATABASE_URL",
-    "postgresql://govon:govon@localhost:5432/govon",
-)
+_DEFAULT_DATABASE_URL = "postgresql://govon:govon@localhost:5432/govon"
+database_url = os.getenv("DATABASE_URL", _DEFAULT_DATABASE_URL)
+
+if database_url == _DEFAULT_DATABASE_URL:
+    logging.getLogger(__name__).warning(
+        "DATABASE_URL 환경변수가 설정되지 않아 기본값을 사용합니다. "
+        "프로덕션 환경에서는 반드시 DATABASE_URL을 설정하세요."
+    )
+
 config.set_main_option("sqlalchemy.url", database_url)
 
 

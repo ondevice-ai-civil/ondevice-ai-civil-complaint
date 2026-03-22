@@ -11,6 +11,15 @@ from src.inference.db.models import DocumentSource
 from src.inference.index_manager import DocumentMetadata, IndexType
 from src.inference.schemas import DocumentMetadataSchema
 
+# 타입별 전용 필드 목록 (ORM <-> Dataclass/Pydantic 변환 시 공통 사용)
+_TYPE_SPECIFIC_FIELDS: tuple = (
+    "complaint_text", "answer_text",       # CASE
+    "law_number", "article_number",         # LAW
+    "enforcement_date",                     # LAW
+    "department",                           # MANUAL
+    "notice_number", "effective_date",      # NOTICE
+)
+
 
 # ---------------------------------------------------------------------------
 # ORM -> Dataclass
@@ -28,14 +37,7 @@ def orm_to_dataclass(doc_source: DocumentSource) -> DocumentMetadata:
     if doc_source.metadata_:
         extras.update(doc_source.metadata_)
 
-    _type_specific_fields = [
-        "complaint_text", "answer_text",       # CASE
-        "law_number", "article_number",         # LAW
-        "enforcement_date",                     # LAW
-        "department",                           # MANUAL
-        "notice_number", "effective_date",      # NOTICE
-    ]
-    for field_name in _type_specific_fields:
+    for field_name in _TYPE_SPECIFIC_FIELDS:
         value = getattr(doc_source, field_name, None)
         if value is not None:
             # date/datetime 객체는 ISO 문자열로 직렬화
@@ -141,13 +143,7 @@ def orm_to_pydantic(doc_source: DocumentSource) -> DocumentMetadataSchema:
     if doc_source.metadata_:
         extra_meta.update(doc_source.metadata_)
 
-    _type_specific_fields = [
-        "complaint_text", "answer_text",
-        "law_number", "article_number", "enforcement_date",
-        "department",
-        "notice_number", "effective_date",
-    ]
-    for field_name in _type_specific_fields:
+    for field_name in _TYPE_SPECIFIC_FIELDS:
         value = getattr(doc_source, field_name, None)
         if value is not None:
             extra_meta[field_name] = (

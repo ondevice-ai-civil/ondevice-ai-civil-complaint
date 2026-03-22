@@ -1,9 +1,14 @@
 """
-CRUD 레이어.
+CRUD 레이어 (Unit of Work 패턴).
 
 DocumentSource, IndexingQueue, IndexVersion 테이블에 대한
 생성/조회/수정/삭제 함수를 제공한다.
 모든 함수는 동기 Session을 인자로 받는다.
+
+이 모듈의 함수들은 내부에서 commit을 수행하지 않는다.
+트랜잭션의 commit/rollback 제어는 caller(서비스 계층)의 책임이다.
+복합 작업의 원자성을 보장하기 위해 flush만 수행하여 DB에 SQL을 전송하되,
+최종 확정은 caller가 결정한다.
 """
 
 import uuid
@@ -15,6 +20,23 @@ from sqlalchemy.orm import Session
 
 from src.inference.db.models import DocumentSource, IndexingQueue, IndexVersion
 
+# ---------------------------------------------------------------------------
+# 상수 정의
+# ---------------------------------------------------------------------------
+
+MAX_LIMIT = 1000
+
+_ALLOWED_FILTER_COLUMNS = frozenset({
+    "source_type", "source_id", "status", "category",
+    "source_name", "embedding_version", "version",
+})
+
+_IMMUTABLE_FIELDS = frozenset({"id", "created_at"})
+
+_VALID_QUEUE_STATUSES = frozenset({
+    "pending", "processing", "completed", "skipped", "failed",
+})
+
 
 # ============================================================================
 # DocumentSource CRUD
@@ -25,7 +47,7 @@ def create_document_source(db: Session, **kwargs: Any) -> DocumentSource:
     """새 문서 원본 레코드를 생성한다."""
     doc = DocumentSource(**kwargs)
     db.add(doc)
-    db.commit()
+    db.flush()
     db.refresh(doc)
     return doc
 
@@ -55,11 +77,12 @@ def get_document_sources(
     limit : int
         최대 반환 행 수.
     """
+    limit = min(limit, MAX_LIMIT)
     stmt = select(DocumentSource)
 
     if filters:
         for col_name, value in filters.items():
-            if hasattr(DocumentSource, col_name):
+            if col_name in _ALLOWED_FILTER_COLUMNS:
                 stmt = stmt.where(
                     getattr(DocumentSource, col_name) == value
                 )
@@ -80,10 +103,12 @@ def update_document_source(
         return None
 
     for key, value in kwargs.items():
+        if key in _IMMUTABLE_FIELDS:
+            continue
         if hasattr(doc, key):
             setattr(doc, key, value)
 
-    db.commit()
+    db.flush()
     db.refresh(doc)
     return doc
 
@@ -95,7 +120,7 @@ def delete_document_source(db: Session, doc_id: uuid.UUID) -> bool:
         return False
 
     db.delete(doc)
-    db.commit()
+    db.flush()
     return True
 
 
@@ -126,13 +151,14 @@ def create_indexing_queue_item(db: Session, **kwargs: Any) -> IndexingQueue:
     """인덱싱 대기열에 새 항목을 추가한다."""
     item = IndexingQueue(**kwargs)
     db.add(item)
-    db.commit()
+    db.flush()
     db.refresh(item)
     return item
 
 
 def get_pending_items(db: Session, limit: int = 50) -> List[IndexingQueue]:
     """pending 상태의 대기열 항목을 우선순위 내림차순으로 조회한다."""
+    limit = min(limit, MAX_LIMIT)
     stmt = (
         select(IndexingQueue)
         .where(IndexingQueue.status == "pending")
@@ -152,6 +178,12 @@ def update_queue_status(
 
     completed/failed 상태로 변경 시 processed_at을 자동 설정한다.
     """
+    if status not in _VALID_QUEUE_STATUSES:
+        raise ValueError(
+            f"유효하지 않은 상태: {status!r}. "
+            f"허용 값: {', '.join(sorted(_VALID_QUEUE_STATUSES))}"
+        )
+
     item = db.get(IndexingQueue, item_id)
     if item is None:
         return None
@@ -163,7 +195,7 @@ def update_queue_status(
     if status in ("completed", "failed", "skipped"):
         item.processed_at = datetime.now(timezone.utc)
 
-    db.commit()
+    db.flush()
     db.refresh(item)
     return item
 
@@ -193,7 +225,7 @@ def create_index_version(db: Session, **kwargs: Any) -> IndexVersion:
     """새 인덱스 버전 레코드를 생성한다."""
     ver = IndexVersion(**kwargs)
     db.add(ver)
-    db.commit()
+    db.flush()
     db.refresh(ver)
     return ver
 
@@ -236,7 +268,7 @@ def deactivate_versions(db: Session, index_type: str) -> int:
         .values(is_active=False)
     )
     result = db.execute(stmt)
-    db.commit()
+    db.flush()
     return result.rowcount  # type: ignore[return-value]
 
 
@@ -246,15 +278,29 @@ def activate_version(
     """특정 인덱스 버전을 활성화한다.
 
     동일 index_type의 기존 활성 버전을 먼저 비활성화한 뒤 대상을 활성화한다.
+
+    Race Condition 방지:
+        SELECT ... FOR UPDATE로 동일 index_type의 모든 버전에 행 레벨 잠금을
+        획득한 뒤 deactivate/activate를 수행한다. 동시 호출 시 후발 트랜잭션은
+        잠금 해제까지 대기하므로 다중 active 버전이 생기는 문제를 방지한다.
+        (PostgreSQL 전용 — SQLite는 FOR UPDATE를 지원하지 않는다.)
     """
     ver = db.get(IndexVersion, version_id)
     if ver is None:
         return None
 
-    # 동일 타입의 기존 활성 버전 비활성화
+    # 동일 index_type의 모든 버전에 대해 행 레벨 잠금 획득 (PostgreSQL 전용)
+    lock_stmt = (
+        select(IndexVersion)
+        .where(IndexVersion.index_type == ver.index_type)
+        .with_for_update()
+    )
+    db.execute(lock_stmt)
+
+    # 잠금 획득 후 동일 타입의 기존 활성 버전 비활성화
     deactivate_versions(db, ver.index_type)
 
     ver.is_active = True
-    db.commit()
+    db.flush()
     db.refresh(ver)
     return ver

@@ -18,6 +18,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Date,
+    DateTime,
     Float,
     ForeignKey,
     Index,
@@ -131,10 +132,12 @@ class DocumentSource(Base):
         comment="신뢰도 점수 (0.0~1.0)",
     )
     valid_from: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
         nullable=True,
         comment="유효 시작일",
     )
     valid_until: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
         nullable=True,
         comment="유효 종료일",
     )
@@ -204,10 +207,12 @@ class DocumentSource(Base):
 
     # -- 타임스탬프 --
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
         server_default=func.now(),
         comment="생성 시각",
     )
     updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
         server_default=func.now(), onupdate=func.now(),
         comment="수정 시각",
     )
@@ -297,10 +302,12 @@ class IndexingQueue(Base):
         comment="건너뛰기 사유",
     )
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
         server_default=func.now(),
         comment="생성 시각",
     )
     processed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
         nullable=True,
         comment="처리 완료 시각",
     )
@@ -331,7 +338,17 @@ class IndexVersion(Base):
 
     __tablename__ = "index_version"
     __table_args__ = (
+        CheckConstraint(
+            "index_type IN ('case', 'law', 'manual', 'notice')",
+            name="ck_index_type_valid",
+        ),
         Index("idx_indexversion_active", "index_type", "is_active"),
+        Index(
+            "uq_indexversion_one_active_per_type",
+            "index_type",
+            unique=True,
+            postgresql_where=text("is_active = true"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -365,6 +382,7 @@ class IndexVersion(Base):
         comment="스냅샷 경로",
     )
     built_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
         server_default=func.now(),
         comment="빌드 시각",
     )

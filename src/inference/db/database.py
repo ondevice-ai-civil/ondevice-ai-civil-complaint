@@ -5,20 +5,28 @@ SQLAlchemy 2.0 데이터베이스 엔진/세션 설정.
 DATABASE_URL 환경변수에서 PostgreSQL 연결 문자열을 읽는다.
 """
 
+import logging
 import os
 from typing import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+logger = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
 # 엔진 & 세션 팩토리
 # ---------------------------------------------------------------------------
 
-DATABASE_URL: str = os.getenv(
-    "DATABASE_URL",
-    "postgresql://govon:govon@localhost:5432/govon",
-)
+_DEFAULT_DATABASE_URL = "postgresql://govon:govon@localhost:5432/govon"
+
+DATABASE_URL: str = os.getenv("DATABASE_URL", _DEFAULT_DATABASE_URL)
+
+if DATABASE_URL == _DEFAULT_DATABASE_URL:
+    logger.warning(
+        "DATABASE_URL 환경변수가 설정되지 않아 기본값을 사용합니다. "
+        "프로덕션 환경에서는 반드시 DATABASE_URL을 설정하세요."
+    )
 
 engine = create_engine(
     DATABASE_URL,
@@ -54,4 +62,5 @@ def get_db() -> Generator[Session, None, None]:
     try:
         yield db
     finally:
+        db.rollback()
         db.close()

@@ -1,9 +1,9 @@
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from src.inference.index_manager import IndexType
+from src.inference.index_manager import DocumentMetadata, IndexType
 
 class RetrievedCase(BaseModel):
     id: Optional[str] = None
@@ -58,11 +58,20 @@ class DocumentMetadataSchema(BaseModel):
     total_chunks: int = 1
     created_at: datetime
     updated_at: datetime
+    valid_from: Optional[datetime] = None
     valid_until: Optional[datetime] = None
     reliability_score: float = Field(default=1.0, ge=0.0, le=1.0)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def _check_chunk_bounds(self) -> "DocumentMetadataSchema":
+        if self.chunk_index >= self.total_chunks:
+            raise ValueError(
+                f"chunk_index({self.chunk_index})는 total_chunks({self.total_chunks})보다 작아야 합니다"
+            )
+        return self
 
 
 class SearchResult(BaseModel):
@@ -77,7 +86,7 @@ class SearchResult(BaseModel):
     title: str
     content: str
     score: float
-    reliability_score: float = 1.0
+    reliability_score: float = Field(default=1.0, ge=0.0, le=1.0)
     metadata: Dict[str, Any] = Field(default_factory=dict)
     chunk_index: int = 0
     total_chunks: int = 1
@@ -89,7 +98,7 @@ class SearchResult(BaseModel):
 
 
 def from_internal_metadata(
-    meta: "index_manager.DocumentMetadata",
+    meta: "DocumentMetadata",
     content: str = "",
 ) -> DocumentMetadataSchema:
     """index_manager.DocumentMetadata (dataclass) -> DocumentMetadataSchema (Pydantic) 변환.
@@ -107,8 +116,6 @@ def from_internal_metadata(
     DocumentMetadataSchema
         Pydantic 모델 인스턴스.
     """
-    from src.inference.index_manager import DocumentMetadata as _DM  # noqa: F811
-
     return DocumentMetadataSchema(
         doc_id=meta.doc_id,
         source_type=IndexType(meta.doc_type),
@@ -119,6 +126,11 @@ def from_internal_metadata(
         total_chunks=meta.chunk_total,
         created_at=datetime.fromisoformat(meta.created_at),
         updated_at=datetime.fromisoformat(meta.updated_at),
+        valid_from=(
+            datetime.fromisoformat(meta.valid_from)
+            if meta.valid_from
+            else None
+        ),
         valid_until=(
             datetime.fromisoformat(meta.valid_until)
             if meta.valid_until

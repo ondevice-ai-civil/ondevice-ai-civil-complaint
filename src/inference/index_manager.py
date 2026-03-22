@@ -8,7 +8,7 @@ MultiIndexManager: ADR-004 기반 다중 FAISS 인덱스 관리 모듈.
 import json
 import os
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -56,8 +56,9 @@ class DocumentMetadata:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "DocumentMetadata":
         """딕셔너리에서 DocumentMetadata 인스턴스를 생성한다."""
-        known_fields = {f.name for f in cls.__dataclass_fields__.values()}
-        filtered = {k: v for k, v in data.items() if k in known_fields}
+        if not hasattr(cls, "_known_fields"):
+            cls._known_fields = {f.name for f in cls.__dataclass_fields__.values()}
+        filtered = {k: v for k, v in data.items() if k in cls._known_fields}
         return cls(**filtered)
 
 
@@ -127,7 +128,7 @@ class MultiIndexManager:
 
     def _save_registry(self) -> None:
         """index_registry.json 을 갱신한다."""
-        self._registry["updated_at"] = datetime.utcnow().isoformat()
+        self._registry["updated_at"] = datetime.now(timezone.utc).isoformat()
         with open(self._registry_path, "w", encoding="utf-8") as f:
             json.dump(self._registry, f, ensure_ascii=False, indent=2)
 
@@ -199,7 +200,7 @@ class MultiIndexManager:
         logger.info(f"메타데이터 저장: {meta_path}")
 
         # 레지스트리 갱신
-        now_iso = datetime.utcnow().isoformat()
+        now_iso = datetime.now(timezone.utc).isoformat()
         self._registry.setdefault("indexes", {})[index_type.value] = {
             "doc_count": self.indexes[index_type].ntotal,
             "index_class": type(self.indexes[index_type]).__name__,

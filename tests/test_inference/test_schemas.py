@@ -87,6 +87,14 @@ class TestDocumentMetadataSchema:
         with pytest.raises(ValidationError):
             _make_metadata_schema(IndexType.CASE, reliability_score=-0.1)
 
+    def test_chunk_index_exceeds_total_raises(self):
+        """chunk_index >= total_chunks이면 ValidationError."""
+        with pytest.raises(ValidationError):
+            _make_metadata_schema(IndexType.CASE, chunk_index=5, total_chunks=3)
+
+        with pytest.raises(ValidationError):
+            _make_metadata_schema(IndexType.CASE, chunk_index=1, total_chunks=1)
+
     def test_default_values(self):
         """기본값 확인 (chunk_index=0, total_chunks=1, reliability_score=1.0)."""
         schema = _make_metadata_schema(IndexType.MANUAL)
@@ -94,6 +102,7 @@ class TestDocumentMetadataSchema:
         assert schema.total_chunks == 1
         assert schema.reliability_score == 1.0
         assert schema.metadata == {}
+        assert schema.valid_from is None
         assert schema.valid_until is None
 
 
@@ -118,6 +127,40 @@ class TestSearchResult:
         assert result.score == 0.95
         assert result.reliability_score == 1.0
         assert result.metadata == {}
+
+    def test_reliability_score_valid_range(self):
+        """SearchResult reliability_score 범위 검증 (0.0~1.0)."""
+        result = SearchResult(
+            doc_id="doc-001",
+            source_type=IndexType.NOTICE,
+            title="공시 정보",
+            content="공시 본문",
+            score=0.95,
+            reliability_score=0.0,
+        )
+        assert result.reliability_score == 0.0
+
+    def test_reliability_score_out_of_range_raises(self):
+        """SearchResult reliability_score 범위 밖 값은 ValidationError."""
+        with pytest.raises(ValidationError):
+            SearchResult(
+                doc_id="doc-001",
+                source_type=IndexType.NOTICE,
+                title="공시",
+                content="본문",
+                score=0.9,
+                reliability_score=1.5,
+            )
+
+        with pytest.raises(ValidationError):
+            SearchResult(
+                doc_id="doc-001",
+                source_type=IndexType.NOTICE,
+                title="공시",
+                content="본문",
+                score=0.9,
+                reliability_score=-0.1,
+            )
 
     def test_with_metadata(self):
         """metadata 필드에 임의 데이터 저장 확인."""
@@ -291,3 +334,40 @@ class TestFromInternalMetadata:
         )
         result = from_internal_metadata(internal)
         assert result.metadata == {}
+
+    def test_conversion_with_valid_from(self):
+        """valid_from이 있는 경우 변환 확인."""
+        valid_from_dt = datetime(2026, 1, 1, 0, 0, 0)
+        valid_until_dt = datetime(2027, 12, 31, 23, 59, 59)
+        internal = DocumentMetadata(
+            doc_id="doc-500",
+            doc_type="law",
+            source="법제처",
+            title="환경보전법",
+            category="법령",
+            reliability_score=1.0,
+            created_at=_NOW_ISO,
+            updated_at=_NOW_ISO,
+            valid_from=valid_from_dt.isoformat(),
+            valid_until=valid_until_dt.isoformat(),
+        )
+        result = from_internal_metadata(internal)
+
+        assert result.source_type == IndexType.LAW
+        assert result.valid_from == valid_from_dt
+        assert result.valid_until == valid_until_dt
+
+    def test_conversion_invalid_doc_type_raises(self):
+        """유효하지 않은 doc_type은 ValueError."""
+        internal = DocumentMetadata(
+            doc_id="doc-600",
+            doc_type="unknown",
+            source="테스트",
+            title="테스트",
+            category="테스트",
+            reliability_score=0.5,
+            created_at=_NOW_ISO,
+            updated_at=_NOW_ISO,
+        )
+        with pytest.raises(ValueError):
+            from_internal_metadata(internal)

@@ -13,8 +13,8 @@ class RetrievedCase(BaseModel):
     score: float
 
 class GenerateRequest(BaseModel):
-    prompt: str = Field(..., description="The input prompt for generation.")
-    max_tokens: int = Field(default=512, gt=0, description="Maximum number of tokens to generate.")
+    prompt: str = Field(..., min_length=1, max_length=10000, description="The input prompt for generation.")
+    max_tokens: int = Field(default=512, gt=0, le=4096, description="Maximum number of tokens to generate.")
     temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="Sampling temperature.")
     top_p: float = Field(default=0.9, ge=0.0, le=1.0, description="Top-p sampling parameter.")
     stream: bool = Field(default=False, description="Whether to stream the output using SSE.")
@@ -72,6 +72,23 @@ class DocumentMetadataSchema(BaseModel):
                 f"chunk_index({self.chunk_index})는 total_chunks({self.total_chunks})보다 작아야 합니다"
             )
         return self
+
+
+class SearchRequest(BaseModel):
+    """확장 검색 요청 모델."""
+
+    query: str = Field(..., min_length=1, max_length=2000, description="검색 쿼리 텍스트")
+    doc_type: IndexType = Field(default=IndexType.CASE, description="검색 대상 문서 타입")
+    top_k: int = Field(default=5, gt=0, le=50, description="반환할 최대 결과 수")
+
+
+class SearchResponse(BaseModel):
+    """확장 검색 응답 모델."""
+
+    query: str
+    doc_type: IndexType
+    results: List["SearchResult"]
+    total: int
 
 
 class SearchResult(BaseModel):
@@ -141,6 +158,7 @@ def from_internal_metadata(
     )
 
 
-# GenerateResponse.search_results forward-ref 해소
+# forward-ref 해소
 GenerateResponse.model_rebuild()
 StreamResponse.model_rebuild()
+SearchResponse.model_rebuild()

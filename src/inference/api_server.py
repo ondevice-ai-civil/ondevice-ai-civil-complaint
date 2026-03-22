@@ -1,17 +1,56 @@
 import json
-import uuid
 import os
+import re
+import uuid
 from typing import AsyncGenerator, List
-from fastapi import FastAPI, Request, HTTPException
+
+from fastapi import Depends, FastAPI, HTTPException, Request, Security
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.security import APIKeyHeader
+from loguru import logger
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.engine.async_llm_engine import AsyncLLMEngine
 from vllm.sampling_params import SamplingParams
 from contextlib import asynccontextmanager
 
 from .vllm_stabilizer import apply_transformers_patch
-from .schemas import GenerateRequest, GenerateResponse, StreamResponse, RetrievedCase
+from .schemas import (
+    GenerateRequest,
+    GenerateResponse,
+    SearchRequest,
+    SearchResponse,
+    SearchResult,
+    StreamResponse,
+    RetrievedCase,
+)
 from .retriever import CivilComplaintRetriever
+
+# --- Rate Limiting (optional) ---
+try:
+    from slowapi import Limiter
+    from slowapi.util import get_remote_address
+    from slowapi.errors import RateLimitExceeded
+    from slowapi.middleware import SlowAPIMiddleware
+
+    limiter = Limiter(key_func=get_remote_address)
+    _RATE_LIMIT_AVAILABLE = True
+except ImportError:
+    limiter = None
+    _RATE_LIMIT_AVAILABLE = False
+
+# --- API Key Authentication ---
+_API_KEY = os.getenv("API_KEY")
+_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+async def verify_api_key(api_key: str = Security(_api_key_header)):
+    """API Key 인증. API_KEY 환경변수 미설정 시 인증을 건너뛴다."""
+    if _API_KEY is None:
+        return  # API_KEY 미설정 시 인증 건너뜀 (개발 환경 호환)
+    if api_key != _API_KEY:
+        raise HTTPException(status_code=401, detail="유효하지 않은 API 키입니다.")
+
 
 # --- M3 Optimized Configuration ---
 MODEL_PATH = os.getenv("MODEL_PATH", "umyunsang/GovOn-EXAONE-LoRA-v2")
@@ -26,16 +65,15 @@ TRUST_REMOTE_CODE = True
 # Apply EXAONE-specific runtime patches
 apply_transformers_patch()
 
+
 class vLLMEngineManager:
     """Manages the global AsyncLLMEngine and Retriever lifecycle for M3 Phase."""
     def __init__(self):
         self.engine: AsyncLLMEngine = None
         self.retriever: CivilComplaintRetriever = None
+        self.index_manager = None
 
     async def initialize(self):
-        # Resolve paths relative to project root if necessary
-        # Assuming the server is run from the project root
-        
         # 1. Initialize Optimized vLLM Engine
         engine_args = AsyncEngineArgs(
             model=MODEL_PATH,
@@ -43,13 +81,13 @@ class vLLMEngineManager:
             gpu_memory_utilization=GPU_UTILIZATION,
             max_model_len=MAX_MODEL_LEN,
             dtype="half",
-            enforce_eager=True # More stable for patched EXAONE
+            enforce_eager=True  # More stable for patched EXAONE
         )
-        print(f"Initializing vLLM M3 engine with model: {MODEL_PATH}")
+        logger.info(f"Initializing vLLM M3 engine with model: {MODEL_PATH}")
         self.engine = AsyncLLMEngine.from_engine_args(engine_args)
-        
+
         # 2. Initialize RAG Retriever
-        print(f"Initializing RAG Retriever with index: {INDEX_PATH}")
+        logger.info(f"Initializing RAG Retriever with index: {INDEX_PATH}")
         self.retriever = CivilComplaintRetriever(
             index_path=INDEX_PATH if os.path.exists(INDEX_PATH) else None,
             data_path=DATA_PATH if not os.path.exists(INDEX_PATH) else None
@@ -61,40 +99,47 @@ class vLLMEngineManager:
         """Escape EXAONE chat template tokens to prevent prompt injection."""
         tokens = ["[|user|]", "[|assistant|]", "[|system|]", "[|endofturn|]", "<thought>", "</thought>"]
         for token in tokens:
-            text = text.replace(token, token.replace("[", "\[").replace("]", "\]").replace("<", "\<").replace(">", "\>"))
+            text = text.replace(token, token.replace("[", "\\[").replace("]", "\\]").replace("<", "\\<").replace(">", "\\>"))
         return text
 
     def _augment_prompt(self, prompt: str, retrieved_cases: List[dict]) -> str:
         """Augment the prompt with retrieved similar cases (RAG)."""
         if not retrieved_cases:
             return prompt
-            
+
         rag_context = "\n\n### 참고 사례 (유사 민원 및 답변):\n"
         for i, case in enumerate(retrieved_cases):
-            # Escape retrieved content to prevent prompt injection
-            safe_complaint = self._escape_special_tokens(case['complaint'])
-            safe_answer = self._escape_special_tokens(case['answer'])
+            # M-2: .get() 사용으로 KeyError 방지
+            safe_complaint = self._escape_special_tokens(case.get('complaint', ''))
+            safe_answer = self._escape_special_tokens(case.get('answer', ''))
             rag_context += f"{i+1}. [민원]: {safe_complaint}\n   [답변]: {safe_answer}\n\n"
-        
+
         # Structure the prompt for EXAONE Chat Template
         if "[|user|]" in prompt:
             parts = prompt.split("[|user|]")
             return f"{parts[0]}[|user|]{rag_context}위 참고 사례를 바탕으로 다음 민원에 대해 답변해 주세요.\n\n{parts[1]}"
         return f"{rag_context}\n\n{prompt}"
 
+    def _extract_query(self, prompt: str) -> str:
+        """m-5: 정규식 기반 쿼리 추출."""
+        user_match = re.search(r"\[\|user\|\](.*?)\[\|endofturn\|\]", prompt, re.DOTALL)
+        if user_match:
+            user_block = user_match.group(1)
+            complaint_match = re.search(r"민원\s*내용\s*:\s*(.+)", user_block, re.DOTALL)
+            if complaint_match:
+                return complaint_match.group(1).strip()
+            return user_block.strip()
+        return prompt
+
     async def generate(self, request: GenerateRequest, request_id: str) -> tuple:
         # 1. RAG: Retrieve similar cases if enabled
         retrieved_cases = []
         augmented_prompt = request.prompt
-        
+
         if request.use_rag and self.retriever:
-            # Simple query extraction
-            query = request.prompt
-            if "민원 내용:" in query:
-                query = query.split("민원 내용:")[1].split("[|endofturn|]")[0].strip()
-            elif "[|user|]" in query:
-                query = query.split("[|user|]")[1].split("[|endofturn|]")[0].strip()
-                
+            # M-4: 사용자 입력에도 escape 적용
+            query = self._escape_special_tokens(self._extract_query(request.prompt))
+
             retrieved_cases = self.retriever.search(query, top_k=3)
             augmented_prompt = self._augment_prompt(request.prompt, retrieved_cases)
 
@@ -104,12 +149,13 @@ class vLLMEngineManager:
             top_p=request.top_p,
             max_tokens=request.max_tokens,
             stop=request.stop,
-            repetition_penalty=1.1 # Added for EXAONE stability
+            repetition_penalty=1.1  # Added for EXAONE stability
         )
-        
+
         return self.engine.generate(augmented_prompt, sampling_params, request_id), retrieved_cases
 
 manager = vLLMEngineManager()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -123,23 +169,68 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# --- m-6: CORS 미들웨어 ---
+ALLOWED_ORIGINS = os.getenv("CORS_ORIGINS", "").split(",")
+if ALLOWED_ORIGINS and ALLOWED_ORIGINS[0]:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=ALLOWED_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+# --- C-2: Rate Limiting 미들웨어 ---
+if _RATE_LIMIT_AVAILABLE and limiter is not None:
+    app.state.limiter = limiter
+    app.add_middleware(SlowAPIMiddleware)
+
+
+# --- H-1: /health 정보 노출 최소화 ---
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "model": MODEL_PATH, "rag_enabled": manager.retriever is not None}
+    index_summary = None
+    if manager.index_manager:
+        stats = manager.index_manager.get_index_stats()
+        index_summary = {
+            idx_type: {
+                "loaded": info.get("loaded", False),
+                "doc_count": info.get("doc_count", 0),
+            }
+            for idx_type, info in stats.get("indexes", {}).items()
+        }
+    return {
+        "status": "healthy",
+        "rag_enabled": manager.index_manager is not None or manager.retriever is not None,
+        "indexes": index_summary,
+    }
+
+
+# --- C-2: Rate limit decorator helper ---
+def _rate_limit(limit_string: str):
+    """slowapi가 사용 가능할 때만 rate limit 데코레이터를 반환한다."""
+    if _RATE_LIMIT_AVAILABLE and limiter is not None:
+        return limiter.limit(limit_string)
+    # slowapi 미설치 시 아무 동작도 하지 않는 패스스루 데코레이터
+    def _noop(func):
+        return func
+    return _noop
+
 
 @app.post("/v1/generate", response_model=GenerateResponse)
-async def generate(request: GenerateRequest):
+@_rate_limit("30/minute")
+async def generate(request: GenerateRequest, _: None = Depends(verify_api_key)):
     """Non-streaming text generation."""
     if request.stream:
         raise HTTPException(status_code=400, detail="Use /v1/stream for streaming.")
-    
+
     request_id = str(uuid.uuid4())
     results_generator, retrieved_cases = await manager.generate(request, request_id)
-    
+
     final_output = None
     async for request_output in results_generator:
         final_output = request_output
-    
+
     if final_output is None:
         raise HTTPException(status_code=500, detail="Generation failed.")
 
@@ -151,33 +242,78 @@ async def generate(request: GenerateRequest):
         retrieved_cases=[RetrievedCase(**c) for c in retrieved_cases]
     )
 
+
 @app.post("/v1/stream")
-async def stream_generate(request: GenerateRequest):
+@_rate_limit("30/minute")
+async def stream_generate(request: GenerateRequest, _: None = Depends(verify_api_key)):
     """Streaming text generation using SSE."""
     if not request.stream:
         request.stream = True
-    
+
     request_id = str(uuid.uuid4())
     results_generator, retrieved_cases = await manager.generate(request, request_id)
-    
+
     async def stream_results() -> AsyncGenerator[str, None]:
         cases_data = [RetrievedCase(**c).model_dump() for c in retrieved_cases]
-        
+
         async for request_output in results_generator:
             text = request_output.outputs[0].text
             finished = request_output.finished
-            
+
             response_obj = {
-                "request_id": request_id, 
-                "text": text, 
+                "request_id": request_id,
+                "text": text,
                 "finished": finished
             }
             if finished:
                 response_obj["retrieved_cases"] = cases_data
-                
+
             yield f"data: {json.dumps(response_obj)}\n\n"
 
     return StreamingResponse(stream_results(), media_type="text/event-stream")
+
+
+# --- S-1: /search 엔드포인트 ---
+@app.post("/search", response_model=SearchResponse)
+@_rate_limit("60/minute")
+async def search(request: SearchRequest, req: Request, _: None = Depends(verify_api_key)):
+    """확장 검색 엔드포인트. doc_type은 IndexType enum으로 자동 검증된다."""
+    try:
+        if not manager.index_manager:
+            raise HTTPException(status_code=503, detail="검색 인덱스가 아직 초기화되지 않았습니다.")
+
+        # index_manager.search는 query_vector를 기대하므로 임베딩 변환 필요
+        # 여기서는 retriever가 있으면 retriever를 통해 검색
+        if manager.retriever:
+            raw_results = manager.retriever.search(request.query, top_k=request.top_k)
+            results = [
+                SearchResult(
+                    doc_id=raw.get("doc_id", ""),
+                    source_type=request.doc_type,
+                    title=raw.get("category", ""),
+                    content=raw.get("complaint", "") + "\n" + raw.get("answer", ""),
+                    score=raw.get("score", 0.0),
+                    # m-1: reliability_score 기본값 0.6
+                    reliability_score=raw.get("reliability_score", 0.6),
+                )
+                for raw in raw_results
+            ]
+        else:
+            results = []
+
+        return SearchResponse(
+            query=request.query,
+            doc_type=request.doc_type,
+            results=results,
+            total=len(results),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        # C-3: 내부 예외 정보 노출 방지
+        logger.error(f"검색 중 오류 발생: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="검색 처리 중 내부 오류가 발생했습니다.")
+
 
 if __name__ == "__main__":
     import uvicorn

@@ -39,6 +39,11 @@ python-dotenv>=1.0.0
 pyyaml>=6.0.0
 loguru>=0.7.0
 
+# Database
+sqlalchemy>=2.0.0
+alembic>=1.12.0
+psycopg2-binary>=2.9.0
+
 # Testing
 pytest>=7.4.0
 pytest-cov>=4.1.0

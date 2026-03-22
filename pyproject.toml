@@ -92,8 +92,14 @@ inference = [
     "uvicorn>=0.23.0",
 ]
 
+database = [
+    "sqlalchemy>=2.0.0",
+    "alembic>=1.12.0",
+    "psycopg2-binary>=2.9.0",
+]
+
 all = [
-    "GovOn[dev,korean-nlp,inference]",
+    "GovOn[dev,korean-nlp,inference,database]",
 ]
 
 [project.urls]

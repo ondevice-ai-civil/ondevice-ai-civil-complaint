@@ -34,35 +34,43 @@ class vLLMEngineManager:
         self.agent_manager: AgentManager = None
 
     async def initialize(self):
-        # 1. Initialize Optimized vLLM Engine
-        engine_args = AsyncEngineArgs(
-            model=MODEL_PATH,
-            trust_remote_code=TRUST_REMOTE_CODE,
-            gpu_memory_utilization=GPU_UTILIZATION,
-            max_model_len=MAX_MODEL_LEN,
-            dtype="half",
-            enforce_eager=True
-        )
-        print(f"Initializing vLLM M3 engine with model: {MODEL_PATH}")
-        self.engine = AsyncLLMEngine.from_engine_args(engine_args)
-        
-        # 2. Initialize RAG Retriever
-        print(f"Initializing RAG Retriever with index: {INDEX_PATH}")
-        self.retriever = CivilComplaintRetriever(
-            index_path=INDEX_PATH if os.path.exists(INDEX_PATH) else None,
-            data_path=DATA_PATH if not os.path.exists(INDEX_PATH) else None
-        )
-        if self.retriever.index is not None and not os.path.exists(INDEX_PATH):
-            self.retriever.save_index(INDEX_PATH)
+        try:
+            # 1. Initialize Optimized vLLM Engine
+            engine_args = AsyncEngineArgs(
+                model=MODEL_PATH,
+                trust_remote_code=TRUST_REMOTE_CODE,
+                gpu_memory_utilization=GPU_UTILIZATION,
+                max_model_len=MAX_MODEL_LEN,
+                dtype="half",
+                enforce_eager=True
+            )
+            print(f"Initializing vLLM M3 engine with model: {MODEL_PATH}")
+            self.engine = AsyncLLMEngine.from_engine_args(engine_args)
             
-        # 3. Initialize AgentManager (Multi-Agent Persona)
-        self.agent_manager = AgentManager()
+            # 2. Initialize RAG Retriever
+            print(f"Initializing RAG Retriever with index: {INDEX_PATH}")
+            self.retriever = CivilComplaintRetriever(
+                index_path=INDEX_PATH if os.path.exists(INDEX_PATH) else None,
+                data_path=DATA_PATH if not os.path.exists(INDEX_PATH) else None
+            )
+            if self.retriever.index is not None and not os.path.exists(INDEX_PATH):
+                self.retriever.save_index(INDEX_PATH)
+                
+            # 3. Initialize AgentManager (Multi-Agent Persona)
+            self.agent_manager = AgentManager()
+            if not self.agent_manager.personas:
+                raise RuntimeError("No agent personas loaded. Check agents directory.")
+                
+        except Exception as e:
+            print(f"Critical failure during vLLM Manager initialization: {e}")
+            raise
 
     def _escape_special_tokens(self, text: str) -> str:
         """Escape EXAONE chat template tokens to prevent prompt injection."""
+        # More comprehensive escape for M3 stability
         tokens = ["[|user|]", "[|assistant|]", "[|system|]", "[|endofturn|]", "<thought>", "</thought>"]
         for token in tokens:
-            text = text.replace(token, token.replace("[", "\[").replace("]", "\]").replace("<", "\<").replace(">", "\>"))
+            text = text.replace(token, token.replace("[", "\\[").replace("]", "\\]").replace("<", "\\<").replace(">", "\\>"))
         return text
 
     def _augment_prompt(self, prompt: str, retrieved_cases: List[dict]) -> str:
@@ -76,8 +84,9 @@ class vLLMEngineManager:
             safe_answer = self._escape_special_tokens(case['answer'])
             rag_context += f"{i+1}. [민원]: {safe_complaint}\n   [답변]: {safe_answer}\n\n"
         
+        # Structure the prompt for EXAONE Chat Template
         if "[|user|]" in prompt:
-            parts = prompt.split("[|user|]")
+            parts = prompt.split("[|user|]", 1)
             return f"{parts[0]}[|user|]{rag_context}위 참고 사례를 바탕으로 다음 민원에 대해 답변해 주세요.\n\n{parts[1]}"
         return f"{rag_context}\n\n{prompt}"
 
@@ -87,6 +96,7 @@ class vLLMEngineManager:
         augmented_prompt = request.prompt
         
         if request.use_rag and self.retriever:
+            # Extract actual complaint for search
             query = request.prompt
             if "민원 내용:" in query:
                 query = query.split("민원 내용:")[1].split("[|endofturn|]")[0].strip()
@@ -97,7 +107,13 @@ class vLLMEngineManager:
             augmented_prompt = self._augment_prompt(request.prompt, retrieved_cases)
 
         # 2. Agent Personalization
-        final_prompt = self.agent_manager.wrap_with_persona(agent_type, augmented_prompt)
+        persona = self.agent_manager.get_persona(agent_type)
+        if not persona:
+            print(f"Warning: Persona '{agent_type}' not found. Using default.")
+            persona = "You are a helpful assistant."
+
+        # Final EXAONE Prompt Assembly
+        final_prompt = f"[|system|]{persona}[|endofturn|][|user|]{augmented_prompt}[|assistant|]"
 
         # 3. vLLM Generation
         sampling_params = SamplingParams(

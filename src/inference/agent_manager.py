@@ -14,27 +14,40 @@ class AgentManager:
 
     def _load_all_agents(self):
         """Load all .md agent definitions from the directory."""
-        if not os.path.exists(self.agents_dir):
-            # Fallback for relative path issues in different environments
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            self.agents_dir = os.path.join(base_dir, "inference", "agents")
+        # Robust path resolution: Use the file's location as a base
+        current_file_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        if not os.path.isabs(self.agents_dir):
+            self.agents_dir = os.path.join(current_file_dir, "agents")
 
         if not os.path.exists(self.agents_dir):
-            print(f"Warning: Agents directory not found at {self.agents_dir}")
+            # Try project root fallback if needed
+            project_root = os.path.dirname(os.path.dirname(current_file_dir))
+            self.agents_dir = os.path.join(project_root, "src", "inference", "agents")
+
+        if not os.path.exists(self.agents_dir):
+            print(f"Error: Agents directory not found at {self.agents_dir}")
             return
 
         for filename in os.listdir(self.agents_dir):
             if filename.endswith(".md"):
                 agent_name = filename[:-3]
                 file_path = os.path.join(self.agents_dir, filename)
-                with open(file_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-                    # Optionally strip YAML frontmatter if present
-                    if content.startswith("---"):
-                        _, _, body = content.split("---", 2)
-                        self.personas[agent_name] = body.strip()
-                    else:
-                        self.personas[agent_name] = content.strip()
+                try:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        content = f.read().strip()
+                        # Better YAML parsing: check if starts and has a closing ---
+                        if content.startswith("---"):
+                            parts = content.split("---")
+                            if len(parts) >= 3:
+                                # Body is everything after the second ---
+                                self.personas[agent_name] = "---".join(parts[2:]).strip()
+                            else:
+                                self.personas[agent_name] = content
+                        else:
+                            self.personas[agent_name] = content
+                except Exception as e:
+                    print(f"Failed to load agent {agent_name}: {e}")
         
         print(f"Loaded {len(self.personas)} agent personas: {list(self.personas.keys())}")
 

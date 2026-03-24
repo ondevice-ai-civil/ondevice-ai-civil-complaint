@@ -247,7 +247,8 @@ class TestBM25IndexerPersistence:
         """A pickle missing required keys raises ValueError with a clear message."""
         bad_path = tmp_path / "bad.pkl"
         with open(bad_path, "wb") as f:
-            pickle.dump({"some_key": "no bm25 here"}, f)
+            # Include valid version but missing bm25/tokenized_corpus/doc_count
+            pickle.dump({"version": 1, "some_key": "no bm25 here"}, f)
         idx = BM25Indexer(tokenizer_type="okt")
         with pytest.raises(ValueError, match="incompatible schema"):
             idx.load(str(bad_path))
@@ -260,7 +261,7 @@ class TestBM25IndexerPersistence:
 
         # Patch saved tokenizer_type to simulate a mismatch
         with open(save_path, "rb") as f:
-            payload = pickle.load(f)
+            payload = pickle.loads(f.read())
         payload["tokenizer_type"] = "mecab"
         with open(save_path, "wb") as f:
             pickle.dump(payload, f)
@@ -270,6 +271,64 @@ class TestBM25IndexerPersistence:
             loaded.load(save_path)
             warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
             assert any("mismatch" in c.lower() for c in warning_calls)
+
+    def test_load_version_mismatch_raises(self, indexer, tmp_path):
+        """Loading an index with a different payload version raises ValueError."""
+        save_path = str(tmp_path / "bm25.pkl")
+        indexer.save(save_path)
+
+        # Patch version to simulate mismatch
+        with open(save_path, "rb") as f:
+            payload = pickle.loads(f.read())
+        payload["version"] = 999
+        with open(save_path, "wb") as f:
+            pickle.dump(payload, f)
+
+        loaded = BM25Indexer(tokenizer_type="okt")
+        with pytest.raises(ValueError, match="version mismatch"):
+            loaded.load(save_path)
+
+    def test_hmac_sign_and_verify(self, indexer, tmp_path, monkeypatch):
+        """When HMAC key is set, save() writes .sig and load() verifies it."""
+        monkeypatch.setenv("BM25_INDEX_HMAC_KEY", "test-secret-key-1234")
+        save_path = str(tmp_path / "bm25.pkl")
+        indexer.save(save_path)
+
+        # .sig file should exist
+        sig_path = save_path + ".sig"
+        assert os.path.exists(sig_path)
+
+        # load should succeed with correct sig
+        loaded = BM25Indexer(tokenizer_type="okt")
+        loaded.load(save_path)
+        assert loaded.is_ready()
+        assert loaded.doc_count == indexer.doc_count
+
+    def test_hmac_tampered_file_raises(self, indexer, tmp_path, monkeypatch):
+        """Tampered index file fails HMAC verification."""
+        monkeypatch.setenv("BM25_INDEX_HMAC_KEY", "test-secret-key-1234")
+        save_path = str(tmp_path / "bm25.pkl")
+        indexer.save(save_path)
+
+        # Tamper with the index file
+        with open(save_path, "ab") as f:
+            f.write(b"tampered")
+
+        loaded = BM25Indexer(tokenizer_type="okt")
+        with pytest.raises(ValueError, match="HMAC verification failed"):
+            loaded.load(save_path)
+
+    def test_hmac_missing_sig_raises(self, indexer, tmp_path, monkeypatch):
+        """Missing .sig file when HMAC key is set raises ValueError."""
+        # Save without HMAC key
+        save_path = str(tmp_path / "bm25.pkl")
+        indexer.save(save_path)
+
+        # Now try loading with HMAC key — .sig doesn't exist
+        monkeypatch.setenv("BM25_INDEX_HMAC_KEY", "test-secret-key-1234")
+        loaded = BM25Indexer(tokenizer_type="okt")
+        with pytest.raises(ValueError, match="signature file missing"):
+            loaded.load(save_path)
 
 
 # ---------------------------------------------------------------------------
@@ -329,6 +388,17 @@ class TestBM25IndexerRegressions:
         idx = BM25Indexer(tokenizer_type="okt")
         idx.build_index_from_jsonl(str(path))
         assert idx.doc_count == len(SAMPLE_DOCUMENTS)
+
+    def test_build_from_jsonl_auto_extracts_template(self, jsonl_file):
+        """JSONL with EXAONE templates in 'text' field auto-extracts complaint."""
+        idx = BM25Indexer(tokenizer_type="okt")
+        idx.build_index_from_jsonl(jsonl_file)
+        assert idx.is_ready()
+        # Should find "도로 포장 균열" in extracted text, not in raw template
+        results = idx.search("도로 포장 균열", top_k=3)
+        assert len(results) > 0
+        top_idx, _ = results[0]
+        assert top_idx == 0
 
 
 # ---------------------------------------------------------------------------

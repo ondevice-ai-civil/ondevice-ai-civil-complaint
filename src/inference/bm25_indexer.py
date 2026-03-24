@@ -11,8 +11,16 @@ Known limitation:
     (df == N). search() returns only positive-scoring results, so a single-
     document corpus may return empty results for exact-match queries.
     In practice this does not occur at production scale (10k+ documents).
+
+Security:
+    Uses pickle for BM25Okapi serialization. Only load index files from
+    trusted sources within the closed-network environment. When the
+    BM25_INDEX_HMAC_KEY environment variable is set, save() signs the
+    payload and load() verifies the HMAC before deserialization.
 """
 
+import hashlib
+import hmac
 import json
 import os
 import pickle
@@ -25,12 +33,12 @@ from rank_bm25 import BM25Okapi
 
 # Minimal Korean stopwords relevant to civil complaints
 # Defined before KoreanTokenizer to avoid forward-reference maintenance hazard.
-_STOPWORDS = {
+_STOPWORDS = frozenset({
     "이다", "있다", "하다", "되다", "없다", "않다", "이런", "저런", "그런",
     "합니다", "입니다", "습니다", "됩니다", "있습니다", "없습니다",
     "에서", "으로", "에게", "까지", "부터", "에서는", "으로는",
     "그리고", "하지만", "그러나", "따라서", "그래서",
-}
+})
 
 
 class KoreanTokenizer:
@@ -81,7 +89,10 @@ class KoreanTokenizer:
             # Filter single characters and common stopwords
             return [t for t in tokens if len(t) > 1 and t not in _STOPWORDS]
         except Exception as e:
-            logger.warning(f"Tokenization error: {e}. Falling back to whitespace split.")
+            logger.warning(
+                f"Tokenization error (len={len(text)}): {type(e).__name__}. "
+                "Falling back to whitespace split."
+            )
             return [t for t in str(text).split() if len(t) > 1]
 
 
@@ -111,6 +122,7 @@ class BM25Indexer:
     """
 
     _PAYLOAD_VERSION = 1
+    _HMAC_KEY_ENV = "BM25_INDEX_HMAC_KEY"
 
     def __init__(self, tokenizer_type: str = "auto"):
         self.tokenizer = KoreanTokenizer(tokenizer_type)
@@ -191,7 +203,12 @@ class BM25Indexer:
                 try:
                     item = json.loads(line)
                     if text_field in item:
-                        text = item[text_field]
+                        raw = item[text_field]
+                        # Auto-extract complaint from EXAONE chat template
+                        if isinstance(raw, str) and "[|user|]" in raw:
+                            text = self._extract_complaint_from_template(raw)
+                        else:
+                            text = raw
                     elif "complaint" in item:
                         text = item["complaint"]
                     else:
@@ -219,8 +236,8 @@ class BM25Indexer:
                 if "민원 내용:" in user_part:
                     return user_part.split("민원 내용:")[1].strip()
                 return user_part.strip()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Template extraction fallback: {type(e).__name__}")
         return text
 
     # ------------------------------------------------------------------
@@ -280,8 +297,11 @@ class BM25Indexer:
         """
         Serialize and save the BM25 index to disk.
 
-        Note: Uses pickle for BM25Okapi serialization. Only load index files
-        from trusted sources within the closed-network environment.
+        Security: Uses pickle for BM25Okapi serialization. When the
+        ``BM25_INDEX_HMAC_KEY`` environment variable is set, the payload is
+        signed with HMAC-SHA256 and a ``.sig`` sidecar file is written. Only
+        load index files from trusted sources within the closed-network
+        environment.
 
         Args:
             path: Destination file path (e.g., "models/bm25_index/complaints.pkl").
@@ -300,29 +320,77 @@ class BM25Indexer:
             "doc_count": self._doc_count,
             "tokenizer_type": self.tokenizer.tokenizer_type,
         }
+        data = pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL)
+
+        # HMAC signing (when key is configured)
+        hmac_key = os.getenv(self._HMAC_KEY_ENV)
+        if hmac_key:
+            sig = hmac.new(hmac_key.encode(), data, hashlib.sha256).hexdigest()
+            sig_path = path + ".sig"
+            with open(sig_path, "w", encoding="utf-8") as sf:
+                sf.write(sig)
+            logger.info(f"HMAC signature written to {sig_path}")
+
         with open(path, "wb") as f:
-            pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
+            f.write(data)
         logger.info(f"BM25 index saved to {path} ({self._doc_count} documents).")
 
     def load(self, path: str) -> None:
         """
         Load a previously saved BM25 index from disk.
 
+        Security: When the ``BM25_INDEX_HMAC_KEY`` environment variable is
+        set, the HMAC-SHA256 signature is verified before deserialization.
+        Pickle deserialization can execute arbitrary code — only load files
+        from trusted sources within the closed-network environment.
+
         Args:
             path: Path to the pickle file saved by `save()`.
 
         Raises:
             FileNotFoundError: If the index file does not exist.
-            ValueError: If the file is corrupt or has an incompatible schema.
+            ValueError: If the file is corrupt, has an incompatible schema,
+                        or fails HMAC verification.
         """
         if not os.path.exists(path):
             raise FileNotFoundError(f"BM25 index file not found: {path}")
 
+        with open(path, "rb") as f:
+            data = f.read()
+
+        # HMAC verification (when key is configured)
+        hmac_key = os.getenv(self._HMAC_KEY_ENV)
+        if hmac_key:
+            sig_path = path + ".sig"
+            if not os.path.exists(sig_path):
+                raise ValueError(
+                    f"HMAC signature file missing: {sig_path}. "
+                    "Index file cannot be verified — rebuild the index."
+                )
+            with open(sig_path, "r", encoding="utf-8") as sf:
+                expected_sig = sf.read().strip()
+            actual_sig = hmac.new(
+                hmac_key.encode(), data, hashlib.sha256
+            ).hexdigest()
+            if not hmac.compare_digest(actual_sig, expected_sig):
+                raise ValueError(
+                    "BM25 index HMAC verification failed — file may be tampered. "
+                    "Rebuild the index with a trusted data source."
+                )
+            logger.info("HMAC signature verified.")
+
         try:
-            with open(path, "rb") as f:
-                payload = pickle.load(f)
+            payload = pickle.loads(data)
         except Exception as e:
             raise ValueError(f"Failed to load BM25 index (corrupt or incompatible): {e}") from e
+
+        # Payload version check
+        saved_version = payload.get("version")
+        if saved_version != self._PAYLOAD_VERSION:
+            raise ValueError(
+                f"BM25 index version mismatch: file has v{saved_version}, "
+                f"expected v{self._PAYLOAD_VERSION}. Rebuild the index."
+            )
 
         try:
             self.bm25 = payload["bm25"]

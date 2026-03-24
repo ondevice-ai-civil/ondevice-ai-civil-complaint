@@ -5,6 +5,12 @@ Provides sparse keyword-based retrieval using morpheme analysis (Okt/Mecab)
 and BM25Okapi ranking. Complements the dense FAISS retriever for hybrid search.
 
 Issue: #153
+
+Known limitation:
+    BM25Okapi assigns negative IDF when a term appears in every document
+    (df == N). search() returns only positive-scoring results, so a single-
+    document corpus may return empty results for exact-match queries.
+    In practice this does not occur at production scale (10k+ documents).
 """
 
 import json
@@ -15,6 +21,16 @@ from typing import List, Tuple, Optional
 import numpy as np
 from loguru import logger
 from rank_bm25 import BM25Okapi
+
+
+# Minimal Korean stopwords relevant to civil complaints
+# Defined before KoreanTokenizer to avoid forward-reference maintenance hazard.
+_STOPWORDS = {
+    "이다", "있다", "하다", "되다", "없다", "않다", "이런", "저런", "그런",
+    "합니다", "입니다", "습니다", "됩니다", "있습니다", "없습니다",
+    "에서", "으로", "에게", "까지", "부터", "에서는", "으로는",
+    "그리고", "하지만", "그러나", "따라서", "그래서",
+}
 
 
 class KoreanTokenizer:
@@ -61,21 +77,12 @@ class KoreanTokenizer:
         if not text or not text.strip():
             return []
         try:
-            tokens = self._tagger.morphs(text)
+            tokens = self._tagger.morphs(str(text))
             # Filter single characters and common stopwords
             return [t for t in tokens if len(t) > 1 and t not in _STOPWORDS]
         except Exception as e:
             logger.warning(f"Tokenization error: {e}. Falling back to whitespace split.")
-            return [t for t in text.split() if len(t) > 1]
-
-
-# Minimal Korean stopwords relevant to civil complaints
-_STOPWORDS = {
-    "이다", "있다", "하다", "되다", "없다", "않다", "이런", "저런", "그런",
-    "합니다", "입니다", "습니다", "됩니다", "있습니다", "없습니다",
-    "에서", "으로", "에게", "까지", "부터", "에서는", "으로는",
-    "그리고", "하지만", "그러나", "따라서", "그래서",
-}
+            return [t for t in str(text).split() if len(t) > 1]
 
 
 class BM25Indexer:
@@ -85,6 +92,12 @@ class BM25Indexer:
     Builds a sparse BM25Okapi index over tokenized Korean text,
     enabling keyword-exact matching for terms like law article numbers,
     department names, and specific complaint keywords.
+
+    Return type note:
+        search() returns List[Tuple[int, float]] — raw corpus indices and BM25
+        scores. This is intentionally lower-level than CivilComplaintRetriever
+        which returns List[Dict]. The HybridSearchEngine is responsible for
+        mapping indices to metadata and fusing scores across both retrievers.
 
     Usage:
         indexer = BM25Indexer()
@@ -97,11 +110,20 @@ class BM25Indexer:
         indexer2.load("models/bm25_index/complaints.pkl")
     """
 
+    _PAYLOAD_VERSION = 1
+
     def __init__(self, tokenizer_type: str = "auto"):
         self.tokenizer = KoreanTokenizer(tokenizer_type)
         self.bm25: Optional[BM25Okapi] = None
         self._tokenized_corpus: Optional[List[List[str]]] = None
         self._doc_count: int = 0
+
+    def __repr__(self) -> str:
+        return (
+            f"BM25Indexer(docs={self._doc_count}, "
+            f"tokenizer={self.tokenizer.tokenizer_type}, "
+            f"ready={self.is_ready()})"
+        )
 
     # ------------------------------------------------------------------
     # Index construction
@@ -113,19 +135,34 @@ class BM25Indexer:
 
         Args:
             documents: Raw text documents (one per entry).
+
+        Raises:
+            ValueError: If documents list is empty or all documents tokenize
+                        to empty token lists (would cause ZeroDivisionError
+                        inside BM25Okapi).
         """
         if not documents:
             raise ValueError("Document list is empty.")
 
-        logger.info(f"Tokenizing {len(documents)} documents...")
-        self._tokenized_corpus = [self.tokenizer.morphs(doc) for doc in documents]
+        if self.bm25 is not None:
+            logger.warning("Rebuilding BM25 index — existing index will be replaced.")
 
-        # Warn about empty tokenizations
-        empty_count = sum(1 for t in self._tokenized_corpus if not t)
+        logger.info(f"Tokenizing {len(documents)} documents...")
+        tokenized = [self.tokenizer.morphs(doc) for doc in documents]
+
+        empty_count = sum(1 for t in tokenized if not t)
         if empty_count:
             logger.warning(f"{empty_count} documents produced empty token lists.")
 
+        # Guard against all-empty corpus which causes ZeroDivisionError in BM25Okapi
+        if all(len(t) == 0 for t in tokenized):
+            raise ValueError(
+                "All documents produced empty token lists. "
+                "Check that documents contain valid Korean text."
+            )
+
         logger.info("Building BM25 index...")
+        self._tokenized_corpus = tokenized
         self.bm25 = BM25Okapi(self._tokenized_corpus)
         self._doc_count = len(documents)
         logger.info(f"BM25 index built: {self._doc_count} documents.")
@@ -158,10 +195,12 @@ class BM25Indexer:
                     elif "complaint" in item:
                         text = item["complaint"]
                     else:
-                        # Try extracting from EXAONE chat template
                         text = self._extract_complaint_from_template(
                             item.get("text", "")
                         )
+                    # Ensure text is always a string
+                    if not isinstance(text, str):
+                        text = str(text) if text is not None else ""
                     documents.append(text)
                 except (json.JSONDecodeError, KeyError) as e:
                     logger.warning(f"Line {line_no}: skipping due to error: {e}")
@@ -172,6 +211,8 @@ class BM25Indexer:
     @staticmethod
     def _extract_complaint_from_template(text: str) -> str:
         """Extract complaint content from EXAONE chat template format."""
+        if not text:
+            return text
         try:
             if "[|user|]" in text:
                 user_part = text.split("[|user|]")[1].split("[|endofturn|]")[0]
@@ -190,7 +231,9 @@ class BM25Indexer:
         """
         Search the BM25 index and return top-k (index, score) pairs.
 
-        Scores are raw BM25 values. Zero-score documents are excluded.
+        Only positive-scoring documents are returned. Scores are raw BM25
+        values and are not normalized — the HybridSearchEngine handles
+        score fusion (e.g., RRF) across dense and sparse retrievers.
 
         Args:
             query: Korean query string.
@@ -198,6 +241,9 @@ class BM25Indexer:
 
         Returns:
             List of (document_index, bm25_score) tuples, sorted by score desc.
+
+        Raises:
+            RuntimeError: If index has not been built or loaded.
         """
         if self.bm25 is None:
             raise RuntimeError("Index not built. Call build_index() first.")
@@ -210,7 +256,14 @@ class BM25Indexer:
             return []
 
         scores: np.ndarray = self.bm25.get_scores(tokenized_query)
-        top_indices = np.argsort(scores)[::-1][:top_k]
+
+        # Use argpartition O(N) instead of argsort O(N log N) for top-k selection
+        actual_k = min(top_k, len(scores))
+        if actual_k == 0:
+            return []
+
+        top_indices = np.argpartition(scores, -actual_k)[-actual_k:]
+        top_indices = top_indices[np.argsort(scores[top_indices])[::-1]]
 
         results = [
             (int(idx), float(scores[idx]))
@@ -227,7 +280,8 @@ class BM25Indexer:
         """
         Serialize and save the BM25 index to disk.
 
-        Saves both the BM25 model and its tokenized corpus in a single pickle.
+        Note: Uses pickle for BM25Okapi serialization. Only load index files
+        from trusted sources within the closed-network environment.
 
         Args:
             path: Destination file path (e.g., "models/bm25_index/complaints.pkl").
@@ -235,8 +289,12 @@ class BM25Indexer:
         if self.bm25 is None:
             raise RuntimeError("Index not built. Call build_index() first.")
 
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        # Fix: use abspath to avoid makedirs("") crash on bare filenames
+        parent = os.path.dirname(os.path.abspath(path))
+        os.makedirs(parent, exist_ok=True)
+
         payload = {
+            "version": self._PAYLOAD_VERSION,
             "bm25": self.bm25,
             "tokenized_corpus": self._tokenized_corpus,
             "doc_count": self._doc_count,
@@ -252,19 +310,41 @@ class BM25Indexer:
 
         Args:
             path: Path to the pickle file saved by `save()`.
+
+        Raises:
+            FileNotFoundError: If the index file does not exist.
+            ValueError: If the file is corrupt or has an incompatible schema.
         """
         if not os.path.exists(path):
             raise FileNotFoundError(f"BM25 index file not found: {path}")
 
-        with open(path, "rb") as f:
-            payload = pickle.load(f)
+        try:
+            with open(path, "rb") as f:
+                payload = pickle.load(f)
+        except Exception as e:
+            raise ValueError(f"Failed to load BM25 index (corrupt or incompatible): {e}") from e
 
-        self.bm25 = payload["bm25"]
-        self._tokenized_corpus = payload["tokenized_corpus"]
-        self._doc_count = payload["doc_count"]
+        try:
+            self.bm25 = payload["bm25"]
+            self._tokenized_corpus = payload["tokenized_corpus"]
+            self._doc_count = payload["doc_count"]
+        except (KeyError, TypeError) as e:
+            raise ValueError(
+                f"BM25 index file has incompatible schema (missing key: {e}). "
+                "Rebuild the index."
+            ) from e
+
+        saved_tokenizer = payload.get("tokenizer_type", "unknown")
+        if saved_tokenizer != self.tokenizer.tokenizer_type:
+            logger.warning(
+                f"Tokenizer mismatch: index was built with '{saved_tokenizer}' "
+                f"but current tokenizer is '{self.tokenizer.tokenizer_type}'. "
+                "Search recall may be degraded. Rebuild the index to resolve."
+            )
+
         logger.info(
             f"BM25 index loaded from {path} ({self._doc_count} documents, "
-            f"tokenizer: {payload.get('tokenizer_type', 'unknown')})."
+            f"tokenizer: {saved_tokenizer})."
         )
 
     # ------------------------------------------------------------------

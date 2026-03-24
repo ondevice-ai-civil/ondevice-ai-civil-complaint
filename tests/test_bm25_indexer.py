@@ -11,6 +11,7 @@ Tests cover:
 
 import json
 import os
+import pickle
 import tempfile
 import time
 
@@ -227,3 +228,124 @@ class TestBM25IndexerPersistence:
         idx = BM25Indexer(tokenizer_type="okt")
         with pytest.raises(RuntimeError):
             idx.save(str(tmp_path / "bm25.pkl"))
+
+    def test_save_flat_filename_no_crash(self, indexer, tmp_path, monkeypatch):
+        """save() with a flat filename (no dir component) must not crash."""
+        monkeypatch.chdir(tmp_path)
+        indexer.save("bm25_flat.pkl")
+        assert os.path.exists(tmp_path / "bm25_flat.pkl")
+
+    def test_load_corrupt_pickle_raises(self, tmp_path):
+        """Loading a corrupt file raises ValueError, not a raw UnpicklingError."""
+        corrupt = tmp_path / "corrupt.pkl"
+        corrupt.write_bytes(b"not a valid pickle")
+        idx = BM25Indexer(tokenizer_type="okt")
+        with pytest.raises(ValueError, match="corrupt or incompatible"):
+            idx.load(str(corrupt))
+
+    def test_load_incompatible_schema_raises(self, tmp_path):
+        """A pickle missing required keys raises ValueError with a clear message."""
+        bad_path = tmp_path / "bad.pkl"
+        with open(bad_path, "wb") as f:
+            pickle.dump({"some_key": "no bm25 here"}, f)
+        idx = BM25Indexer(tokenizer_type="okt")
+        with pytest.raises(ValueError, match="incompatible schema"):
+            idx.load(str(bad_path))
+
+    def test_load_tokenizer_mismatch_warns(self, indexer, tmp_path):
+        """Loading an index built with a different tokenizer emits a warning."""
+        from unittest.mock import patch
+        save_path = str(tmp_path / "bm25.pkl")
+        indexer.save(save_path)
+
+        # Patch saved tokenizer_type to simulate a mismatch
+        with open(save_path, "rb") as f:
+            payload = pickle.load(f)
+        payload["tokenizer_type"] = "mecab"
+        with open(save_path, "wb") as f:
+            pickle.dump(payload, f)
+
+        loaded = BM25Indexer(tokenizer_type="okt")
+        with patch("src.inference.bm25_indexer.logger") as mock_logger:
+            loaded.load(save_path)
+            warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
+            assert any("mismatch" in c.lower() for c in warning_calls)
+
+
+# ---------------------------------------------------------------------------
+# Bug regression tests (found by agents)
+# ---------------------------------------------------------------------------
+
+class TestBM25IndexerRegressions:
+    def test_all_empty_token_docs_raises(self):
+        """All-stopword corpus raises ValueError, not ZeroDivisionError."""
+        idx = BM25Indexer(tokenizer_type="okt")
+        all_stopword_docs = ["합니다 입니다 됩니다", "있습니다 없습니다 그래서"]
+        with pytest.raises(ValueError, match="empty token lists"):
+            idx.build_index(all_stopword_docs)
+
+    def test_search_top_k_exceeds_doc_count(self, indexer):
+        """top_k larger than corpus size does not crash."""
+        results = indexer.search("도로 포장", top_k=10_000)
+        assert len(results) <= indexer.doc_count
+
+    def test_rebuild_replaces_index(self):
+        """build_index() called twice replaces the previous index."""
+        idx = BM25Indexer(tokenizer_type="okt")
+        idx.build_index(["첫번째 문서"])
+        idx.build_index(SAMPLE_DOCUMENTS)
+        assert idx.doc_count == len(SAMPLE_DOCUMENTS)
+        assert idx.is_ready()
+
+    def test_search_stopwords_only_query(self, indexer):
+        """Query of pure stopwords returns empty list."""
+        results = indexer.search("합니다 입니다 됩니다", top_k=5)
+        assert results == []
+
+    def test_repr(self, indexer):
+        r = repr(indexer)
+        assert "BM25Indexer" in r
+        assert "ready=True" in r
+
+    def test_build_from_jsonl_malformed_lines(self, tmp_path):
+        """Malformed JSONL lines are skipped; valid lines still build the index."""
+        path = tmp_path / "partial.jsonl"
+        path.write_text(
+            '{"text": "정상 문서입니다 민원"}\nNOT_JSON\n{"text": "두번째 문서입니다 신고"}\n',
+            encoding="utf-8",
+        )
+        idx = BM25Indexer(tokenizer_type="okt")
+        idx.build_index_from_jsonl(str(path))
+        assert idx.doc_count == 2
+
+    def test_build_from_jsonl_complaint_field(self, tmp_path):
+        """JSONL records using 'complaint' field (not 'text') are indexed."""
+        path = tmp_path / "complaints.jsonl"
+        records = [{"complaint": doc} for doc in SAMPLE_DOCUMENTS]
+        path.write_text(
+            "\n".join(json.dumps(r, ensure_ascii=False) for r in records),
+            encoding="utf-8",
+        )
+        idx = BM25Indexer(tokenizer_type="okt")
+        idx.build_index_from_jsonl(str(path))
+        assert idx.doc_count == len(SAMPLE_DOCUMENTS)
+
+
+# ---------------------------------------------------------------------------
+# _extract_complaint_from_template unit tests
+# ---------------------------------------------------------------------------
+
+class TestExtractComplaintFromTemplate:
+    def test_extracts_minwon_naeyo(self):
+        text = "[|system|]sys[|endofturn|][|user|]민원 내용: 도로 포장 균열[|endofturn|][|assistant|]답변[|endofturn|]"
+        assert BM25Indexer._extract_complaint_from_template(text) == "도로 포장 균열"
+
+    def test_extracts_user_without_minwon_prefix(self):
+        text = "[|system|]sys[|endofturn|][|user|]그냥 내용입니다[|endofturn|]"
+        assert BM25Indexer._extract_complaint_from_template(text) == "그냥 내용입니다"
+
+    def test_returns_original_when_no_template(self):
+        assert BM25Indexer._extract_complaint_from_template("일반 텍스트") == "일반 텍스트"
+
+    def test_returns_empty_string_on_empty_input(self):
+        assert BM25Indexer._extract_complaint_from_template("") == ""

@@ -25,6 +25,7 @@ from .schemas import (
     RetrievedCase,
 )
 from .retriever import CivilComplaintRetriever
+from .agent_manager import AgentManager
 
 # --- Rate Limiting (optional) ---
 try:
@@ -61,6 +62,7 @@ INDEX_PATH = os.getenv("INDEX_PATH", "models/faiss_index/complaints.index")
 GPU_UTILIZATION = float(os.getenv("GPU_UTILIZATION", "0.8"))
 MAX_MODEL_LEN = int(os.getenv("MAX_MODEL_LEN", "8192"))
 TRUST_REMOTE_CODE = True
+AGENTS_DIR = os.getenv("AGENTS_DIR", "agents")
 
 # Apply EXAONE-specific runtime patches
 apply_transformers_patch()
@@ -72,6 +74,7 @@ class vLLMEngineManager:
         self.engine: AsyncLLMEngine = None
         self.retriever: CivilComplaintRetriever = None
         self.index_manager = None
+        self.agent_manager: AgentManager = None
 
     async def initialize(self):
         # 1. Initialize Optimized vLLM Engine
@@ -94,6 +97,11 @@ class vLLMEngineManager:
         )
         if self.retriever.index is not None and not os.path.exists(INDEX_PATH):
             self.retriever.save_index(INDEX_PATH)
+
+        # 3. Initialize Agent Manager
+        logger.info(f"Loading agent personas from: {AGENTS_DIR}")
+        self.agent_manager = AgentManager(AGENTS_DIR)
+        logger.info(f"Loaded agents: {self.agent_manager.list_agents()}")
 
     def _escape_special_tokens(self, text: str) -> str:
         """Escape EXAONE chat template tokens to prevent prompt injection."""
@@ -202,6 +210,7 @@ async def health():
     return {
         "status": "healthy",
         "rag_enabled": manager.index_manager is not None or manager.retriever is not None,
+        "agents_loaded": manager.agent_manager.list_agents() if manager.agent_manager else [],
         "indexes": index_summary,
     }
 
@@ -215,6 +224,52 @@ def _rate_limit(limit_string: str):
     def _noop(func):
         return func
     return _noop
+
+
+@app.post("/v1/classify")
+@_rate_limit("60/minute")
+async def classify(request: GenerateRequest, _: None = Depends(verify_api_key)):
+    """민원 분류 엔드포인트. classifier 에이전트 페르소나로 카테고리를 결정한다."""
+    if not manager.agent_manager or not manager.agent_manager.get_agent("classifier"):
+        raise HTTPException(status_code=503, detail="분류 에이전트가 로드되지 않았습니다.")
+
+    classifier = manager.agent_manager.get_agent("classifier")
+    safe_prompt = manager._escape_special_tokens(request.prompt)
+    classify_prompt = manager.agent_manager.build_prompt("classifier", safe_prompt)
+
+    request_id = str(uuid.uuid4())
+    sampling_params = SamplingParams(
+        temperature=classifier.temperature,
+        top_p=request.top_p,
+        max_tokens=classifier.max_tokens,
+    )
+
+    results_generator = manager.engine.generate(classify_prompt, sampling_params, request_id)
+
+    final_output = None
+    async for request_output in results_generator:
+        final_output = request_output
+
+    if final_output is None:
+        raise HTTPException(status_code=500, detail="분류 처리에 실패했습니다.")
+
+    response_text = final_output.outputs[0].text
+
+    classification = None
+    try:
+        json_match = re.search(r"\{.*\}", response_text, re.DOTALL)
+        if json_match:
+            classification = json.loads(json_match.group())
+    except (json.JSONDecodeError, AttributeError):
+        pass
+
+    return {
+        "request_id": request_id,
+        "text": response_text,
+        "classification": classification,
+        "prompt_tokens": len(final_output.prompt_token_ids),
+        "completion_tokens": len(final_output.outputs[0].token_ids),
+    }
 
 
 @app.post("/v1/generate", response_model=GenerateResponse)

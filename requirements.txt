@@ -22,6 +22,8 @@ pydantic>=2.0.0
 # RAG & Search (New for M3)
 sentence-transformers>=2.2.0
 faiss-cpu>=1.7.4
+rank-bm25>=0.2.2
+konlpy>=0.6.0
 
 # Data Processing
 pandas>=2.0.0

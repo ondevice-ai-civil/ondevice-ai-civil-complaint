@@ -116,7 +116,7 @@ class CivilComplaintRetriever:
             
         logger.info(f"Index loaded with {len(self.metadata)} entries.")
 
-    def search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    def search(self, query: str, top_k: int = 5, score_threshold: float = 0.85) -> List[Dict[str, Any]]:
         """Search for similar complaints using E5 'query:' prefix."""
         if self.index is None:
             logger.error("Index is not initialized.")
@@ -128,8 +128,10 @@ class CivilComplaintRetriever:
         results = []
         for dist, idx in zip(distances[0], indices[0]):
             if idx < len(self.metadata) and idx != -1:
-                item = self.metadata[idx].copy()
-                item['score'] = float(dist)
-                results.append(item)
+                score = float(dist)
+                if score >= score_threshold:
+                    item = self.metadata[idx].copy()
+                    item['score'] = score
+                    results.append(item)
                 
         return results

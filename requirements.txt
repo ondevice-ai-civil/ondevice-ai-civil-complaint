@@ -38,11 +38,8 @@ tqdm>=4.66.0
 python-dotenv>=1.0.0
 pyyaml>=6.0.0
 loguru>=0.7.0
-
-# Database
-sqlalchemy>=2.0.0
-alembic>=1.12.0
-psycopg2-binary>=2.9.0
+slowapi>=0.1.9
+limits>=3.12.0
 
 # Testing
 pytest>=7.4.0

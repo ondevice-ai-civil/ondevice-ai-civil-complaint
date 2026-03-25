@@ -723,3 +723,120 @@ class TestHealthEndpoint:
 
         assert resp.status_code == 200
         assert elapsed_ms < 500, f"헬스체크 응답 시간 {elapsed_ms:.1f}ms가 500ms를 초과"
+
+
+# ---------------------------------------------------------------------------
+# 정상 동작 테스트: POST /v1/classify
+# ---------------------------------------------------------------------------
+
+
+def _make_classify_output_mock(text='{"category": "traffic", "confidence": 0.95, "reason": "도로 관련 민원"}'):
+    """classifier용 vLLM 출력 mock을 반환한다."""
+    return _make_vllm_output_mock(text)
+
+
+@pytest.fixture
+def client_with_classifier(client):
+    """classifier 에이전트가 로드된 상태의 TestClient."""
+    from src.inference.agent_manager import AgentManager
+
+    original_am = getattr(manager, "agent_manager", None)
+    original_engine = getattr(manager, "engine", None)
+
+    # 임시 에이전트 디렉토리 생성
+    import tempfile, os
+    tmpdir = tempfile.mkdtemp()
+    with open(os.path.join(tmpdir, "classifier.md"), "w", encoding="utf-8") as f:
+        f.write(
+            "---\nname: classifier\nrole: Routing Specialist\n"
+            "description: 민원 분류\ntemperature: 0.0\nmax_tokens: 256\n"
+            "---\n\n당신은 민원 분류 전문가입니다.\n"
+        )
+    manager.agent_manager = AgentManager(tmpdir)
+    manager.engine = MagicMock()
+    manager.engine.generate = MagicMock(
+        return_value=_make_classify_output_mock()()
+    )
+
+    yield client
+
+    manager.agent_manager = original_am
+    manager.engine = original_engine
+    import shutil
+    shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+class TestClassifyEndpoint:
+    """POST /v1/classify 엔드포인트 테스트."""
+
+    def test_classify_valid_json(self, client_with_classifier):
+        """정상 분류: LLM이 유효 JSON을 반환하면 classification이 파싱된다."""
+        resp = client_with_classifier.post(
+            "/v1/classify", json={"prompt": "도로에 큰 구멍이 생겼습니다."}
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["classification"] is not None
+        assert body["classification"]["category"] == "traffic"
+        assert 0.0 <= body["classification"]["confidence"] <= 1.0
+        assert body["classification_error"] is None
+
+    def test_classify_invalid_json_returns_error(self, client_with_classifier):
+        """LLM이 비-JSON 응답 시 classification=null + classification_error 반환."""
+        manager.engine.generate = MagicMock(
+            return_value=_make_vllm_output_mock("이것은 JSON이 아닙니다.")()
+        )
+        resp = client_with_classifier.post(
+            "/v1/classify", json={"prompt": "테스트 민원"}
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["classification"] is None
+        assert body["classification_error"] is not None
+
+    def test_classify_invalid_category_returns_error(self, client_with_classifier):
+        """LLM이 허용되지 않은 category를 반환하면 classification_error가 설정된다."""
+        manager.engine.generate = MagicMock(
+            return_value=_make_vllm_output_mock(
+                '{"category": "invalid_cat", "confidence": 0.9, "reason": "test"}'
+            )()
+        )
+        resp = client_with_classifier.post(
+            "/v1/classify", json={"prompt": "테스트 민원"}
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["classification"] is None
+        assert body["classification_error"] is not None
+
+    def test_classify_agent_not_loaded_returns_503(self, client):
+        """classifier 에이전트 미로드 시 503을 반환한다."""
+        original = getattr(manager, "agent_manager", None)
+        manager.agent_manager = None
+
+        try:
+            resp = client.post(
+                "/v1/classify", json={"prompt": "테스트"}
+            )
+            assert resp.status_code == 503
+        finally:
+            manager.agent_manager = original
+
+    def test_classify_response_has_token_counts(self, client_with_classifier):
+        """응답에 prompt_tokens, completion_tokens가 포함된다."""
+        resp = client_with_classifier.post(
+            "/v1/classify", json={"prompt": "소음이 심합니다."}
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert isinstance(body["prompt_tokens"], int)
+        assert isinstance(body["completion_tokens"], int)
+
+    def test_classify_no_raw_text_in_response(self, client_with_classifier):
+        """응답에 LLM 원본 text 필드가 포함되지 않는다."""
+        resp = client_with_classifier.post(
+            "/v1/classify", json={"prompt": "테스트 민원"}
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "text" not in body

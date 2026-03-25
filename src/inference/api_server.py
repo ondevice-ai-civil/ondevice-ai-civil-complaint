@@ -2,6 +2,7 @@ import json
 import os
 import re
 import uuid
+from pathlib import Path
 from typing import AsyncGenerator, List
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Security
@@ -65,7 +66,8 @@ INDEX_PATH = os.getenv("INDEX_PATH", "models/faiss_index/complaints.index")
 GPU_UTILIZATION = float(os.getenv("GPU_UTILIZATION", "0.8"))
 MAX_MODEL_LEN = int(os.getenv("MAX_MODEL_LEN", "8192"))
 TRUST_REMOTE_CODE = True
-AGENTS_DIR = os.getenv("AGENTS_DIR", "agents")
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
+AGENTS_DIR = os.getenv("AGENTS_DIR", os.path.join(_PROJECT_ROOT, "agents"))
 
 # Apply EXAONE-specific runtime patches
 apply_transformers_patch()
@@ -113,17 +115,23 @@ class vLLMEngineManager:
             text = text.replace(token, token.replace("[", "\\[").replace("]", "\\]").replace("<", "\\<").replace(">", "\\>"))
         return text
 
+    def _build_rag_context(self, retrieved_cases: List[dict]) -> str:
+        """RAG 참고 사례 컨텍스트 문자열을 생성한다."""
+        if not retrieved_cases:
+            return ""
+        rag_context = "### 참고 사례 (유사 민원 및 답변):\n"
+        for i, case in enumerate(retrieved_cases):
+            safe_complaint = self._escape_special_tokens(case.get("complaint", ""))
+            safe_answer = self._escape_special_tokens(case.get("answer", ""))
+            rag_context += f"{i+1}. [민원]: {safe_complaint}\n   [답변]: {safe_answer}\n\n"
+        return rag_context
+
     def _augment_prompt(self, prompt: str, retrieved_cases: List[dict]) -> str:
-        """Augment the prompt with retrieved similar cases (RAG)."""
+        """Augment the prompt with retrieved similar cases (RAG). (레거시 폴백용)"""
         if not retrieved_cases:
             return prompt
 
-        rag_context = "\n\n### 참고 사례 (유사 민원 및 답변):\n"
-        for i, case in enumerate(retrieved_cases):
-            # M-2: .get() 사용으로 KeyError 방지
-            safe_complaint = self._escape_special_tokens(case.get('complaint', ''))
-            safe_answer = self._escape_special_tokens(case.get('answer', ''))
-            rag_context += f"{i+1}. [민원]: {safe_complaint}\n   [답변]: {safe_answer}\n\n"
+        rag_context = "\n\n" + self._build_rag_context(retrieved_cases)
 
         # Structure the prompt for EXAONE Chat Template
         if "[|user|]" in prompt:
@@ -145,16 +153,28 @@ class vLLMEngineManager:
     async def generate(self, request: GenerateRequest, request_id: str) -> tuple:
         # 1. RAG: Retrieve similar cases if enabled
         retrieved_cases = []
-        augmented_prompt = request.prompt
 
         if request.use_rag and self.retriever:
-            # M-4: 사용자 입력에도 escape 적용
             query = self._escape_special_tokens(self._extract_query(request.prompt))
-
             retrieved_cases = self.retriever.search(query, top_k=3)
-            augmented_prompt = self._augment_prompt(request.prompt, retrieved_cases)
 
-        # 2. vLLM Generation
+        # 2. Build prompt: generator 페르소나가 있으면 사용, 없으면 레거시 폴백
+        if self.agent_manager and self.agent_manager.get_agent("generator"):
+            safe_message = self._escape_special_tokens(request.prompt)
+            if retrieved_cases:
+                rag_context = self._build_rag_context(retrieved_cases)
+                safe_message = (
+                    f"{rag_context}"
+                    f"위 참고 사례를 바탕으로 다음 민원에 대해 답변해 주세요.\n\n"
+                    f"{safe_message}"
+                )
+            augmented_prompt = self.agent_manager.build_prompt("generator", safe_message)
+        else:
+            augmented_prompt = request.prompt
+            if retrieved_cases:
+                augmented_prompt = self._augment_prompt(request.prompt, retrieved_cases)
+
+        # 3. vLLM Generation
         sampling_params = SamplingParams(
             temperature=request.temperature,
             top_p=request.top_p,

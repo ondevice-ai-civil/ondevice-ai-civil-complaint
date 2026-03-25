@@ -58,15 +58,21 @@ class AgentManager:
         self._agents: Dict[str, AgentPersona] = {}
         self._load_agents()
 
+    _DANGEROUS_TOKENS = ["[|user|]", "[|assistant|]", "[|system|]", "[|endofturn|]"]
+
     def _load_agents(self) -> None:
-        if not os.path.isdir(self.agents_dir):
-            logger.warning(f"Agents directory not found: {self.agents_dir}")
+        base_dir = os.path.realpath(self.agents_dir)
+        if not os.path.isdir(base_dir):
+            logger.warning(f"Agents directory not found: {base_dir}")
             return
 
-        for filename in os.listdir(self.agents_dir):
+        for filename in os.listdir(base_dir):
             if not filename.endswith(".md"):
                 continue
-            filepath = os.path.join(self.agents_dir, filename)
+            filepath = os.path.realpath(os.path.join(base_dir, filename))
+            if not filepath.startswith(base_dir + os.sep):
+                logger.warning(f"경로 순회 시도 감지, 무시됨: {filename}")
+                continue
             try:
                 agent = self._parse_agent_file(filepath)
                 self._agents[agent.name] = agent
@@ -85,8 +91,12 @@ class AgentManager:
         frontmatter = yaml.safe_load(match.group(1))
         body = match.group(2).strip()
 
+        name = (frontmatter.get("name") or "").strip()
+        if not name or not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", name):
+            raise ValueError(f"유효하지 않은 에이전트 이름: {name!r} in {filepath}")
+
         return AgentPersona(
-            name=frontmatter["name"],
+            name=name,
             role=frontmatter.get("role", ""),
             description=frontmatter.get("description", ""),
             system_prompt=body,
@@ -112,6 +122,10 @@ class AgentManager:
         agent = self._agents.get(agent_name)
         if agent is None:
             raise ValueError(f"Unknown agent: {agent_name}")
+
+        for token in self._DANGEROUS_TOKENS:
+            if token in user_message:
+                raise ValueError(f"이스케이프되지 않은 특수 토큰 감지: {token}")
 
         return (
             f"[|system|]{agent.system_prompt}[|endofturn|]"

@@ -16,6 +16,9 @@ from contextlib import asynccontextmanager
 
 from .vllm_stabilizer import apply_transformers_patch
 from .schemas import (
+    ClassificationResult,
+    ClassifyRequest,
+    ClassifyResponse,
     GenerateRequest,
     GenerateResponse,
     SearchRequest,
@@ -226,9 +229,9 @@ def _rate_limit(limit_string: str):
     return _noop
 
 
-@app.post("/v1/classify")
+@app.post("/v1/classify", response_model=ClassifyResponse)
 @_rate_limit("60/minute")
-async def classify(request: GenerateRequest, _: None = Depends(verify_api_key)):
+async def classify(request: ClassifyRequest, _: None = Depends(verify_api_key)):
     """민원 분류 엔드포인트. classifier 에이전트 페르소나로 카테고리를 결정한다."""
     if not manager.agent_manager or not manager.agent_manager.get_agent("classifier"):
         raise HTTPException(status_code=503, detail="분류 에이전트가 로드되지 않았습니다.")
@@ -240,7 +243,7 @@ async def classify(request: GenerateRequest, _: None = Depends(verify_api_key)):
     request_id = str(uuid.uuid4())
     sampling_params = SamplingParams(
         temperature=classifier.temperature,
-        top_p=request.top_p,
+        top_p=0.9,
         max_tokens=classifier.max_tokens,
     )
 
@@ -256,20 +259,25 @@ async def classify(request: GenerateRequest, _: None = Depends(verify_api_key)):
     response_text = final_output.outputs[0].text
 
     classification = None
+    classification_error = None
     try:
-        json_match = re.search(r"\{.*\}", response_text, re.DOTALL)
+        json_match = re.search(r"\{.*?\}", response_text, re.DOTALL)
         if json_match:
-            classification = json.loads(json_match.group())
-    except (json.JSONDecodeError, AttributeError):
-        pass
+            classification = ClassificationResult.model_validate_json(json_match.group())
+        else:
+            classification_error = "LLM 응답에서 JSON 객체를 찾을 수 없습니다."
+            logger.warning(f"분류 JSON 파싱 실패 (request_id={request_id}): JSON 미발견")
+    except Exception as e:
+        classification_error = f"분류 결과 검증 실패: {e}"
+        logger.warning(f"분류 JSON 파싱 실패 (request_id={request_id}): {e}")
 
-    return {
-        "request_id": request_id,
-        "text": response_text,
-        "classification": classification,
-        "prompt_tokens": len(final_output.prompt_token_ids),
-        "completion_tokens": len(final_output.outputs[0].token_ids),
-    }
+    return ClassifyResponse(
+        request_id=request_id,
+        classification=classification,
+        classification_error=classification_error,
+        prompt_tokens=len(final_output.prompt_token_ids),
+        completion_tokens=len(final_output.outputs[0].token_ids),
+    )
 
 
 @app.post("/v1/generate", response_model=GenerateResponse)

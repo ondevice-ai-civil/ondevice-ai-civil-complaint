@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import List, Literal, Optional, Dict, Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -35,6 +35,39 @@ class StreamResponse(BaseModel):
     finished: bool = False
     retrieved_cases: Optional[List[RetrievedCase]] = None
     search_results: Optional[List["SearchResult"]] = None
+
+
+# ---------------------------------------------------------------------------
+# 분류 스키마 (이슈 #56)
+# ---------------------------------------------------------------------------
+
+VALID_CATEGORIES = Literal[
+    "environment", "traffic", "facilities", "civil_service", "welfare", "other"
+]
+
+
+class ClassificationResult(BaseModel):
+    """분류 결과 모델. classifier 에이전트의 JSON 출력을 검증한다."""
+
+    category: VALID_CATEGORIES
+    confidence: float = Field(ge=0.0, le=1.0)
+    reason: str
+
+
+class ClassifyRequest(BaseModel):
+    """민원 분류 전용 요청 모델."""
+
+    prompt: str = Field(..., min_length=1, max_length=10000, description="분류할 민원 텍스트")
+
+
+class ClassifyResponse(BaseModel):
+    """민원 분류 응답 모델."""
+
+    request_id: str
+    classification: Optional[ClassificationResult] = None
+    classification_error: Optional[str] = None
+    prompt_tokens: int
+    completion_tokens: int
 
 
 # ---------------------------------------------------------------------------

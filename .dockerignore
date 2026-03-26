@@ -1,0 +1,27 @@
+# Docker ignore file
+.git
+.github
+.venv
+venv
+.pytest_cache
+.mypy_cache
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.env.*
+!.env.example
+data/raw/
+data/calibration/
+models/current_model/
+notebooks/
+docs/
+assets/
+metrics/
+*.log

@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # vLLM과 torch는 무거우므로 테스트에 필요한 필수 패키지만 설치하거나 가벼운 버전 설치
+          pip install .[dev]
+          pip install fastapi uvicorn httpx pytest-mock
+
+      - name: Lint & Type Check
+        run: |
+          black --check .
+          isort --check .
+          mypy .
+
+      - name: Run Unit Tests (Logic Only)
+        run: |
+          # 모델 로드를 건너뛰고 로직만 테스트하도록 환경 변수 설정
+          export SKIP_MODEL_LOAD=true
+          pytest tests/test_inference/test_api_logic.py --cov=src/inference --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ./coverage.xml

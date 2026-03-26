@@ -79,6 +79,8 @@ dev = [
     "flake8>=6.0.0",
     "mypy>=1.5.0",
     "pre-commit>=3.4.0",
+    "bandit>=1.7.5",
+    "safety>=2.3.5",
 ]
 
 korean-nlp = [

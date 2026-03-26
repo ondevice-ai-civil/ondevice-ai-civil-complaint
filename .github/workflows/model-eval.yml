@@ -1,0 +1,65 @@
+name: Model Evaluation (GitHub GPU)
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'src/training/**'
+      - 'src/evaluation/**'
+      - 'data/processed/v2_*.jsonl'
+
+jobs:
+  evaluate:
+    name: v2 Model Performance Test
+    # 조직 설정에서 생성한 GPU 러너 레이블을 입력하세요.
+    # 예: ubuntu-22.04-gpu-t4 (T4 기반 공식 러너)
+    runs-on: ubuntu-22.04-gpu-t4
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: 'pip'
+
+      - name: Install Project Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install .[dev,inference]
+          # T4 환경에 맞는 최적화 라이브러리 설치 확인
+          pip install autoawq vllm
+
+      - name: Run Evaluation on T4 GPU
+        env:
+          MODEL_PATH: "umyunsang/GovOn-EXAONE-LoRA-v2"
+          DATA_PATH: "data/processed/v2_test.jsonl"
+          # T4 VRAM(16GB)에 맞춘 메모리 최적화
+          GPU_UTILIZATION: 0.7 
+        run: |
+          # v2 평가 스크립트 실행 및 리포트 생성
+          python -m src.evaluation.evaluate_model_v3_stable \
+            --model_path $MODEL_PATH \
+            --data_path $DATA_PATH \
+            --output_report evaluation_report.md
+
+      - name: Post Results to PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const reportPath = 'evaluation_report.md';
+            const body = fs.existsSync(reportPath) 
+              ? `### 🤖 v2 Model Evaluation (NVIDIA T4)\n\n${fs.readFileSync(reportPath, 'utf8')}`
+              : "### 🤖 v2 Model Evaluation\n\n평가 리포트 생성에 실패했습니다.";
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            })

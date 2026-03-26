@@ -342,7 +342,7 @@ jobs:
           PYEOF
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: dora-metrics-${{ github.run_number }}
           path: metrics/dora/

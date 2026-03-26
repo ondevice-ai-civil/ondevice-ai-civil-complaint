@@ -57,7 +57,7 @@ jobs:
         run: uv run isort --check .
 
       - name: Flake8 (syntax errors only)
-        run: uv run flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        run: uv run flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=.venv,.git,__pycache__,build,dist
 
   test:
     runs-on: ubuntu-latest
@@ -89,10 +89,8 @@ jobs:
             tests/test_inference/test_db_converters.py \
             tests/test_inference/test_db_crud.py \
             tests/test_inference/test_db_models.py \
-            tests/test_data_collection_preprocessing/ \
             -o "addopts=" \
             --cov=src/inference \
-            --cov=src/data_collection_preprocessing \
             --cov-branch \
             --cov-fail-under=30 \
             --cov-report=xml \

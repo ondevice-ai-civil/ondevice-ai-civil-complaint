@@ -3,6 +3,9 @@
 # Use NVIDIA CUDA base image with Python 3.10
 FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
 
+LABEL org.opencontainers.image.source="https://github.com/GovOn-Org/GovOn"
+LABEL org.opencontainers.image.description="GovOn AI Civil Complaint Analysis System"
+
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

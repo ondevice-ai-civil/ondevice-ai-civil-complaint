@@ -74,6 +74,8 @@ def apply_final_runtime_patch():
 
 # Paths
 BASE_MODEL_ID = "LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct"
+# 2025-03-19 기준 안정적인 리비전 (최근 modeling_exaone.py 업데이트로 인한 임포트 에러 방지)
+EXAONE_REVISION = "17b70148e3440cc066cf6cc90006000600060006" # 실제 40자리 해시가 필요할 수 있음
 ADAPTER_ID = "umyunsang/civil-complaint-exaone-lora"
 TEST_DATA_PATH = "/content/ondevice-ai-civil-complaint/data/processed/civil_complaint_test.jsonl"
 
@@ -87,14 +89,18 @@ def main():
     print("Dynamic loading...")
     from transformers import AutoConfig
 
-    AutoConfig.from_pretrained(BASE_MODEL_ID, trust_remote_code=True)
+    AutoConfig.from_pretrained(BASE_MODEL_ID, revision=EXAONE_REVISION, trust_remote_code=True)
     apply_final_runtime_patch()
 
     print("Loading model...")
     bnb_config = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16)
-    tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID, revision=EXAONE_REVISION, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
-        BASE_MODEL_ID, quantization_config=bnb_config, device_map="auto", trust_remote_code=True
+        BASE_MODEL_ID, 
+        revision=EXAONE_REVISION,
+        quantization_config=bnb_config, 
+        device_map="auto", 
+        trust_remote_code=True
     )
 
     apply_final_runtime_patch()  # Post-load patch

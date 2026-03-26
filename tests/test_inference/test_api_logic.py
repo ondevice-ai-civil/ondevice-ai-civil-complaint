@@ -1,7 +1,7 @@
 import os
 import sys
 import importlib.util
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, AsyncMock
 
 # transformers 로드 시 faiss.__spec__ ValueError 방지 (CI 환경용)
 original_find_spec = importlib.util.find_spec
@@ -41,6 +41,8 @@ def mock_manager():
         mock.index_manager = MagicMock()
         mock.pii_masker = MagicMock()
         mock.pii_masker.mask_all.side_effect = lambda x: x  # 마스킹 로직 패스
+        # hybrid_engine.search는 비동기 함수이므로 AsyncMock 사용
+        mock.hybrid_engine.search = AsyncMock()
         yield mock
 
 

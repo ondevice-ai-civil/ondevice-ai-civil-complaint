@@ -14,27 +14,41 @@ from transformers import (
     AutoTokenizer,
     BitsAndBytesConfig,
     TrainingArguments,
-    set_seed
+    set_seed,
 )
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
 
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Fine-tune EXAONE-Deep-7.8B with QLoRA")
-    parser.add_argument("--model_id", type=str, default="LGAI-EXAONE/EXAONE-Deep-7.8B", help="Base model ID")
+    parser.add_argument(
+        "--model_id", type=str, default="LGAI-EXAONE/EXAONE-Deep-7.8B", help="Base model ID"
+    )
     parser.add_argument("--train_path", type=str, required=True, help="Path to training JSONL")
     parser.add_argument("--val_path", type=str, required=True, help="Path to validation JSONL")
-    parser.add_argument("--output_dir", type=str, default="./models/checkpoints/exaone-civil-qlora", help="Output directory")
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default="./models/checkpoints/exaone-civil-qlora",
+        help="Output directory",
+    )
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--grad_accum", type=int, default=4)
     parser.add_argument("--lr", type=float, default=2e-4)
-    parser.add_argument("--peft_config_path", type=str, default="src/training/peft_config.json", help="Path to PEFT config JSON")
+    parser.add_argument(
+        "--peft_config_path",
+        type=str,
+        default="src/training/peft_config.json",
+        help="Path to PEFT config JSON",
+    )
     parser.add_argument("--lora_r", type=int, default=16)
     parser.add_argument("--lora_alpha", type=int, default=32)
     parser.add_argument("--max_seq_length", type=int, default=2048)
     parser.add_argument("--wandb_project", type=str, default="exaone-civil-complaint")
     return parser.parse_args()
+
 
 def main():
     args = parse_args()
@@ -44,7 +58,7 @@ def main():
     print(f"Loading tokenizer: {args.model_id}")
     tokenizer = AutoTokenizer.from_pretrained(args.model_id, trust_remote_code=True)
     tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.padding_side = "right" # SFT 학습 시 권장
+    tokenizer.padding_side = "right"  # SFT 학습 시 권장
 
     # 2. 4-bit 양자화 설정 (QLoRA)
     bnb_config = BitsAndBytesConfig(
@@ -71,7 +85,7 @@ def main():
     except (NotImplementedError, AttributeError):
         model.get_input_embeddings = lambda: model.transformer.wte
         print("Monkey-patched get_input_embeddings")
-    
+
     try:
         model.get_output_embeddings()
     except (NotImplementedError, AttributeError):
@@ -81,7 +95,6 @@ def main():
     # 4. LoRA 설정 (Config 파일 또는 인자 반영)
     model = prepare_model_for_kbit_training(model)
 
-    
     if os.path.exists(args.peft_config_path):
         print(f"Loading PEFT config from {args.peft_config_path}")
         # LoraConfig.from_json_file은 dict를 반환하므로 **를 사용하여 초기화
@@ -94,43 +107,57 @@ def main():
             r=args.lora_r,
             lora_alpha=args.lora_alpha,
             target_modules=[
-                "q_proj", "k_proj", "v_proj", "o_proj",
-                "gate_proj", "up_proj", "down_proj"
+                "q_proj",
+                "k_proj",
+                "v_proj",
+                "o_proj",
+                "gate_proj",
+                "up_proj",
+                "down_proj",
             ],
             lora_dropout=0.05,
             bias="none",
             task_type="CAUSAL_LM",
         )
 
-    
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
 
     # 5. 데이터셋 포맷팅 (EXAONE Chat Template + <thought> 태그)
     def formatting_prompts_func(example):
         output_texts = []
-        for i in range(len(example['instruction'])):
+        for i in range(len(example["instruction"])):
             # PRD: EXAONE 표준 포맷 적용
             # [|system|]\n{system}\n[|user|]\n{input}\n[|assistant|]\n{output}
             messages = [
-                {"role": "system", "content": "당신은 지자체 민원 담당 공무원을 돕는 AI 어시스턴트입니다."},
-                {"role": "user", "content": f"{example['instruction'][i]}\n\n{example['input'][i]}"},
-                {"role": "assistant", "content": example['output'][i]}
+                {
+                    "role": "system",
+                    "content": "당신은 지자체 민원 담당 공무원을 돕는 AI 어시스턴트입니다.",
+                },
+                {
+                    "role": "user",
+                    "content": f"{example['instruction'][i]}\n\n{example['input'][i]}",
+                },
+                {"role": "assistant", "content": example["output"][i]},
             ]
-            text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
+            text = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=False
+            )
             output_texts.append(text)
         return output_texts
 
     # 데이터 로드
-    dataset = load_dataset("json", data_files={"train": args.train_path, "validation": args.val_path})
+    dataset = load_dataset(
+        "json", data_files={"train": args.train_path, "validation": args.val_path}
+    )
 
     # 6. 학습 인자 설정 (PRD 명세 반영)
     training_args = TrainingArguments(
         output_dir=args.output_dir,
         per_device_train_batch_size=args.batch_size,
-        per_device_eval_batch_size=4, # A100(40GB) 환경에 최적화 (L4 대비 상향)
+        per_device_eval_batch_size=4,  # A100(40GB) 환경에 최적화 (L4 대비 상향)
         gradient_accumulation_steps=args.grad_accum,
-        eval_accumulation_steps=10,   # 평가 결과 누적으로 인한 OOM 방지
+        eval_accumulation_steps=10,  # 평가 결과 누적으로 인한 OOM 방지
         learning_rate=args.lr,
         num_train_epochs=args.epochs,
         lr_scheduler_type="cosine",
@@ -149,11 +176,11 @@ def main():
         report_to="wandb",
         run_name=f"exaone-qlora-{datetime.now().strftime('%Y%m%d-%H%M')}",
         gradient_checkpointing=True,
-        optim="paged_adamw_8bit"
+        optim="paged_adamw_8bit",
     )
 
     # 7. Trainer 초기화 및 학습
-    # Note: EXAONE의 추론 과정을 학습하기 위해 completion_only 방식을 사용할 수 있으나, 
+    # Note: EXAONE의 추론 과정을 학습하기 위해 completion_only 방식을 사용할 수 있으나,
     # 일반적인 SFTTrainer 구성을 우선 적용합니다.
     trainer = SFTTrainer(
         model=model,
@@ -173,6 +200,7 @@ def main():
     trainer.save_model(os.path.join(args.output_dir, "final"))
     tokenizer.save_pretrained(os.path.join(args.output_dir, "final"))
     print("Training Complete!")
+
 
 if __name__ == "__main__":
     main()

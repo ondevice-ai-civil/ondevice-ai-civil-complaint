@@ -13,10 +13,10 @@ from src.inference.index_manager import (
     MultiIndexManager,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers / Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _normalize(vectors: np.ndarray) -> np.ndarray:
     norms = np.linalg.norm(vectors, axis=1, keepdims=True)
@@ -66,6 +66,7 @@ def populated_manager(manager):
 # 1. IndexType enum
 # ---------------------------------------------------------------------------
 
+
 class TestIndexType:
     def test_values(self):
         assert IndexType.CASE.value == "case"
@@ -84,6 +85,7 @@ class TestIndexType:
 # ---------------------------------------------------------------------------
 # 2. DocumentMetadata
 # ---------------------------------------------------------------------------
+
 
 class TestDocumentMetadata:
     def test_required_fields(self):
@@ -148,6 +150,7 @@ class TestDocumentMetadata:
 # 3. MultiIndexManager initialization
 # ---------------------------------------------------------------------------
 
+
 class TestMultiIndexManagerInit:
     def test_creates_base_directory(self, tmp_path):
         target = str(tmp_path / "new_index_dir")
@@ -167,6 +170,7 @@ class TestMultiIndexManagerInit:
 # ---------------------------------------------------------------------------
 # 4. Index CRUD
 # ---------------------------------------------------------------------------
+
 
 class TestIndexCRUD:
     def test_add_documents_increases_index_size(self, manager):
@@ -207,6 +211,7 @@ class TestIndexCRUD:
 # ---------------------------------------------------------------------------
 # 5. Search
 # ---------------------------------------------------------------------------
+
 
 class TestSearch:
     def test_top_k_count(self, populated_manager):
@@ -263,6 +268,7 @@ class TestSearch:
 # 6. IVFFlat upgrade
 # ---------------------------------------------------------------------------
 
+
 class TestIVFFlatUpgrade:
     def test_maybe_upgrade_to_ivf(self, tmp_path):
         mgr = MultiIndexManager(base_dir=str(tmp_path), embedding_dim=1024)
@@ -300,6 +306,7 @@ class TestIVFFlatUpgrade:
 # 7. index_registry.json
 # ---------------------------------------------------------------------------
 
+
 class TestIndexRegistry:
     def test_registry_created_after_save(self, populated_manager, tmp_path):
         populated_manager.save_index(IndexType.CASE)
@@ -322,6 +329,7 @@ class TestIndexRegistry:
 # ---------------------------------------------------------------------------
 # 8. Multi-index independence
 # ---------------------------------------------------------------------------
+
 
 class TestMultiIndexIndependence:
     def test_separate_indexes_are_independent(self, manager):

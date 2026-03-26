@@ -26,16 +26,29 @@ from src.inference.db.models import DocumentSource, IndexingQueue, IndexVersion
 
 MAX_LIMIT = 1000
 
-_ALLOWED_FILTER_COLUMNS = frozenset({
-    "source_type", "source_id", "status", "category",
-    "source_name", "embedding_version", "version",
-})
+_ALLOWED_FILTER_COLUMNS = frozenset(
+    {
+        "source_type",
+        "source_id",
+        "status",
+        "category",
+        "source_name",
+        "embedding_version",
+        "version",
+    }
+)
 
 _IMMUTABLE_FIELDS = frozenset({"id", "created_at"})
 
-_VALID_QUEUE_STATUSES = frozenset({
-    "pending", "processing", "completed", "skipped", "failed",
-})
+_VALID_QUEUE_STATUSES = frozenset(
+    {
+        "pending",
+        "processing",
+        "completed",
+        "skipped",
+        "failed",
+    }
+)
 
 
 # ============================================================================
@@ -52,9 +65,7 @@ def create_document_source(db: Session, **kwargs: Any) -> DocumentSource:
     return doc
 
 
-def get_document_source(
-    db: Session, doc_id: uuid.UUID
-) -> Optional[DocumentSource]:
+def get_document_source(db: Session, doc_id: uuid.UUID) -> Optional[DocumentSource]:
     """ID로 문서 원본을 조회한다."""
     return db.get(DocumentSource, doc_id)
 
@@ -83,9 +94,7 @@ def get_document_sources(
     if filters:
         for col_name, value in filters.items():
             if col_name in _ALLOWED_FILTER_COLUMNS:
-                stmt = stmt.where(
-                    getattr(DocumentSource, col_name) == value
-                )
+                stmt = stmt.where(getattr(DocumentSource, col_name) == value)
 
     stmt = stmt.offset(skip).limit(limit).order_by(DocumentSource.created_at.desc())
     return list(db.scalars(stmt).all())
@@ -208,10 +217,7 @@ def get_queue_stats(db: Session) -> Dict[str, int]:
     dict
         {"pending": 10, "processing": 2, "completed": 50, ...}
     """
-    stmt = (
-        select(IndexingQueue.status, func.count())
-        .group_by(IndexingQueue.status)
-    )
+    stmt = select(IndexingQueue.status, func.count()).group_by(IndexingQueue.status)
     rows = db.execute(stmt).all()
     return {status: count for status, count in rows}
 
@@ -230,9 +236,7 @@ def create_index_version(db: Session, **kwargs: Any) -> IndexVersion:
     return ver
 
 
-def get_active_version(
-    db: Session, index_type: str
-) -> Optional[IndexVersion]:
+def get_active_version(db: Session, index_type: str) -> Optional[IndexVersion]:
     """특정 index_type의 활성 버전을 조회한다.
 
     index_type별로 active 버전은 최대 1개여야 한다.
@@ -272,9 +276,7 @@ def deactivate_versions(db: Session, index_type: str) -> int:
     return result.rowcount  # type: ignore[return-value]
 
 
-def activate_version(
-    db: Session, version_id: uuid.UUID
-) -> Optional[IndexVersion]:
+def activate_version(db: Session, version_id: uuid.UUID) -> Optional[IndexVersion]:
     """특정 인덱스 버전을 활성화한다.
 
     동일 index_type의 기존 활성 버전을 먼저 비활성화한 뒤 대상을 활성화한다.
@@ -291,9 +293,7 @@ def activate_version(
 
     # 동일 index_type의 모든 버전에 대해 행 레벨 잠금 획득 (PostgreSQL 전용)
     lock_stmt = (
-        select(IndexVersion)
-        .where(IndexVersion.index_type == ver.index_type)
-        .with_for_update()
+        select(IndexVersion).where(IndexVersion.index_type == ver.index_type).with_for_update()
     )
     db.execute(lock_stmt)
 

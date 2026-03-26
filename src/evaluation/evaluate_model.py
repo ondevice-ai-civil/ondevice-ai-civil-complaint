@@ -26,9 +26,10 @@ RESULTS_DIR = "/content/ondevice-ai-civil-complaint/docs/outputs/M2_MVP"
 def load_test_data(path, max_samples=200):
     """Load test data for evaluation."""
     import random
+
     random.seed(42)
     data = []
-    with open(path, 'r') as f:
+    with open(path, "r") as f:
         for line in f:
             try:
                 item = json.loads(line.strip())
@@ -41,7 +42,7 @@ def load_test_data(path, max_samples=200):
 
 def extract_category(text):
     """Extract category from input text [Category: xxx] pattern."""
-    match = re.search(r'\[Category:\s*([^\]]+)\]', text)
+    match = re.search(r"\[Category:\s*([^\]]+)\]", text)
     if match:
         return match.group(1).strip().lower()
     return "unknown"
@@ -59,9 +60,11 @@ def compute_perplexity(model, tokenizer, data, max_samples=100, max_length=2048)
         try:
             messages = [
                 {"role": "user", "content": f"{item['instruction']}\n\n{item['input']}"},
-                {"role": "assistant", "content": item['output']}
+                {"role": "assistant", "content": item["output"]},
             ]
-            text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
+            text = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=False
+            )
 
             encodings = tokenizer(text, return_tensors="pt", truncation=True, max_length=max_length)
             input_ids = encodings.input_ids.to(model.device)
@@ -88,7 +91,7 @@ def compute_perplexity(model, tokenizer, data, max_samples=100, max_length=2048)
         avg_loss = total_loss / total_tokens
         ppl = np.exp(avg_loss)
     else:
-        ppl = float('inf')
+        ppl = float("inf")
 
     print(f"  Perplexity: {ppl:.4f} (over {n_processed} samples, {total_tokens} tokens)")
     return ppl, n_processed
@@ -102,22 +105,34 @@ def evaluate_classification(model, tokenizer, data, max_samples=100):
     total = 0
     predictions = []
 
-    categories = ["environment", "traffic", "facilities", "civil_service", "welfare",
-                   "culture", "economy", "education", "safety", "other"]
+    categories = [
+        "environment",
+        "traffic",
+        "facilities",
+        "civil_service",
+        "welfare",
+        "culture",
+        "economy",
+        "education",
+        "safety",
+        "other",
+    ]
 
     # Use training instruction format
-    instruction = "다음 민원에 대해 단계적으로 분석하고, 표준 서식에 맞춰 공손하고 명확한 답변을 작성하세요."
+    instruction = (
+        "다음 민원에 대해 단계적으로 분석하고, 표준 서식에 맞춰 공손하고 명확한 답변을 작성하세요."
+    )
 
     for item in data[:max_samples]:
         try:
-            true_category = extract_category(item.get('input', ''))
+            true_category = extract_category(item.get("input", ""))
             if true_category == "unknown":
                 continue
 
             # Use same instruction+input format as training
             messages = [{"role": "user", "content": f"{instruction}\n\n{item['input'][:500]}"}]
             encoded = tokenizer.apply_chat_template(
-                messages, tokenize=True, add_generation_prompt=True, return_tensors='pt'
+                messages, tokenize=True, add_generation_prompt=True, return_tensors="pt"
             )
             input_ids = encoded.input_ids.to(model.device)
 
@@ -130,19 +145,21 @@ def evaluate_classification(model, tokenizer, data, max_samples=100):
                     eos_token_id=int(tokenizer.eos_token_id),
                 )
 
-            response = tokenizer.decode(output[0][input_ids.shape[1]:], skip_special_tokens=True)
+            response = tokenizer.decode(output[0][input_ids.shape[1] :], skip_special_tokens=True)
 
             # Parse category from thought block: "Identified as [category] related request"
             pred_category = "unknown"
-            cat_match = re.search(r'Identified as (\w+[\w/]*) related', response, re.IGNORECASE)
+            cat_match = re.search(r"Identified as (\w+[\w/]*) related", response, re.IGNORECASE)
             if cat_match:
-                pred_category = cat_match.group(1).lower().replace('/', '_')
+                pred_category = cat_match.group(1).lower().replace("/", "_")
                 # Normalize known aliases
                 if pred_category not in categories:
                     pred_category = "other"
             else:
                 # Fallback: check after </thought>
-                check_text = response.split('</thought>')[-1] if '</thought>' in response else response
+                check_text = (
+                    response.split("</thought>")[-1] if "</thought>" in response else response
+                )
                 check_text = check_text.lower()
                 for cat in categories:
                     if cat in check_text:
@@ -154,12 +171,14 @@ def evaluate_classification(model, tokenizer, data, max_samples=100):
                 correct += 1
             total += 1
 
-            predictions.append({
-                "true": true_category,
-                "predicted": pred_category,
-                "correct": is_correct,
-                "response_snippet": response[:200],
-            })
+            predictions.append(
+                {
+                    "true": true_category,
+                    "predicted": pred_category,
+                    "correct": is_correct,
+                    "response_snippet": response[:200],
+                }
+            )
 
         except Exception as e:
             continue
@@ -175,7 +194,8 @@ def compute_generation_metrics(model, tokenizer, data, max_samples=50):
 
     try:
         from rouge_score import rouge_scorer
-        scorer = rouge_scorer.RougeScorer(['rougeL'], use_stemmer=False)
+
+        scorer = rouge_scorer.RougeScorer(["rougeL"], use_stemmer=False)
         has_rouge = True
     except ImportError:
         print("  [WARN] rouge_score not installed, skipping ROUGE")
@@ -189,7 +209,7 @@ def compute_generation_metrics(model, tokenizer, data, max_samples=50):
         try:
             messages = [{"role": "user", "content": f"{item['instruction']}\n\n{item['input']}"}]
             encoded = tokenizer.apply_chat_template(
-                messages, tokenize=True, add_generation_prompt=True, return_tensors='pt'
+                messages, tokenize=True, add_generation_prompt=True, return_tensors="pt"
             )
             input_ids = encoded.input_ids.to(model.device)
 
@@ -203,11 +223,17 @@ def compute_generation_metrics(model, tokenizer, data, max_samples=50):
                     eos_token_id=int(tokenizer.eos_token_id),
                 )
 
-            generated = tokenizer.decode(output[0][input_ids.shape[1]:], skip_special_tokens=True).strip()
+            generated = tokenizer.decode(
+                output[0][input_ids.shape[1] :], skip_special_tokens=True
+            ).strip()
             # Remove <thought> tags for comparison
-            generated_clean = re.sub(r'<thought>.*?</thought>', '', generated, flags=re.DOTALL).strip()
-            reference = item.get('output', '')
-            reference_clean = re.sub(r'<thought>.*?</thought>', '', reference, flags=re.DOTALL).strip()
+            generated_clean = re.sub(
+                r"<thought>.*?</thought>", "", generated, flags=re.DOTALL
+            ).strip()
+            reference = item.get("output", "")
+            reference_clean = re.sub(
+                r"<thought>.*?</thought>", "", reference, flags=re.DOTALL
+            ).strip()
 
             if not generated_clean or not reference_clean:
                 continue
@@ -227,13 +253,15 @@ def compute_generation_metrics(model, tokenizer, data, max_samples=50):
             # ROUGE-L
             if has_rouge:
                 score = scorer.score(reference_clean, generated_clean)
-                rouge_scores.append(score['rougeL'].fmeasure * 100)
+                rouge_scores.append(score["rougeL"].fmeasure * 100)
 
-            generated_samples.append({
-                "input": item['input'][:200],
-                "reference": reference_clean[:200],
-                "generated": generated_clean[:200],
-            })
+            generated_samples.append(
+                {
+                    "input": item["input"][:200],
+                    "reference": reference_clean[:200],
+                    "generated": generated_clean[:200],
+                }
+            )
 
         except Exception as e:
             continue
@@ -260,7 +288,9 @@ def benchmark_inference(model, tokenizer, n_runs=10):
 
     # Warm-up
     messages = [{"role": "user", "content": prompts[0]}]
-    encoded = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, return_tensors='pt')
+    encoded = tokenizer.apply_chat_template(
+        messages, tokenize=True, add_generation_prompt=True, return_tensors="pt"
+    )
     input_ids = encoded.input_ids.to(model.device)
     with torch.no_grad():
         _ = model.generate(input_ids=input_ids, max_new_tokens=50, do_sample=False)
@@ -275,7 +305,9 @@ def benchmark_inference(model, tokenizer, n_runs=10):
     for i in range(n_runs):
         prompt = prompts[i % len(prompts)]
         messages = [{"role": "user", "content": prompt}]
-        encoded = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, return_tensors='pt')
+        encoded = tokenizer.apply_chat_template(
+            messages, tokenize=True, add_generation_prompt=True, return_tensors="pt"
+        )
         input_ids = encoded.input_ids.to(model.device)
 
         torch.cuda.synchronize()
@@ -343,7 +375,7 @@ def main():
             "awq_model_dir": AWQ_MODEL_DIR,
             "test_data_path": TEST_DATA_PATH,
             "stage": "3_evaluation",
-        }
+        },
     )
 
     print("=" * 60)
@@ -390,13 +422,17 @@ def main():
 
     # 4. Classification Accuracy
     print("\n[4/6] Evaluating Classification Accuracy...", flush=True)
-    accuracy, class_predictions = evaluate_classification(model, tokenizer, test_data, max_samples=50)
+    accuracy, class_predictions = evaluate_classification(
+        model, tokenizer, test_data, max_samples=50
+    )
     wandb.log({"classification_accuracy": accuracy, "classification_total": len(class_predictions)})
     print(f"  [DONE] Classification evaluation complete", flush=True)
 
     # 5. Generation Metrics
     print("\n[5/6] Evaluating Generation Quality...", flush=True)
-    bleu, rouge_l, gen_samples = compute_generation_metrics(model, tokenizer, test_data, max_samples=30)
+    bleu, rouge_l, gen_samples = compute_generation_metrics(
+        model, tokenizer, test_data, max_samples=30
+    )
     wandb.log({"bleu_score": bleu, "rouge_l_score": rouge_l})
 
     # 6. Inference Benchmark

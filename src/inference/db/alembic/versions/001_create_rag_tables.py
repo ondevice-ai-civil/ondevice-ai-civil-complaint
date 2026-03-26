@@ -7,6 +7,7 @@ Revision ID: 001
 Revises: None
 Create Date: 2026-03-22
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -105,7 +106,9 @@ def upgrade() -> None:
         # MANUAL 타입 전용
         sa.Column("department", sa.String(100), nullable=True, comment="담당 부서 (MANUAL 전용)"),
         # NOTICE 타입 전용
-        sa.Column("notice_number", sa.String(100), nullable=True, comment="공시 번호 (NOTICE 전용)"),
+        sa.Column(
+            "notice_number", sa.String(100), nullable=True, comment="공시 번호 (NOTICE 전용)"
+        ),
         sa.Column("effective_date", sa.Date, nullable=True, comment="시행일 (NOTICE 전용)"),
         # 인덱싱 관련
         sa.Column("faiss_index_id", sa.Integer, nullable=True, comment="FAISS 인덱스 내 ID"),
@@ -130,7 +133,9 @@ def upgrade() -> None:
         ),
         # UNIQUE 제약조건
         sa.UniqueConstraint(
-            "source_type", "source_id", "chunk_index",
+            "source_type",
+            "source_id",
+            "chunk_index",
             name="uq_source_type_source_id_chunk",
         ),
         # CHECK 제약조건
@@ -152,9 +157,7 @@ def upgrade() -> None:
     op.create_index("idx_docsource_source_type", "document_source", ["source_type"])
     op.create_index("idx_docsource_status", "document_source", ["status"])
     op.create_index("idx_docsource_category", "document_source", ["category"])
-    op.create_index(
-        "idx_docsource_valid_range", "document_source", ["valid_from", "valid_until"]
-    )
+    op.create_index("idx_docsource_valid_range", "document_source", ["valid_from", "valid_until"])
 
     # document_source GIN 인덱스 - JSONB 검색용
     op.create_index(
@@ -205,9 +208,7 @@ def upgrade() -> None:
             server_default=sa.text("'CASE'"),
             comment="문서 타입",
         ),
-        sa.Column(
-            "complaint_text", sa.Text, nullable=False, comment="민원 텍스트"
-        ),
+        sa.Column("complaint_text", sa.Text, nullable=False, comment="민원 텍스트"),
         sa.Column("answer_text", sa.Text, nullable=False, comment="답변 텍스트"),
         sa.Column("category", sa.String(50), nullable=True, comment="카테고리"),
         sa.Column(
@@ -245,9 +246,7 @@ def upgrade() -> None:
 
     # indexing_queue 인덱스
     op.create_index("idx_indexqueue_status", "indexing_queue", ["status"])
-    op.create_index(
-        "idx_indexqueue_priority", "indexing_queue", ["priority", "created_at"]
-    )
+    op.create_index("idx_indexqueue_priority", "indexing_queue", ["priority", "created_at"])
     op.create_index("idx_indexqueue_document_id", "indexing_queue", ["document_id"])
 
     # ------------------------------------------------------------------
@@ -271,9 +270,7 @@ def upgrade() -> None:
             comment="인덱스 타입 (case, law, manual, notice)",
         ),
         sa.Column("version", sa.String(50), nullable=False, comment="인덱스 버전"),
-        sa.Column(
-            "total_documents", sa.Integer, nullable=False, comment="포함 문서 수"
-        ),
+        sa.Column("total_documents", sa.Integer, nullable=False, comment="포함 문서 수"),
         sa.Column(
             "index_file_path",
             sa.String(500),
@@ -315,9 +312,7 @@ def upgrade() -> None:
     )
 
     # index_version 인덱스
-    op.create_index(
-        "idx_indexversion_active", "index_version", ["index_type", "is_active"]
-    )
+    op.create_index("idx_indexversion_active", "index_version", ["index_type", "is_active"])
 
     # ------------------------------------------------------------------
     # 4. updated_at 자동 갱신 트리거 (document_source)

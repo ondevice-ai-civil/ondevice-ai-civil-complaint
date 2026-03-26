@@ -18,10 +18,7 @@ load_dotenv()
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler("data_pipeline.log", encoding="utf-8")
-    ]
+    handlers=[logging.StreamHandler(), logging.FileHandler("data_pipeline.log", encoding="utf-8")],
 )
 logger = logging.getLogger(__name__)
 
@@ -29,6 +26,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class AIHubConfig:
     """AI Hub API Configuration"""
+
     api_key: str = field(default_factory=lambda: os.getenv("AIHUB_API_KEY", ""))
 
     # Priority dataset keys for civil complaint data
@@ -42,10 +40,12 @@ class AIHubConfig:
     shell_path: str = field(default_factory=lambda: os.getenv("AIHUB_SHELL_PATH", "./aihubshell"))
 
     # Download directory
-    download_dir: str = field(default_factory=lambda: os.getenv(
-        "AIHUB_DOWNLOAD_DIR",
-        str(Path(__file__).parent.parent.parent / "data" / "raw" / "aihub")
-    ))
+    download_dir: str = field(
+        default_factory=lambda: os.getenv(
+            "AIHUB_DOWNLOAD_DIR",
+            str(Path(__file__).parent.parent.parent / "data" / "raw" / "aihub"),
+        )
+    )
 
 
 @dataclass
@@ -67,9 +67,9 @@ class PreprocessingConfig:
     test_ratio: float = 0.1
 
     # Output directories
-    processed_dir: str = field(default_factory=lambda: str(
-        Path(__file__).parent.parent.parent / "data" / "processed"
-    ))
+    processed_dir: str = field(
+        default_factory=lambda: str(Path(__file__).parent.parent.parent / "data" / "processed")
+    )
 
     # EXAONE template configuration
     instruction_template: str = (
@@ -78,18 +78,20 @@ class PreprocessingConfig:
     )
 
     # Categories for civil complaints (Korean local government standard)
-    categories: List[str] = field(default_factory=lambda: [
-        "도로/교통",
-        "환경/위생",
-        "주택/건축",
-        "복지/보건",
-        "문화/체육",
-        "경제/일자리",
-        "교육/청소년",
-        "안전/재난",
-        "행정/민원",
-        "기타"
-    ])
+    categories: List[str] = field(
+        default_factory=lambda: [
+            "도로/교통",
+            "환경/위생",
+            "주택/건축",
+            "복지/보건",
+            "문화/체육",
+            "경제/일자리",
+            "교육/청소년",
+            "안전/재난",
+            "행정/민원",
+            "기타",
+        ]
+    )
 
 
 @dataclass
@@ -106,9 +108,9 @@ class CalibrationConfig:
     random_seed: int = 42
 
     # Output path
-    output_path: str = field(default_factory=lambda: str(
-        Path(__file__).parent.parent.parent / "data" / "calibration"
-    ))
+    output_path: str = field(
+        default_factory=lambda: str(Path(__file__).parent.parent.parent / "data" / "calibration")
+    )
 
 
 @dataclass
@@ -147,14 +149,12 @@ class Config:
         """Validate configuration values"""
         # Check train/val/test split ratios
         total_ratio = (
-            self.preprocessing.train_ratio +
-            self.preprocessing.val_ratio +
-            self.preprocessing.test_ratio
+            self.preprocessing.train_ratio
+            + self.preprocessing.val_ratio
+            + self.preprocessing.test_ratio
         )
         if abs(total_ratio - 1.0) > 0.001:
-            raise ValueError(
-                f"Train/Val/Test ratios must sum to 1.0, got {total_ratio}"
-            )
+            raise ValueError(f"Train/Val/Test ratios must sum to 1.0, got {total_ratio}")
 
         # Warn if API keys are not set
         if not self.aihub.api_key:

@@ -154,9 +154,7 @@ def main() -> None:
 
     # 2) 임베딩 파이프라인 실행
     pipeline = EmbeddingPipeline(model_name=args.model_name)
-    embeddings, metadata_list = pipeline.process_jsonl(
-        args.data_path, batch_size=args.batch_size
-    )
+    embeddings, metadata_list = pipeline.process_jsonl(args.data_path, batch_size=args.batch_size)
 
     # 3) MultiIndexManager로 인덱스 빌드
     logger.info("FAISS 인덱스 빌드 시작")

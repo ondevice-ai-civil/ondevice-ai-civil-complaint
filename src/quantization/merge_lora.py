@@ -17,24 +17,35 @@ import transformers.utils.auto_docstring
 
 # Monkey-patching for EXAONE compatibility
 transformers.utils.auto_docstring.auto_docstring = lambda *args, **kwargs: (lambda obj: obj)
-if not hasattr(transformers.utils.generic, 'check_model_inputs'):
-    transformers.utils.generic.check_model_inputs = lambda *args, **kwargs: (args[1] if len(args) > 1 else kwargs.get('model_inputs'))
-if not hasattr(transformers.utils.generic, 'maybe_autocast'):
+if not hasattr(transformers.utils.generic, "check_model_inputs"):
+    transformers.utils.generic.check_model_inputs = lambda *args, **kwargs: (
+        args[1] if len(args) > 1 else kwargs.get("model_inputs")
+    )
+if not hasattr(transformers.utils.generic, "maybe_autocast"):
     from contextlib import nullcontext
+
     transformers.utils.generic.maybe_autocast = lambda *args, **kwargs: nullcontext()
-if not hasattr(transformers.modeling_rope_utils, 'RopeParameters'):
-    class RopeParameters(dict): pass
+if not hasattr(transformers.modeling_rope_utils, "RopeParameters"):
+
+    class RopeParameters(dict):
+        pass
+
     transformers.modeling_rope_utils.RopeParameters = RopeParameters
-if not hasattr(transformers.integrations, 'use_kernel_forward_from_hub'):
-    transformers.integrations.use_kernel_forward_from_hub = lambda *args, **kwargs: (lambda func: func)
-if not hasattr(transformers.integrations, 'use_kernel_func_from_hub'):
+if not hasattr(transformers.integrations, "use_kernel_forward_from_hub"):
+    transformers.integrations.use_kernel_forward_from_hub = lambda *args, **kwargs: (
+        lambda func: func
+    )
+if not hasattr(transformers.integrations, "use_kernel_func_from_hub"):
     transformers.integrations.use_kernel_func_from_hub = lambda *args, **kwargs: (lambda func: func)
-if not hasattr(transformers.integrations, 'use_kernelized_func'):
+if not hasattr(transformers.integrations, "use_kernelized_func"):
     transformers.integrations.use_kernelized_func = lambda *args, **kwargs: (lambda func: func)
-if not hasattr(transformers.masking_utils, 'create_causal_mask'):
+if not hasattr(transformers.masking_utils, "create_causal_mask"):
+
     def create_causal_mask(input_ids, *args, **kwargs):
         from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
+
         return _prepare_4d_causal_attention_mask(input_ids.shape, input_ids.dtype, input_ids.device)
+
     transformers.masking_utils.create_causal_mask = create_causal_mask
 
 import wandb
@@ -45,6 +56,7 @@ from datetime import datetime
 BASE_MODEL_ID = "LGAI-EXAONE/EXAONE-Deep-7.8B"
 ADAPTER_ID = "umyunsang/civil-complaint-exaone-lora"
 MERGED_OUTPUT_DIR = "/content/ondevice-ai-civil-complaint/models/merged_model"
+
 
 def main():
     start_time = time.time()
@@ -60,7 +72,7 @@ def main():
             "output_dir": MERGED_OUTPUT_DIR,
             "torch_dtype": "bfloat16",
             "stage": "1_lora_merge",
-        }
+        },
     )
 
     print("=" * 60)
@@ -70,6 +82,7 @@ def main():
     # Step 1: Load adapter config for validation
     print("\n[1/5] Validating adapter config...")
     from huggingface_hub import hf_hub_download
+
     config_path = hf_hub_download(ADAPTER_ID, "adapter_config.json")
     with open(config_path) as f:
         adapter_config = json.load(f)
@@ -81,9 +94,10 @@ def main():
     print(f"  Target modules: {adapter_config['target_modules']}")
     print(f"  Dropout: {adapter_config['lora_dropout']}")
 
-    assert adapter_config['base_model_name_or_path'] == BASE_MODEL_ID, \
-        f"Base model mismatch: {adapter_config['base_model_name_or_path']} != {BASE_MODEL_ID}"
-    assert adapter_config['peft_type'] == 'LORA', "Expected LORA adapter"
+    assert (
+        adapter_config["base_model_name_or_path"] == BASE_MODEL_ID
+    ), f"Base model mismatch: {adapter_config['base_model_name_or_path']} != {BASE_MODEL_ID}"
+    assert adapter_config["peft_type"] == "LORA", "Expected LORA adapter"
 
     wandb.log({"adapter_config": adapter_config})
     print("  [OK] Adapter config validated")
@@ -91,6 +105,7 @@ def main():
     # Step 2: Load tokenizer
     print("\n[2/5] Loading tokenizer...")
     from transformers import AutoTokenizer
+
     tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID, trust_remote_code=True)
     print(f"  Vocab size: {tokenizer.vocab_size}")
     print(f"  Model max length: {tokenizer.model_max_length}")
@@ -125,10 +140,12 @@ def main():
     print(f"  Base model parameters: {base_param_count:,}")
     print(f"  GPU memory used: {mem_after_base:.2f} GB")
 
-    wandb.log({
-        "base_model_params": base_param_count,
-        "gpu_mem_base_model_gb": mem_after_base,
-    })
+    wandb.log(
+        {
+            "base_model_params": base_param_count,
+            "gpu_mem_base_model_gb": mem_after_base,
+        }
+    )
 
     # Step 4: Load adapter and merge
     print("\n[4/5] Loading LoRA adapter and merging...")
@@ -155,8 +172,9 @@ def main():
     print(f"  GPU memory after merge: {mem_after_merge:.2f} GB")
 
     # Validate: parameter count should match base model
-    assert merged_param_count == base_param_count, \
-        f"Parameter count mismatch after merge: {merged_param_count} != {base_param_count}"
+    assert (
+        merged_param_count == base_param_count
+    ), f"Parameter count mismatch after merge: {merged_param_count} != {base_param_count}"
     print("  [OK] Parameter count matches base model")
 
     # Check no adapter modules remain
@@ -164,13 +182,15 @@ def main():
     assert not has_lora, "LoRA modules still present after merge!"
     print("  [OK] No LoRA modules remaining")
 
-    wandb.log({
-        "adapter_trainable_params": trainable_params,
-        "adapter_trainable_pct": 100 * trainable_params / total_params,
-        "merged_param_count": merged_param_count,
-        "gpu_mem_after_merge_gb": mem_after_merge,
-        "merge_param_count_match": merged_param_count == base_param_count,
-    })
+    wandb.log(
+        {
+            "adapter_trainable_params": trainable_params,
+            "adapter_trainable_pct": 100 * trainable_params / total_params,
+            "merged_param_count": merged_param_count,
+            "gpu_mem_after_merge_gb": mem_after_merge,
+            "merge_param_count_match": merged_param_count == base_param_count,
+        }
+    )
 
     # Step 5: Save merged model
     print(f"\n[5/5] Saving merged model to {MERGED_OUTPUT_DIR}...")
@@ -182,7 +202,7 @@ def main():
     total_size = sum(
         os.path.getsize(os.path.join(MERGED_OUTPUT_DIR, f))
         for f in os.listdir(MERGED_OUTPUT_DIR)
-        if f.endswith(('.safetensors', '.bin'))
+        if f.endswith((".safetensors", ".bin"))
     )
     model_size_gb = total_size / 1024**3
     print(f"  Model size on disk: {model_size_gb:.2f} GB")
@@ -205,16 +225,18 @@ def main():
             eos_token_id=tokenizer.eos_token_id,
         )
 
-    response = tokenizer.decode(output[0][input_ids.shape[1]:], skip_special_tokens=False)
+    response = tokenizer.decode(output[0][input_ids.shape[1] :], skip_special_tokens=False)
     print(f"  Input: {test_prompt}")
     print(f"  Output (first 300 chars): {response[:300]}")
     print("  [OK] Inference test passed")
 
-    wandb.log({
-        "merged_model_size_gb": model_size_gb,
-        "sanity_check_input": test_prompt,
-        "sanity_check_output": response[:500],
-    })
+    wandb.log(
+        {
+            "merged_model_size_gb": model_size_gb,
+            "sanity_check_input": test_prompt,
+            "sanity_check_output": response[:500],
+        }
+    )
 
     elapsed = time.time() - start_time
     print(f"\n{'=' * 60}")
@@ -252,6 +274,7 @@ def main():
     torch.cuda.empty_cache()
 
     return merge_log
+
 
 if __name__ == "__main__":
     main()

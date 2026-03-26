@@ -38,7 +38,6 @@ from fastapi.testclient import TestClient
 
 from src.inference.api_server import app, manager
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -54,7 +53,13 @@ def _mock_manager():
     manager.engine = MagicMock()
     manager.retriever = MagicMock()
     manager.retriever.search.return_value = [
-        {"id": "case-001", "category": "세금", "complaint": "테스트 민원", "answer": "테스트 답변", "score": 0.95}
+        {
+            "id": "case-001",
+            "category": "세금",
+            "complaint": "테스트 민원",
+            "answer": "테스트 답변",
+            "score": 0.95,
+        }
     ]
     yield
 
@@ -113,6 +118,7 @@ class TestGenerateEndpoint:
         async def mock_generate(*args, **kwargs):
             async def gen():
                 yield mock_output
+
             return gen(), []
 
         manager.generate = AsyncMock(side_effect=mock_generate)
@@ -124,15 +130,19 @@ class TestGenerateEndpoint:
         async def fake_generate(request, request_id):
             async def gen():
                 yield mock_output
+
             return gen(), []
 
         manager.generate = AsyncMock(side_effect=fake_generate)
 
-        response = client.post("/v1/generate", json={
-            "prompt": "테스트 프롬프트",
-            "max_tokens": 100,
-            "stream": False,
-        })
+        response = client.post(
+            "/v1/generate",
+            json={
+                "prompt": "테스트 프롬프트",
+                "max_tokens": 100,
+                "stream": False,
+            },
+        )
         assert response.status_code == 200
 
     def test_generate_response_structure(self, client):
@@ -145,14 +155,18 @@ class TestGenerateEndpoint:
         async def fake_generate(request, request_id):
             async def gen():
                 yield mock_output
+
             return gen(), []
 
         manager.generate = AsyncMock(side_effect=fake_generate)
 
-        response = client.post("/v1/generate", json={
-            "prompt": "구조 테스트",
-            "stream": False,
-        })
+        response = client.post(
+            "/v1/generate",
+            json={
+                "prompt": "구조 테스트",
+                "stream": False,
+            },
+        )
         data = response.json()
         assert "request_id" in data
         assert "text" in data
@@ -161,10 +175,13 @@ class TestGenerateEndpoint:
 
     def test_generate_stream_flag_rejected(self, client):
         """stream=True로 /v1/generate를 호출하면 400 에러."""
-        response = client.post("/v1/generate", json={
-            "prompt": "스트림 테스트",
-            "stream": True,
-        })
+        response = client.post(
+            "/v1/generate",
+            json={
+                "prompt": "스트림 테스트",
+                "stream": True,
+            },
+        )
         assert response.status_code == 400
 
 
@@ -196,8 +213,9 @@ class TestSearchEndpoint:
         ]
         mock_mgr.search.return_value = mock_search_results
         mock_mgr.get_index_stats.return_value = {
-            "base_dir": "/tmp", "embedding_dim": 1024,
-            "indexes": {"case": {"loaded": True, "doc_count": 5}}
+            "base_dir": "/tmp",
+            "embedding_dim": 1024,
+            "indexes": {"case": {"loaded": True, "doc_count": 5}},
         }
         manager.index_manager = mock_mgr
 
@@ -213,20 +231,26 @@ class TestSearchEndpoint:
 
     def test_search_returns_200(self, client):
         """기본 검색 요청이 200을 반환한다."""
-        response = client.post("/search", json={
-            "query": "도로 보수 요청",
-            "top_k": 5,
-            "doc_type": "case",
-        })
+        response = client.post(
+            "/search",
+            json={
+                "query": "도로 보수 요청",
+                "top_k": 5,
+                "doc_type": "case",
+            },
+        )
         assert response.status_code == 200
 
     def test_search_response_structure(self, client):
         """응답에 query, doc_type, results, total이 포함된다."""
-        response = client.post("/search", json={
-            "query": "도로 보수 요청",
-            "top_k": 5,
-            "doc_type": "case",
-        })
+        response = client.post(
+            "/search",
+            json={
+                "query": "도로 보수 요청",
+                "top_k": 5,
+                "doc_type": "case",
+            },
+        )
         data = response.json()
         assert "query" in data
         assert "doc_type" in data
@@ -239,11 +263,14 @@ class TestSearchEndpoint:
 
     def test_search_results_have_required_fields(self, client):
         """각 결과에 doc_id, title, score, source_type이 포함된다."""
-        response = client.post("/search", json={
-            "query": "민원 테스트",
-            "top_k": 3,
-            "doc_type": "case",
-        })
+        response = client.post(
+            "/search",
+            json={
+                "query": "민원 테스트",
+                "top_k": 3,
+                "doc_type": "case",
+            },
+        )
         data = response.json()
         for result in data["results"]:
             assert "doc_id" in result
@@ -253,49 +280,64 @@ class TestSearchEndpoint:
 
     def test_search_empty_query_returns_422(self, client):
         """빈 쿼리 시 422 Validation Error를 반환한다."""
-        response = client.post("/search", json={
-            "query": "",
-            "top_k": 5,
-            "doc_type": "case",
-        })
+        response = client.post(
+            "/search",
+            json={
+                "query": "",
+                "top_k": 5,
+                "doc_type": "case",
+            },
+        )
         assert response.status_code == 422
 
     def test_search_invalid_doc_type_returns_400_or_422(self, client):
         """잘못된 doc_type 시 400 또는 422를 반환한다."""
-        response = client.post("/search", json={
-            "query": "테스트 쿼리",
-            "top_k": 5,
-            "doc_type": "invalid_type",
-        })
+        response = client.post(
+            "/search",
+            json={
+                "query": "테스트 쿼리",
+                "top_k": 5,
+                "doc_type": "invalid_type",
+            },
+        )
         assert response.status_code in (400, 422)
 
     def test_search_top_k_validation(self, client):
         """top_k=0 또는 51 시 422를 반환한다."""
         # top_k=0
-        response = client.post("/search", json={
-            "query": "테스트 쿼리",
-            "top_k": 0,
-            "doc_type": "case",
-        })
+        response = client.post(
+            "/search",
+            json={
+                "query": "테스트 쿼리",
+                "top_k": 0,
+                "doc_type": "case",
+            },
+        )
         assert response.status_code == 422
 
         # top_k=51
-        response = client.post("/search", json={
-            "query": "테스트 쿼리",
-            "top_k": 51,
-            "doc_type": "case",
-        })
+        response = client.post(
+            "/search",
+            json={
+                "query": "테스트 쿼리",
+                "top_k": 51,
+                "doc_type": "case",
+            },
+        )
         assert response.status_code == 422
 
     def test_search_not_initialized_returns_503(self, client):
         """index_manager=None 시 503을 반환한다."""
         manager.index_manager = None
 
-        response = client.post("/search", json={
-            "query": "테스트 쿼리",
-            "top_k": 5,
-            "doc_type": "case",
-        })
+        response = client.post(
+            "/search",
+            json={
+                "query": "테스트 쿼리",
+                "top_k": 5,
+                "doc_type": "case",
+            },
+        )
         assert response.status_code == 503
 
 
@@ -307,33 +349,45 @@ class TestSearchEndpoint:
 class TestErrorCases:
     def test_missing_prompt(self, client):
         """prompt 필드가 없으면 422 Validation Error."""
-        response = client.post("/v1/generate", json={
-            "max_tokens": 100,
-        })
+        response = client.post(
+            "/v1/generate",
+            json={
+                "max_tokens": 100,
+            },
+        )
         assert response.status_code == 422
 
     def test_invalid_temperature(self, client):
         """temperature 범위 초과 시 422 Validation Error."""
-        response = client.post("/v1/generate", json={
-            "prompt": "테스트",
-            "temperature": 5.0,
-        })
+        response = client.post(
+            "/v1/generate",
+            json={
+                "prompt": "테스트",
+                "temperature": 5.0,
+            },
+        )
         assert response.status_code == 422
 
     def test_invalid_top_p(self, client):
         """top_p 범위 초과 시 422 Validation Error."""
-        response = client.post("/v1/generate", json={
-            "prompt": "테스트",
-            "top_p": 2.0,
-        })
+        response = client.post(
+            "/v1/generate",
+            json={
+                "prompt": "테스트",
+                "top_p": 2.0,
+            },
+        )
         assert response.status_code == 422
 
     def test_negative_max_tokens(self, client):
         """max_tokens가 0 이하이면 422 Validation Error."""
-        response = client.post("/v1/generate", json={
-            "prompt": "테스트",
-            "max_tokens": 0,
-        })
+        response = client.post(
+            "/v1/generate",
+            json={
+                "prompt": "테스트",
+                "max_tokens": 0,
+            },
+        )
         assert response.status_code == 422
 
     def test_nonexistent_endpoint(self, client):

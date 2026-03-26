@@ -34,20 +34,20 @@ class TestDataPreprocessor:
                 "id": "TEST_001",
                 "question": "There are large potholes on the road in front of our neighborhood, making it difficult to drive. Please repair them quickly.",
                 "answer": "Hello. Thank you for your road repair request. We have forwarded this to the road maintenance department.",
-                "category": "road/traffic"
+                "category": "road/traffic",
             },
             {
                 "id": "TEST_002",
                 "question": "Illegal parking continues every evening, blocking the fire lane. Please strengthen enforcement.",
                 "answer": "We have notified the traffic enforcement team to increase patrols in your area.",
-                "category": "road/traffic"
+                "category": "road/traffic",
             },
             {
                 "id": "TEST_003",
                 "question": "Construction noise next door continues late at night. Please take action.",
                 "answer": "We have checked the construction site. They have been warned about operating hours.",
-                "category": "environment/sanitation"
-            }
+                "category": "environment/sanitation",
+            },
         ]
 
     def test_process_valid_data(self, preprocessor, sample_data):
@@ -59,14 +59,7 @@ class TestDataPreprocessor:
 
     def test_filter_short_content(self, preprocessor):
         """Test that short content is filtered out"""
-        short_data = [
-            {
-                "id": "SHORT_001",
-                "question": "Short",
-                "answer": "OK",
-                "category": "test"
-            }
-        ]
+        short_data = [{"id": "SHORT_001", "question": "Short", "answer": "OK", "category": "test"}]
 
         processed = preprocessor.process_raw_data(short_data, source="test")
         assert len(processed) == 0
@@ -96,9 +89,24 @@ class TestDataPreprocessor:
     def test_category_normalization(self, preprocessor):
         """Test category normalization"""
         test_data = [
-            {"id": "CAT_001", "question": "Road issue complaint with sufficient detail for processing.", "answer": "Thank you for the detailed report.", "category": "road"},
-            {"id": "CAT_002", "question": "Traffic violation report with sufficient detail for processing.", "answer": "We will investigate this matter.", "category": "traffic"},
-            {"id": "CAT_003", "question": "Environment issue complaint with sufficient detail for processing.", "answer": "Environmental team notified.", "category": "environment"},
+            {
+                "id": "CAT_001",
+                "question": "Road issue complaint with sufficient detail for processing.",
+                "answer": "Thank you for the detailed report.",
+                "category": "road",
+            },
+            {
+                "id": "CAT_002",
+                "question": "Traffic violation report with sufficient detail for processing.",
+                "answer": "We will investigate this matter.",
+                "category": "traffic",
+            },
+            {
+                "id": "CAT_003",
+                "question": "Environment issue complaint with sufficient detail for processing.",
+                "answer": "Environmental team notified.",
+                "category": "environment",
+            },
         ]
 
         processed = preprocessor.process_raw_data(test_data, source="test")
@@ -114,7 +122,7 @@ class TestDataPreprocessor:
                 "id": "PII_001",
                 "question": "Please contact me at 010-1234-5678 regarding the pothole repair request.",
                 "answer": "We will contact you at the provided number.",
-                "category": "road/traffic"
+                "category": "road/traffic",
             }
         ]
 
@@ -160,7 +168,7 @@ class TestDataQualityReport:
             total_raw_records=100,
             total_processed_records=90,
             filtered_too_short=5,
-            filtered_duplicates=5
+            filtered_duplicates=5,
         )
 
         data = report.to_dict()
@@ -172,7 +180,7 @@ class TestDataQualityReport:
         report = DataQualityReport(
             total_raw_records=100,
             total_processed_records=90,
-            category_distribution={"road/traffic": 50, "environment": 40}
+            category_distribution={"road/traffic": 50, "environment": 40},
         )
 
         report_str = str(report)
@@ -196,7 +204,7 @@ class TestDatasetSaving:
                     "id": f"SAVE_{i:03d}",
                     "question": f"Sample complaint text number {i} with sufficient detail for processing and testing purposes.",
                     "answer": f"Standard response for complaint {i} with adequate length.",
-                    "category": "road/traffic"
+                    "category": "road/traffic",
                 }
                 for i in range(10)
             ]

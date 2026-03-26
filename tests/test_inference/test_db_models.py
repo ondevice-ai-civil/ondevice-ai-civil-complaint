@@ -34,10 +34,12 @@ class TestDocumentSource:
 
     def test_create_with_case_fields(self, db_session, sample_doc_kwargs):
         """CASE 전용 필드(complaint_text, answer_text) 포함 생성."""
-        sample_doc_kwargs.update({
-            "complaint_text": "도로 포장이 파손되었습니다",
-            "answer_text": "해당 구간 보수 공사를 진행하겠습니다",
-        })
+        sample_doc_kwargs.update(
+            {
+                "complaint_text": "도로 포장이 파손되었습니다",
+                "answer_text": "해당 구간 보수 공사를 진행하겠습니다",
+            }
+        )
         doc = DocumentSource(**sample_doc_kwargs)
         db_session.add(doc)
         db_session.commit()
@@ -51,13 +53,15 @@ class TestDocumentSource:
 
     def test_create_with_law_fields(self, db_session, sample_doc_kwargs):
         """LAW 전용 필드(law_number, article_number, enforcement_date) 포함 생성."""
-        sample_doc_kwargs.update({
-            "source_type": "law",
-            "source_id": "LAW-001",
-            "law_number": "제1234호",
-            "article_number": "제5조",
-            "enforcement_date": date(2026, 1, 1),
-        })
+        sample_doc_kwargs.update(
+            {
+                "source_type": "law",
+                "source_id": "LAW-001",
+                "law_number": "제1234호",
+                "article_number": "제5조",
+                "enforcement_date": date(2026, 1, 1),
+            }
+        )
         doc = DocumentSource(**sample_doc_kwargs)
         db_session.add(doc)
         db_session.commit()
@@ -216,11 +220,13 @@ class TestIndexVersion:
 
     def test_with_optional_fields(self, db_session, sample_index_version_kwargs):
         """선택 필드를 포함하여 생성한다."""
-        sample_index_version_kwargs.update({
-            "snapshot_path": "/snapshots/case_v1.tar.gz",
-            "build_duration_seconds": 45.2,
-            "notes": "초기 빌드",
-        })
+        sample_index_version_kwargs.update(
+            {
+                "snapshot_path": "/snapshots/case_v1.tar.gz",
+                "build_duration_seconds": 45.2,
+                "notes": "초기 빌드",
+            }
+        )
         ver = IndexVersion(**sample_index_version_kwargs)
         db_session.add(ver)
         db_session.commit()

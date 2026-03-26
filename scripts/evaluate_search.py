@@ -43,7 +43,6 @@ if PROJECT_ROOT not in sys.path:
 from src.data_collection_preprocessing.embedding import EmbeddingPipeline
 from src.inference.index_manager import IndexType, MultiIndexManager
 
-
 # ---------------------------------------------------------------------------
 # 평가 데이터셋 구성
 # ---------------------------------------------------------------------------
@@ -220,7 +219,9 @@ def print_results(results: Dict, top_k: int) -> None:
     mrr = results["mrr"]
 
     status_5 = "PASS" if recall5 >= 80.0 else "FAIL"
-    print(f"  Recall@5:   {recall5:6.2f}%  ({results['hits_at_5']}/{results['total_samples']})  [{status_5}]")
+    print(
+        f"  Recall@5:   {recall5:6.2f}%  ({results['hits_at_5']}/{results['total_samples']})  [{status_5}]"
+    )
     print(f"  Recall@10:  {recall10:6.2f}%  ({results['hits_at_10']}/{results['total_samples']})")
     print(f"  MRR:        {mrr:6.4f}")
 
@@ -334,9 +335,7 @@ def main() -> None:
         manager.save_index(index_type)
         logger.info(f"인덱스 구축 완료: {manager.indexes[index_type].ntotal}건")
     elif doc_count == 0:
-        logger.error(
-            "인덱스가 비어있습니다. --build-index 옵션으로 인덱스를 먼저 구축하세요."
-        )
+        logger.error("인덱스가 비어있습니다. --build-index 옵션으로 인덱스를 먼저 구축하세요.")
         sys.exit(1)
     else:
         logger.info(f"기존 인덱스 로드 완료: {doc_count}건")

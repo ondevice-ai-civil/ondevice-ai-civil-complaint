@@ -515,9 +515,7 @@ class TestGenerateEndpoint:
             ]
         )
         manager.engine = MagicMock()
-        manager.engine.generate = MagicMock(
-            return_value=_make_vllm_output_mock()()
-        )
+        manager.engine.generate = MagicMock(return_value=_make_vllm_output_mock()())
 
         payload = {
             "prompt": "도로 보수 관련 민원에 대해 답변해주세요.",
@@ -547,9 +545,7 @@ class TestGenerateEndpoint:
         manager.retriever = MagicMock()
         manager.retriever.search = MagicMock(return_value=[])
         manager.engine = MagicMock()
-        manager.engine.generate = MagicMock(
-            return_value=_make_vllm_output_mock()()
-        )
+        manager.engine.generate = MagicMock(return_value=_make_vllm_output_mock()())
 
         payload = {
             "prompt": "도로 보수 관련 민원",
@@ -568,9 +564,7 @@ class TestGenerateEndpoint:
         """use_rag=false 시 retrieved_cases가 빈 리스트이다."""
         manager.retriever = MagicMock()
         manager.engine = MagicMock()
-        manager.engine.generate = MagicMock(
-            return_value=_make_vllm_output_mock()()
-        )
+        manager.engine.generate = MagicMock(return_value=_make_vllm_output_mock()())
 
         payload = {
             "prompt": "일반 질문입니다.",
@@ -593,9 +587,7 @@ class TestGenerateEndpoint:
         manager.retriever = MagicMock()
         manager.retriever.search = MagicMock(return_value=[])
         manager.engine = MagicMock()
-        manager.engine.generate = MagicMock(
-            return_value=_make_vllm_output_mock()()
-        )
+        manager.engine.generate = MagicMock(return_value=_make_vllm_output_mock()())
 
         payload = {
             "prompt": "테스트 프롬프트",
@@ -631,9 +623,7 @@ class TestGenerateEndpoint:
         manager.retriever = MagicMock()
         manager.retriever.search = MagicMock(return_value=[])
         manager.engine = MagicMock()
-        manager.engine.generate = MagicMock(
-            return_value=_make_vllm_output_mock()()
-        )
+        manager.engine.generate = MagicMock(return_value=_make_vllm_output_mock()())
 
         payload = {
             "prompt": "테스트",
@@ -730,7 +720,9 @@ class TestHealthEndpoint:
 # ---------------------------------------------------------------------------
 
 
-def _make_classify_output_mock(text='{"category": "traffic", "confidence": 0.95, "reason": "도로 관련 민원"}'):
+def _make_classify_output_mock(
+    text='{"category": "traffic", "confidence": 0.95, "reason": "도로 관련 민원"}',
+):
     """classifier용 vLLM 출력 mock을 반환한다."""
     return _make_vllm_output_mock(text)
 
@@ -745,6 +737,7 @@ def client_with_classifier(client):
 
     # 임시 에이전트 디렉토리 생성
     import tempfile, os
+
     tmpdir = tempfile.mkdtemp()
     with open(os.path.join(tmpdir, "classifier.md"), "w", encoding="utf-8") as f:
         f.write(
@@ -754,15 +747,14 @@ def client_with_classifier(client):
         )
     manager.agent_manager = AgentManager(tmpdir)
     manager.engine = MagicMock()
-    manager.engine.generate = MagicMock(
-        return_value=_make_classify_output_mock()()
-    )
+    manager.engine.generate = MagicMock(return_value=_make_classify_output_mock()())
 
     yield client
 
     manager.agent_manager = original_am
     manager.engine = original_engine
     import shutil
+
     shutil.rmtree(tmpdir, ignore_errors=True)
 
 
@@ -786,9 +778,7 @@ class TestClassifyEndpoint:
         manager.engine.generate = MagicMock(
             return_value=_make_vllm_output_mock("이것은 JSON이 아닙니다.")()
         )
-        resp = client_with_classifier.post(
-            "/v1/classify", json={"prompt": "테스트 민원"}
-        )
+        resp = client_with_classifier.post("/v1/classify", json={"prompt": "테스트 민원"})
         assert resp.status_code == 200
         body = resp.json()
         assert body["classification"] is None
@@ -801,9 +791,7 @@ class TestClassifyEndpoint:
                 '{"category": "invalid_cat", "confidence": 0.9, "reason": "test"}'
             )()
         )
-        resp = client_with_classifier.post(
-            "/v1/classify", json={"prompt": "테스트 민원"}
-        )
+        resp = client_with_classifier.post("/v1/classify", json={"prompt": "테스트 민원"})
         assert resp.status_code == 200
         body = resp.json()
         assert body["classification"] is None
@@ -815,18 +803,14 @@ class TestClassifyEndpoint:
         manager.agent_manager = None
 
         try:
-            resp = client.post(
-                "/v1/classify", json={"prompt": "테스트"}
-            )
+            resp = client.post("/v1/classify", json={"prompt": "테스트"})
             assert resp.status_code == 503
         finally:
             manager.agent_manager = original
 
     def test_classify_response_has_token_counts(self, client_with_classifier):
         """응답에 prompt_tokens, completion_tokens가 포함된다."""
-        resp = client_with_classifier.post(
-            "/v1/classify", json={"prompt": "소음이 심합니다."}
-        )
+        resp = client_with_classifier.post("/v1/classify", json={"prompt": "소음이 심합니다."})
         assert resp.status_code == 200
         body = resp.json()
         assert isinstance(body["prompt_tokens"], int)
@@ -834,9 +818,7 @@ class TestClassifyEndpoint:
 
     def test_classify_no_raw_text_in_response(self, client_with_classifier):
         """응답에 LLM 원본 text 필드가 포함되지 않는다."""
-        resp = client_with_classifier.post(
-            "/v1/classify", json={"prompt": "테스트 민원"}
-        )
+        resp = client_with_classifier.post("/v1/classify", json={"prompt": "테스트 민원"})
         assert resp.status_code == 200
         body = resp.json()
         assert "text" not in body

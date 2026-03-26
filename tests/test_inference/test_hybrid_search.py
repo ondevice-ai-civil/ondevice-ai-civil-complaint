@@ -410,18 +410,14 @@ class TestHybridSearchHybrid:
         mock_index_manager: mock.MagicMock,
         mock_bm25_indexer: mock.MagicMock,
     ) -> None:
-        results, actual_mode = await engine.search(
-            "테스트", IndexType.CASE, mode=SearchMode.HYBRID
-        )
+        results, actual_mode = await engine.search("테스트", IndexType.CASE, mode=SearchMode.HYBRID)
         mock_index_manager.search.assert_called_once()
         mock_bm25_indexer.search.assert_called_once()
         assert len(results) > 0
         assert actual_mode == SearchMode.HYBRID
 
     async def test_hybrid_respects_top_k(self, engine: HybridSearchEngine) -> None:
-        results, _ = await engine.search(
-            "테스트", IndexType.CASE, top_k=3, mode=SearchMode.HYBRID
-        )
+        results, _ = await engine.search("테스트", IndexType.CASE, top_k=3, mode=SearchMode.HYBRID)
         assert len(results) <= 3
 
     async def test_hybrid_fallback_to_dense_when_no_bm25(
@@ -435,9 +431,7 @@ class TestHybridSearchHybrid:
             bm25_indexers={},
             embed_model=mock_embed_model,
         )
-        results, actual_mode = await engine.search(
-            "테스트", IndexType.CASE, mode=SearchMode.HYBRID
-        )
+        results, actual_mode = await engine.search("테스트", IndexType.CASE, mode=SearchMode.HYBRID)
         # BM25 없으므로 dense 폴백
         assert len(results) > 0
         assert actual_mode == SearchMode.DENSE
@@ -456,9 +450,7 @@ class TestHybridSearchHybrid:
             bm25_indexers={IndexType.CASE: not_ready_indexer},
             embed_model=mock_embed_model,
         )
-        results, actual_mode = await engine.search(
-            "테스트", IndexType.CASE, mode=SearchMode.HYBRID
-        )
+        results, actual_mode = await engine.search("테스트", IndexType.CASE, mode=SearchMode.HYBRID)
         assert len(results) > 0
         assert actual_mode == SearchMode.DENSE
         mock_index_manager.search.assert_called_once()
@@ -472,9 +464,7 @@ class TestHybridSearchHybrid:
     async def test_hybrid_merges_dense_and_sparse_docs(self, engine: HybridSearchEngine) -> None:
         """hybrid 결과에 dense와 sparse 양쪽의 문서가 포함되는지 확인."""
         # top_k를 충분히 크게 설정하여 모든 문서가 반환되도록 함
-        results, _ = await engine.search(
-            "테스트", IndexType.CASE, top_k=10, mode=SearchMode.HYBRID
-        )
+        results, _ = await engine.search("테스트", IndexType.CASE, top_k=10, mode=SearchMode.HYBRID)
         doc_ids = {r["doc_id"] for r in results}
         # dense mock: case-000 ~ case-004, sparse mock: case-004, 002, 000, 007, 001
         # case-007은 sparse에만 존재

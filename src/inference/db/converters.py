@@ -13,11 +13,14 @@ from src.inference.schemas import DocumentMetadataSchema
 
 # 타입별 전용 필드 목록 (ORM <-> Dataclass/Pydantic 변환 시 공통 사용)
 _TYPE_SPECIFIC_FIELDS: tuple = (
-    "complaint_text", "answer_text",       # CASE
-    "law_number", "article_number",         # LAW
-    "enforcement_date",                     # LAW
-    "department",                           # MANUAL
-    "notice_number", "effective_date",      # NOTICE
+    "complaint_text",
+    "answer_text",  # CASE
+    "law_number",
+    "article_number",  # LAW
+    "enforcement_date",  # LAW
+    "department",  # MANUAL
+    "notice_number",
+    "effective_date",  # NOTICE
 )
 
 
@@ -41,9 +44,7 @@ def orm_to_dataclass(doc_source: DocumentSource) -> DocumentMetadata:
         value = getattr(doc_source, field_name, None)
         if value is not None:
             # date/datetime 객체는 ISO 문자열로 직렬화
-            extras[field_name] = (
-                value.isoformat() if hasattr(value, "isoformat") else value
-            )
+            extras[field_name] = value.isoformat() if hasattr(value, "isoformat") else value
 
     return DocumentMetadata(
         doc_id=str(doc_source.id),
@@ -54,12 +55,8 @@ def orm_to_dataclass(doc_source: DocumentSource) -> DocumentMetadata:
         reliability_score=doc_source.reliability_score,
         created_at=doc_source.created_at.isoformat(),
         updated_at=doc_source.updated_at.isoformat(),
-        valid_from=(
-            doc_source.valid_from.isoformat() if doc_source.valid_from else None
-        ),
-        valid_until=(
-            doc_source.valid_until.isoformat() if doc_source.valid_until else None
-        ),
+        valid_from=(doc_source.valid_from.isoformat() if doc_source.valid_from else None),
+        valid_until=(doc_source.valid_until.isoformat() if doc_source.valid_until else None),
         chunk_index=doc_source.chunk_index,
         chunk_total=doc_source.total_chunks,
         extras=extras,
@@ -146,9 +143,7 @@ def orm_to_pydantic(doc_source: DocumentSource) -> DocumentMetadataSchema:
     for field_name in _TYPE_SPECIFIC_FIELDS:
         value = getattr(doc_source, field_name, None)
         if value is not None:
-            extra_meta[field_name] = (
-                value.isoformat() if hasattr(value, "isoformat") else value
-            )
+            extra_meta[field_name] = value.isoformat() if hasattr(value, "isoformat") else value
 
     return DocumentMetadataSchema(
         doc_id=str(doc_source.id),

@@ -15,9 +15,22 @@ jobs:
     if: github.event.pull_request.draft == false
 
     steps:
+      - name: Install Git LFS on Self-hosted Runner
+        run: |
+          if ! command -v git-lfs &> /dev/null; then
+            echo "Git LFS not found. Installing..."
+            sudo apt-get update && sudo apt-get install -y git-lfs
+            git lfs install
+          else
+            echo "Git LFS is already installed."
+          fi
+
       - uses: actions/checkout@v4
         with:
-          lfs: true
+          lfs: false # 초기 체크아웃 시 LFS 오류 방지
+
+      - name: Pull LFS objects
+        run: git lfs pull
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5

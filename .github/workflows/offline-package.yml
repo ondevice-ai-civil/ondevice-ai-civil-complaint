@@ -1,0 +1,55 @@
+name: Offline Package Build
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  build-offline-package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull Docker image from GHCR
+        run: docker pull ghcr.io/govon-org/govon:latest
+
+      - name: Save Docker image to archive
+        run: docker save ghcr.io/govon-org/govon:latest | gzip > govon-image.tar.gz
+
+      - name: Build offline deployment package
+        run: |
+          tar czf govon-offline-package.tar.gz \
+            govon-image.tar.gz \
+            scripts/offline-deploy.sh \
+            scripts/smoke-test.sh \
+            docker-compose.offline.yml
+
+      - name: Upload to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: govon-offline-package.tar.gz
+
+      - name: Upload as artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: govon-offline-package
+          path: govon-offline-package.tar.gz
+          retention-days: 7

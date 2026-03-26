@@ -55,10 +55,7 @@ jobs:
           WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
           WANDB_PROJECT: "GovOn"
         run: |
-          # 1. W&B 명시적 로그인
-          uv run wandb login $WANDB_API_KEY
-          
-          # 2. 모델 평가 실행
+          # 모델 평가 실행 (WANDB_API_KEY는 환경 변수로 자동 인식됨)
           uv run python -m src.evaluation.evaluate_model_v3_stable \
             --model_path $MODEL_PATH \
             --data_path $DATA_PATH \

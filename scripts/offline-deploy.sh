@@ -39,17 +39,24 @@ echo "Docker 이미지 로드 중... (시간이 소요될 수 있습니다)"
 gunzip -c "$IMAGE_FILE" | docker load
 echo "[OK] 이미지 로드 완료"
 
-# 5. 볼륨 디렉토리 생성
+# 5. 환경변수 안내
+if [ -z "${MODEL_PATH:-}" ]; then
+    echo "[INFO] MODEL_PATH가 설정되지 않았습니다."
+    echo "  오프라인 환경에서는 로컬 모델 경로를 지정하세요:"
+    echo "  export MODEL_PATH=/path/to/local/model"
+fi
+
+# 6. 볼륨 디렉토리 생성
 echo "볼륨 디렉토리 생성 중..."
 mkdir -p "${PROJECT_DIR}/models" "${PROJECT_DIR}/data" "${PROJECT_DIR}/agents" "${PROJECT_DIR}/configs"
 echo "[OK] 볼륨 디렉토리 준비 완료"
 
-# 6. 컨테이너 실행
+# 7. 컨테이너 실행
 echo "컨테이너 시작 중..."
 docker compose -f "${PROJECT_DIR}/docker-compose.offline.yml" up -d
 echo "[OK] 컨테이너 시작됨"
 
-# 7. 헬스체크 대기
+# 8. 헬스체크 대기
 echo "서버 시작 대기 중... (최대 120초)"
 for i in $(seq 1 24); do
     if curl -sf http://localhost:8000/health > /dev/null 2>&1; then

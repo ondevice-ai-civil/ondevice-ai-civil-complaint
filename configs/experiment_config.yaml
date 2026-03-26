@@ -1,0 +1,35 @@
+experiment:
+  name: "lean-startup-rag-comparison"
+  version: "1.0"
+  description: "RAG 활성화/비활성화에 따른 답변 품질 A/B 비교 실험"
+
+conditions:
+  - name: "rag_enabled"
+    description: "RAG 파이프라인 활성화"
+    env:
+      USE_RAG_PIPELINE: "true"
+  - name: "rag_disabled"
+    description: "RAG 파이프라인 비활성화 (모델 자체 지식만 사용)"
+    env:
+      USE_RAG_PIPELINE: "false"
+
+metrics:
+  primary:
+    - name: "bert_score_f1"
+      description: "BERTScore F1 (한국어)"
+      threshold: 0.70
+  secondary:
+    - name: "rouge_l"
+      description: "ROUGE-L F-measure"
+
+decision:
+  persevere:
+    condition: "bert_score_f1 >= 0.70"
+    action: "현재 RAG 전략 유지, 추가 최적화 진행"
+  pivot:
+    condition: "bert_score_f1 < 0.70"
+    action: "RAG 검색 품질 개선 또는 프롬프트 엔지니어링 재설계"
+
+data:
+  test_path: "data/processed/v2_test.jsonl"
+  expected_samples: 1265

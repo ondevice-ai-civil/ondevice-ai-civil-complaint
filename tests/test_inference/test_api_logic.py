@@ -14,18 +14,12 @@ def mocked_find_spec(name, package=None):
             return None
         raise
 
-with patch("importlib.util.find_spec", side_effect=mocked_find_spec):
-    import pytest
-    from fastapi.testclient import TestClient
+with patch("vllm.engine.async_llm_engine.AsyncLLMEngine.from_engine_args"), patch(
+    "src.inference.api_server.vLLMEngineManager.initialize", side_effect=lambda: None
+):
+    import src.inference.api_server as api_server
 
-    # vLLM 엔진 로드를 방지하기 위한 패치
-    with (
-        patch("vllm.engine.async_llm_engine.AsyncLLMEngine.from_engine_args"),
-        patch(
-            "src.inference.api_server.vLLMEngineManager.initialize", side_effect=lambda: None
-        ),
-    ):
-        from src.inference.api_server import app
+    app = api_server.app
 
 client = TestClient(app)
 

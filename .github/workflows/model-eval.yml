@@ -11,8 +11,6 @@ on:
 jobs:
   evaluate:
     name: v2 Model Performance Test
-    # 조직 설정에서 생성한 GPU 러너 레이블을 입력하세요.
-    # 예: ubuntu-22.04-gpu-t4 (T4 기반 공식 러너)
     runs-on: ubuntu-22.04-gpu-t4
     if: github.event.pull_request.draft == false
 
@@ -21,28 +19,27 @@ jobs:
         with:
           lfs: true
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.10"
-          cache: 'pip'
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install 3.10
 
       - name: Install Project Dependencies
         run: |
-          pip install --upgrade pip
-          pip install .[dev,inference]
-          # T4 환경에 맞는 최적화 라이브러리 설치 확인
-          pip install autoawq vllm
+          uv pip install .[dev,inference]
+          uv pip install autoawq vllm
 
       - name: Run Evaluation on T4 GPU
         env:
           MODEL_PATH: "umyunsang/GovOn-EXAONE-LoRA-v2"
           DATA_PATH: "data/processed/v2_test.jsonl"
-          # T4 VRAM(16GB)에 맞춘 메모리 최적화
           GPU_UTILIZATION: 0.7 
         run: |
-          # v2 평가 스크립트 실행 및 리포트 생성
-          python -m src.evaluation.evaluate_model_v3_stable \
+          uv run python -m src.evaluation.evaluate_model_v3_stable \
             --model_path $MODEL_PATH \
             --data_path $DATA_PATH \
             --output_report evaluation_report.md

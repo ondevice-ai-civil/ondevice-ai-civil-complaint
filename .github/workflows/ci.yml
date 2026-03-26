@@ -12,31 +12,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.10"
-          cache: 'pip'
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install 3.10
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install .[dev]
-          pip install fastapi uvicorn httpx pytest-mock
+          uv pip install .[dev]
+          uv pip install fastapi uvicorn httpx pytest-mock
 
       - name: Lint & Type Check
-        # 초기 구축 단계이므로 스타일 가이드는 경고로 처리하고 빌드를 계속 진행
         continue-on-error: true
         run: |
-          black --check .
-          isort --check .
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          mypy .
+          uv run black --check .
+          uv run isort --check .
+          uv run flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          uv run mypy .
 
       - name: Run Unit Tests (Logic Only)
         run: |
           export SKIP_MODEL_LOAD=true
-          pytest tests/test_inference/test_api_logic.py --cov=src/inference --cov-report=xml
+          uv run pytest tests/test_inference/test_api_logic.py --cov=src/inference --cov-report=xml
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4

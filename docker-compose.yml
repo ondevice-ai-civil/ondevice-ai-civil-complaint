@@ -17,6 +17,8 @@ services:
       - MODEL_PATH=${MODEL_PATH:-umyunsang/GovOn-EXAONE-LoRA-v2}
       - GPU_UTILIZATION=0.8
       - MAX_MODEL_LEN=8192
+      - USE_RAG_PIPELINE=${USE_RAG_PIPELINE:-true}
+      - MODEL_VERSION=${MODEL_VERSION:-v2_lora}
     deploy:
       resources:
         reservations:

@@ -33,6 +33,7 @@ from .schemas import (
     SearchResult,
     StreamResponse,
 )
+from .feature_flags import FeatureFlags
 from .vllm_stabilizer import apply_transformers_patch
 
 # --- Rate Limiting (optional) ---
@@ -88,6 +89,7 @@ class vLLMEngineManager:
         self.hybrid_engine: Optional[HybridSearchEngine] = None
         self.bm25_indexers: dict = {}
         self.embed_model = None
+        self.feature_flags: FeatureFlags = FeatureFlags.from_env()
         self.pii_masker = None
 
     async def initialize(self):
@@ -236,11 +238,14 @@ class vLLMEngineManager:
             return user_block.strip()
         return prompt
 
-    async def generate(self, request: GenerateRequest, request_id: str) -> tuple:
+    async def generate(
+        self, request: GenerateRequest, request_id: str, flags: "FeatureFlags | None" = None
+    ) -> tuple:
         # 1. RAG: Retrieve similar cases if enabled
+        effective_flags = flags or self.feature_flags
         retrieved_cases = []
 
-        if request.use_rag and self.retriever:
+        if request.use_rag and effective_flags.use_rag_pipeline and self.retriever:
             query = self._escape_special_tokens(self._extract_query(request.prompt))
             retrieved_cases = self.retriever.search(query, top_k=3)
 
@@ -335,6 +340,10 @@ async def health():
         "bm25_indexes": bm25_summary,
         "hybrid_search_enabled": manager.hybrid_engine is not None,
         "pii_masking_enabled": manager.pii_masker is not None,
+        "feature_flags": {
+            "use_rag_pipeline": manager.feature_flags.use_rag_pipeline,
+            "model_version": manager.feature_flags.model_version,
+        },
     }
 
 
@@ -351,9 +360,19 @@ def _rate_limit(limit_string: str):
     return _noop
 
 
+def get_feature_flags(request: Request) -> FeatureFlags:
+    """요청 헤더에서 Feature Flag 오버라이드를 적용하여 반환한다."""
+    header = request.headers.get("X-Feature-Flag")
+    return manager.feature_flags.override_from_header(header)
+
+
 @app.post("/v1/classify", response_model=ClassifyResponse)
 @_rate_limit("60/minute")
-async def classify(request: ClassifyRequest, _: None = Depends(verify_api_key)):
+async def classify(
+    request: ClassifyRequest,
+    _: None = Depends(verify_api_key),
+    flags: FeatureFlags = Depends(get_feature_flags),
+):
     """민원 분류 엔드포인트. classifier 에이전트 페르소나로 카테고리를 결정한다."""
     if not manager.agent_manager or not manager.agent_manager.get_agent("classifier"):
         raise HTTPException(status_code=503, detail="분류 에이전트가 로드되지 않았습니다.")
@@ -404,13 +423,17 @@ async def classify(request: ClassifyRequest, _: None = Depends(verify_api_key)):
 
 @app.post("/v1/generate", response_model=GenerateResponse)
 @_rate_limit("30/minute")
-async def generate(request: GenerateRequest, _: None = Depends(verify_api_key)):
+async def generate(
+    request: GenerateRequest,
+    _: None = Depends(verify_api_key),
+    flags: FeatureFlags = Depends(get_feature_flags),
+):
     """Non-streaming text generation."""
     if request.stream:
         raise HTTPException(status_code=400, detail="Use /v1/stream for streaming.")
 
     request_id = str(uuid.uuid4())
-    results_generator, retrieved_cases = await manager.generate(request, request_id)
+    results_generator, retrieved_cases = await manager.generate(request, request_id, flags)
 
     final_output = None
     async for request_output in results_generator:
@@ -430,13 +453,17 @@ async def generate(request: GenerateRequest, _: None = Depends(verify_api_key)):
 
 @app.post("/v1/stream")
 @_rate_limit("30/minute")
-async def stream_generate(request: GenerateRequest, _: None = Depends(verify_api_key)):
+async def stream_generate(
+    request: GenerateRequest,
+    _: None = Depends(verify_api_key),
+    flags: FeatureFlags = Depends(get_feature_flags),
+):
     """Streaming text generation using SSE."""
     if not request.stream:
         request.stream = True
 
     request_id = str(uuid.uuid4())
-    results_generator, retrieved_cases = await manager.generate(request, request_id)
+    results_generator, retrieved_cases = await manager.generate(request, request_id, flags)
 
     async def stream_results() -> AsyncGenerator[str, None]:
         cases_data = [RetrievedCase(**c).model_dump() for c in retrieved_cases]

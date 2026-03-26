@@ -650,21 +650,21 @@ def format_and_split(records_71852: list, records_98: list, records_71847: list 
     seen = set()
     unique_71852 = []
     for rec in records_71852:
-        h = hashlib.md5(rec["question"].encode()).hexdigest()
+        h = hashlib.md5(rec["question"].encode(), usedforsecurity=False).hexdigest()
         if h not in seen:
             seen.add(h)
             unique_71852.append(rec)
 
     unique_98 = []
     for rec in records_98:
-        h = hashlib.md5(rec["question"].encode()).hexdigest()
+        h = hashlib.md5(rec["question"].encode(), usedforsecurity=False).hexdigest()
         if h not in seen:
             seen.add(h)
             unique_98.append(rec)
 
     unique_71847_all = []
     for rec in records_71847:
-        h = hashlib.md5(rec["question"].encode()).hexdigest()
+        h = hashlib.md5(rec["question"].encode(), usedforsecurity=False).hexdigest()
         if h not in seen:
             seen.add(h)
             unique_71847_all.append(rec)
@@ -779,9 +779,9 @@ def format_and_split(records_71852: list, records_98: list, records_71847: list 
         print(f"  {src}: {cnt}")
 
     # ─── 데이터 누출 검증 ───
-    train_h = {hashlib.md5(r["text"].encode()).hexdigest() for r in train}
-    val_h = {hashlib.md5(r["text"].encode()).hexdigest() for r in val}
-    test_h = {hashlib.md5(r["text"].encode()).hexdigest() for r in test}
+    train_h = {hashlib.md5(r["text"].encode(), usedforsecurity=False).hexdigest() for r in train}
+    val_h = {hashlib.md5(r["text"].encode(), usedforsecurity=False).hexdigest() for r in val}
+    test_h = {hashlib.md5(r["text"].encode(), usedforsecurity=False).hexdigest() for r in test}
     leak_tv = len(train_h & val_h)
     leak_tt = len(train_h & test_h)
     leak_vt = len(val_h & test_h)

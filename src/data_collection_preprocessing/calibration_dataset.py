@@ -129,7 +129,7 @@ class CalibrationDatasetGenerator:
 
     def _compute_hash(self, text: str) -> str:
         """Compute hash for deduplication"""
-        return hashlib.md5(text.encode()).hexdigest()
+        return hashlib.md5(text.encode(), usedforsecurity=False).hexdigest()
 
     def _is_duplicate(self, text: str) -> bool:
         """Check if sample is duplicate"""

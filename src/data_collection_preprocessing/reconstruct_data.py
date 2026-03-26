@@ -407,7 +407,7 @@ def format_and_split(records_71852: list, records_98: list, records_619: list):
     seen = set()
     unique = []
     for rec in all_qa:
-        h = hashlib.md5(rec["question"].encode()).hexdigest()
+        h = hashlib.md5(rec["question"].encode(), usedforsecurity=False).hexdigest()
         if h not in seen:
             seen.add(h)
             unique.append(rec)
@@ -494,9 +494,9 @@ def format_and_split(records_71852: list, records_98: list, records_619: list):
         print(f"  Test [{cat}]: {cnt} {status}")
 
     # ─── 데이터 누출 검증 ───
-    train_h = {hashlib.md5(r["input"].encode()).hexdigest() for r in train}
-    val_h = {hashlib.md5(r["input"].encode()).hexdigest() for r in val}
-    test_h = {hashlib.md5(r["input"].encode()).hexdigest() for r in test}
+    train_h = {hashlib.md5(r["input"].encode(), usedforsecurity=False).hexdigest() for r in train}
+    val_h = {hashlib.md5(r["input"].encode(), usedforsecurity=False).hexdigest() for r in val}
+    test_h = {hashlib.md5(r["input"].encode(), usedforsecurity=False).hexdigest() for r in test}
     print(f"\n데이터 누출: train-val={len(train_h & val_h)}, train-test={len(train_h & test_h)}, val-test={len(val_h & test_h)}")
 
     # ─── 저장 ───

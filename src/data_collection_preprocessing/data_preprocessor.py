@@ -121,7 +121,7 @@ class DataPreprocessor:
 
     def _compute_hash(self, text: str) -> str:
         """Compute hash for deduplication"""
-        return hashlib.md5(text.encode()).hexdigest()
+        return hashlib.md5(text.encode(), usedforsecurity=False).hexdigest()
 
     def _is_duplicate(self, question: str, answer: str) -> bool:
         """Check if record is duplicate"""

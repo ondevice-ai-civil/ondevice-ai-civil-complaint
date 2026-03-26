@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 # transformers 로드 시 faiss.__spec__ ValueError 방지 (CI 환경용)
 original_find_spec = importlib.util.find_spec
 
+
 def mocked_find_spec(name, package=None):
     try:
         return original_find_spec(name, package)
@@ -14,12 +15,19 @@ def mocked_find_spec(name, package=None):
             return None
         raise
 
-with patch("vllm.engine.async_llm_engine.AsyncLLMEngine.from_engine_args"), patch(
-    "src.inference.api_server.vLLMEngineManager.initialize", side_effect=lambda: None
-):
-    import src.inference.api_server as api_server
 
-    app = api_server.app
+# 1. faiss 에러 방지 패치를 먼저 적용
+with patch("importlib.util.find_spec", side_effect=mocked_find_spec):
+    import pytest
+    from fastapi.testclient import TestClient
+
+    # 2. vLLM 엔진 로드를 방지하기 위한 패치 적용 후 임포트
+    with patch("vllm.engine.async_llm_engine.AsyncLLMEngine.from_engine_args"), patch(
+        "src.inference.api_server.vLLMEngineManager.initialize", side_effect=lambda: None
+    ):
+        import src.inference.api_server as api_server
+
+        app = api_server.app
 
 client = TestClient(app)
 

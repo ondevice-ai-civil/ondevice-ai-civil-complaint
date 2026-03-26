@@ -155,8 +155,7 @@ def generate_answer(
         )
     else:
         system_prompt = (
-            "당신은 민원 상담 전문가입니다. "
-            "학습된 지식을 활용하여 정확하고 친절하게 답변하세요."
+            "당신은 민원 상담 전문가입니다. " "학습된 지식을 활용하여 정확하고 친절하게 답변하세요."
         )
 
     messages = [
@@ -213,9 +212,7 @@ def run_condition(
         input_text = item.get("input") or item.get("text", "")[:500]
         ref_text = item.get("output") or item.get("answer", "")
 
-        generated, latency = generate_answer(
-            model, tokenizer, input_text, use_rag=use_rag
-        )
+        generated, latency = generate_answer(model, tokenizer, input_text, use_rag=use_rag)
 
         generations.append(generated)
         references.append(ref_text.strip())
@@ -521,9 +518,7 @@ def main() -> None:
     # 최종 결과 로깅
     logger.info(f"실험 완료 - 판단: {decision['decision']}")
     logger.info(f"  RAG on  BERTScore F1: {rag_on_result['metrics']['bert_score_f1']['mean']:.4f}")
-    logger.info(
-        f"  RAG off BERTScore F1: {rag_off_result['metrics']['bert_score_f1']['mean']:.4f}"
-    )
+    logger.info(f"  RAG off BERTScore F1: {rag_off_result['metrics']['bert_score_f1']['mean']:.4f}")
     logger.info(f"  임계값: {args.bert_threshold}")
 
     wandb.finish()

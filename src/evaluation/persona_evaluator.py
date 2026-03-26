@@ -49,9 +49,7 @@ class PersonaEvaluator:
                 - passed: 합격 여부 (threshold 기준)
         """
         # BERTScore 계산
-        P, R, F1 = bert_score.score(
-            [generated], [reference], lang=self.lang
-        )
+        P, R, F1 = bert_score.score([generated], [reference], lang=self.lang)
         bert_f1 = float(F1[0].item())
 
         # ROUGE-L 계산
@@ -66,9 +64,7 @@ class PersonaEvaluator:
             "passed": passed,
         }
 
-    def evaluate_batch(
-        self, generations: list[str], references: list[str]
-    ) -> dict:
+    def evaluate_batch(self, generations: list[str], references: list[str]) -> dict:
         """배치 답변 품질 평가.
 
         Args:

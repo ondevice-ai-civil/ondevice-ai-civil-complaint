@@ -51,7 +51,8 @@ jobs:
           MODEL_PATH: "umyunsang/GovOn-EXAONE-LoRA-v2"
           DATA_PATH: "data/processed/v2_test.jsonl"
           GPU_UTILIZATION: 0.7 
-          WANDB_MODE: "offline"
+          WANDB_MODE: "online"
+          WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
         run: |
           uv run python -m src.evaluation.evaluate_model_v3_stable \
             --model_path $MODEL_PATH \

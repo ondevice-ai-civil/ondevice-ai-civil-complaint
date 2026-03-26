@@ -48,8 +48,8 @@ git remote add upstream https://github.com/GovOn-Org/GovOn.git
 ### 3. 브랜치 생성 및 작업
 
 ```bash
-git checkout develop
-git pull upstream develop
+git checkout main
+git pull upstream main
 git checkout -b feat/이슈번호-작업설명
 ```
 
@@ -63,7 +63,7 @@ git push origin feat/이슈번호-작업설명
 
 ### 5. Pull Request 생성
 
-- `develop` 브랜치를 대상으로 PR을 생성합니다.
+- `main` 브랜치를 대상으로 PR을 생성합니다.
 - PR 템플릿에 따라 내용을 작성합니다.
 - 관련 이슈를 연결합니다 (`Closes #이슈번호`).
 
@@ -96,8 +96,7 @@ GitHub Flow 기반의 브랜치 전략을 사용합니다.
 
 | 브랜치 | 용도 | 규칙 |
 |--------|------|------|
-| `main` | 프로덕션 (안정 버전) | 직접 push 금지, PR 머지만 허용 |
-| `develop` | 개발 통합 브랜치 | 기능 브랜치의 머지 대상 |
+| `main` | 프로덕션 (안정 버전) | 직접 push 금지, PR 머지만 허용 (리뷰어 2명 승인 필요) |
 | `feat/*` | 새 기능 개발 | `feat/이슈번호-설명` 형식 |
 | `fix/*` | 버그 수정 | `fix/이슈번호-설명` 형식 |
 | `docs/*` | 문서 작업 | `docs/이슈번호-설명` 형식 |

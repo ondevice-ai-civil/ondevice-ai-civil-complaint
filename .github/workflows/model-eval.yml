@@ -2,7 +2,7 @@ name: Model Evaluation (GitHub GPU)
 
 on:
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main ]
     paths:
       - 'src/training/**'
       - 'src/evaluation/**'

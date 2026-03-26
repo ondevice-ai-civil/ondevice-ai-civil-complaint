@@ -85,22 +85,21 @@ pip install -r requirements.txt
 ## 브랜치 전략
 
 - `main`: 프로덕션 브랜치 (직접 push 금지, PR을 통해서만 머지)
-- `develop`: 개발 브랜치
-- `feature/*`: 기능 개발 브랜치
+- `feat/*`: 기능 개발 브랜치
 - `fix/*`: 버그 수정 브랜치
 
 ## 기여 방법
 
 1. 이슈 생성 또는 할당된 이슈 확인
-2. `develop` 브랜치에서 새 브랜치 생성
+2. `main` 브랜치에서 새 브랜치 생성
    ```bash
-   git checkout develop
-   git pull origin develop
-   git checkout -b feature/기능명
+   git checkout main
+   git pull origin main
+   git checkout -b feat/기능명
    ```
 3. 코드 작성 및 커밋
-4. Pull Request 생성
-5. 코드 리뷰 후 팀장이 머지
+4. `main` 브랜치를 대상으로 Pull Request 생성
+5. 리뷰어 2명 승인 후 머지
 
 ## 팀원
 

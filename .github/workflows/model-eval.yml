@@ -33,7 +33,7 @@ jobs:
             echo "Git LFS is already installed."
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           lfs: false # 초기 체크아웃 시 LFS 오류 방지
 

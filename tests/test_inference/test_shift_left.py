@@ -1053,3 +1053,153 @@ class TestSearchShiftLeft:
         }
         resp = client_with_hybrid_engine.post("/search", json=payload)
         assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Endpoint Coverage Guard
+# ---------------------------------------------------------------------------
+
+# 새 엔드포인트가 추가될 때 테스트 누락을 자동으로 감지한다.
+# api_server.py에 엔드포인트를 추가하면 이 세트에도 추가해야 CI가 통과한다.
+
+_KNOWN_ENDPOINTS = {
+    ("GET", "/health"),
+    ("POST", "/v1/classify"),
+    ("POST", "/v1/generate"),
+    ("POST", "/v1/stream"),
+    ("POST", "/v1/search"),
+    ("POST", "/search"),
+}
+
+
+class TestEndpointCoverageGuard:
+    """api_server.py에 등록된 모든 엔드포인트가 테스트 대상에 포함되었는지 검증한다."""
+
+    def test_no_untested_endpoints(self):
+        """새 엔드포인트가 추가되면 _KNOWN_ENDPOINTS에 등록되지 않아 실패한다.
+
+        실패 시 조치:
+        1. _KNOWN_ENDPOINTS에 새 엔드포인트를 추가한다.
+        2. 해당 엔드포인트의 테스트를 이 파일에 작성한다.
+        """
+        registered = set()
+        for route in app.routes:
+            if not hasattr(route, "methods") or not hasattr(route, "path"):
+                continue
+            # FastAPI 내부 경로 제외
+            if route.path.startswith("/openapi") or route.path.startswith("/docs"):
+                continue
+            if route.path.startswith("/redoc"):
+                continue
+            for method in route.methods:
+                if method in ("HEAD", "OPTIONS"):
+                    continue
+                registered.add((method, route.path))
+
+        untested = registered - _KNOWN_ENDPOINTS
+        assert untested == set(), (
+            f"테스트되지 않은 엔드포인트가 감지되었습니다: {untested}\n"
+            f"1. _KNOWN_ENDPOINTS에 추가하세요.\n"
+            f"2. 해당 엔드포인트의 테스트를 작성하세요."
+        )
+
+    def test_no_stale_endpoints(self):
+        """삭제된 엔드포인트가 _KNOWN_ENDPOINTS에 남아있으면 실패한다."""
+        registered = set()
+        for route in app.routes:
+            if not hasattr(route, "methods") or not hasattr(route, "path"):
+                continue
+            for method in route.methods:
+                if method in ("HEAD", "OPTIONS"):
+                    continue
+                registered.add((method, route.path))
+
+        stale = _KNOWN_ENDPOINTS - registered
+        assert stale == set(), (
+            f"삭제된 엔드포인트가 _KNOWN_ENDPOINTS에 남아있습니다: {stale}\n"
+            f"_KNOWN_ENDPOINTS에서 제거하세요."
+        )
+
+
+# ---------------------------------------------------------------------------
+# /v1/stream Endpoint Tests
+# ---------------------------------------------------------------------------
+
+
+class TestStreamShiftLeft:
+    """POST /v1/stream 엔드포인트 SSE 스트리밍 응답 검증."""
+
+    @pytest.fixture
+    def client_with_stream(self, client_with_index):
+        """vLLM generate를 mock하여 스트리밍 응답을 시뮬레이션한다."""
+        gen_fn = _make_vllm_output_mock(text="스트리밍 테스트 응답입니다.")
+        with patch.object(manager, "generate", new_callable=AsyncMock) as mock_gen:
+            mock_gen.return_value = (gen_fn(), [])
+            yield client_with_index
+
+    def test_stream_returns_event_stream_content_type(self, client_with_stream):
+        """SSE 응답의 Content-Type이 text/event-stream이다."""
+        resp = client_with_stream.post(
+            "/v1/stream", json={"prompt": "테스트 민원", "stream": True}
+        )
+        assert resp.status_code == 200
+        assert "text/event-stream" in resp.headers.get("content-type", "")
+
+    def test_stream_response_contains_data_prefix(self, client_with_stream):
+        """SSE 응답 본문이 'data: ' 접두사를 포함한다."""
+        resp = client_with_stream.post(
+            "/v1/stream", json={"prompt": "테스트 민원", "stream": True}
+        )
+        assert resp.status_code == 200
+        body = resp.text
+        assert "data: " in body
+
+    def test_stream_response_contains_request_id(self, client_with_stream):
+        """SSE 응답에 request_id가 포함된다."""
+        import json as json_mod
+
+        resp = client_with_stream.post(
+            "/v1/stream", json={"prompt": "테스트 민원", "stream": True}
+        )
+        assert resp.status_code == 200
+        for line in resp.text.strip().split("\n"):
+            if line.startswith("data: "):
+                data = json_mod.loads(line[6:])
+                assert "request_id" in data
+                break
+
+    def test_stream_response_contains_text(self, client_with_stream):
+        """SSE 응답에 생성된 텍스트가 포함된다."""
+        import json as json_mod
+
+        resp = client_with_stream.post(
+            "/v1/stream", json={"prompt": "테스트 민원", "stream": True}
+        )
+        assert resp.status_code == 200
+        for line in resp.text.strip().split("\n"):
+            if line.startswith("data: "):
+                data = json_mod.loads(line[6:])
+                assert "text" in data
+                break
+
+    def test_stream_finished_event_has_retrieved_cases(self, client_with_stream):
+        """스트리밍 완료 이벤트에 retrieved_cases가 포함된다."""
+        import json as json_mod
+
+        resp = client_with_stream.post(
+            "/v1/stream", json={"prompt": "테스트 민원", "stream": True}
+        )
+        assert resp.status_code == 200
+        events = [
+            json_mod.loads(line[6:])
+            for line in resp.text.strip().split("\n")
+            if line.startswith("data: ")
+        ]
+        finished_events = [e for e in events if e.get("finished")]
+        if finished_events:
+            assert "retrieved_cases" in finished_events[-1]
+
+    def test_stream_empty_prompt_returns_422(self, client_with_stream):
+        """빈 prompt 시 422를 반환한다."""
+        resp = client_with_stream.post("/v1/stream", json={"prompt": "", "stream": True})
+        assert resp.status_code == 422

@@ -43,6 +43,7 @@ jobs:
           uv run pytest \
             tests/test_inference/test_api_logic.py \
             tests/test_inference/test_shift_left.py \
+            tests/test_inference/test_feature_flags.py \
             -o "addopts=" \
             --cov=src/inference \
             --cov-branch \

@@ -37,10 +37,7 @@ class EmbeddingPipeline:
         logger.info(f"SentenceTransformer 모델 로딩 시작: {model_name}")
         self.model = SentenceTransformer(model_name, device=device)
         self.embedding_dim = self.model.get_sentence_embedding_dimension()
-        logger.info(
-            f"모델 로딩 완료: dim={self.embedding_dim}, "
-            f"device={self.model.device}"
-        )
+        logger.info(f"모델 로딩 완료: dim={self.embedding_dim}, " f"device={self.model.device}")
 
     # ------------------------------------------------------------------
     # 텍스트 파싱
@@ -49,9 +46,7 @@ class EmbeddingPipeline:
     @staticmethod
     def _parse_complaint_text(text: str) -> Optional[str]:
         """[|user|] ... [|endofturn|] 구간에서 '민원 내용:' 이후 텍스트를 추출한다."""
-        user_match = re.search(
-            r"\[\|user\|\](.*?)\[\|endofturn\|\]", text, re.DOTALL
-        )
+        user_match = re.search(r"\[\|user\|\](.*?)\[\|endofturn\|\]", text, re.DOTALL)
         if not user_match:
             return None
 
@@ -65,9 +60,7 @@ class EmbeddingPipeline:
     @staticmethod
     def _parse_answer_text(text: str) -> Optional[str]:
         """[|assistant|] ... [|endofturn|] 구간에서 답변 텍스트를 추출한다."""
-        assistant_match = re.search(
-            r"\[\|assistant\|\](.*?)\[\|endofturn\|\]", text, re.DOTALL
-        )
+        assistant_match = re.search(r"\[\|assistant\|\](.*?)\[\|endofturn\|\]", text, re.DOTALL)
         if not assistant_match:
             return None
         return assistant_match.group(1).strip()
@@ -129,12 +122,14 @@ class EmbeddingPipeline:
                 # 카테고리: JSONL의 category 필드 우선, 없으면 텍스트에서 파싱
                 category = data.get("category") or self._parse_category_from_text(text) or ""
 
-                records.append({
-                    "id": data.get("id", f"unknown_{line_num}"),
-                    "complaint_text": complaint_text,
-                    "answer_text": answer_text or "",
-                    "category": category,
-                })
+                records.append(
+                    {
+                        "id": data.get("id", f"unknown_{line_num}"),
+                        "complaint_text": complaint_text,
+                        "answer_text": answer_text or "",
+                        "category": category,
+                    }
+                )
 
         logger.info(
             f"JSONL 로드 완료: 총 {len(records) + skipped}건 중 "
@@ -173,9 +168,7 @@ class EmbeddingPipeline:
         # E5 모델은 passage: prefix를 요구한다
         prefixed_texts = [f"passage: {t}" for t in texts]
 
-        logger.info(
-            f"임베딩 생성 시작: {len(texts)}건, batch_size={batch_size}"
-        )
+        logger.info(f"임베딩 생성 시작: {len(texts)}건, batch_size={batch_size}")
 
         embeddings = self.model.encode(
             prefixed_texts,
@@ -185,9 +178,7 @@ class EmbeddingPipeline:
         )
 
         embeddings = np.asarray(embeddings, dtype=np.float32)
-        logger.info(
-            f"임베딩 생성 완료: shape={embeddings.shape}"
-        )
+        logger.info(f"임베딩 생성 완료: shape={embeddings.shape}")
         return embeddings
 
     def embed_query(self, query: str) -> np.ndarray:
@@ -253,7 +244,6 @@ class EmbeddingPipeline:
             metadata_list.append(meta)
 
         logger.info(
-            f"파이프라인 완료: {len(metadata_list)}건 처리, "
-            f"벡터 shape={embeddings.shape}"
+            f"파이프라인 완료: {len(metadata_list)}건 처리, " f"벡터 shape={embeddings.shape}"
         )
         return embeddings, metadata_list

@@ -16,26 +16,30 @@ MERGED_MODEL_DIR = "/content/ondevice-ai-civil-complaint/models/merged_model"
 AWQ_OUTPUT_DIR = "/content/ondevice-ai-civil-complaint/models/awq_quantized_model"
 CALIB_DATA_PATH = "/content/ondevice-ai-civil-complaint/data/processed/civil_complaint_train.jsonl"
 
+
 def prepare_calibration_data(tokenizer, data_path, n_samples=512, max_length=2048):
     """Prepare domain-specific calibration data from training set."""
     import random
+
     random.seed(42)
 
     samples = []
-    with open(data_path, 'r') as f:
+    with open(data_path, "r") as f:
         lines = f.readlines()
 
     random.shuffle(lines)
 
-    for line in lines[:n_samples * 2]:  # oversample to filter short ones
+    for line in lines[: n_samples * 2]:  # oversample to filter short ones
         try:
             item = json.loads(line.strip())
             # Format as chat template
             messages = [
                 {"role": "user", "content": f"{item['instruction']}\n\n{item['input']}"},
-                {"role": "assistant", "content": item['output']}
+                {"role": "assistant", "content": item["output"]},
             ]
-            text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
+            text = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=False
+            )
             if len(text) > 100:  # Filter very short entries
                 samples.append(text)
         except (json.JSONDecodeError, KeyError):
@@ -67,7 +71,7 @@ def main():
             },
             "calibration_samples": 512,
             "stage": "2_awq_quantization",
-        }
+        },
     )
 
     print("=" * 60)
@@ -77,6 +81,7 @@ def main():
     # Step 1: Load tokenizer
     print("\n[1/4] Loading tokenizer...")
     from transformers import AutoTokenizer
+
     tokenizer = AutoTokenizer.from_pretrained(MERGED_MODEL_DIR, trust_remote_code=True)
     print(f"  Vocab size: {tokenizer.vocab_size}")
 
@@ -118,10 +123,12 @@ def main():
     quant_elapsed = time.time() - quant_start
     print(f"  Quantization completed in {quant_elapsed:.1f}s ({quant_elapsed/60:.1f}min)")
 
-    wandb.log({
-        "quantization_time_seconds": quant_elapsed,
-        "gpu_mem_before_quant_gb": mem_before,
-    })
+    wandb.log(
+        {
+            "quantization_time_seconds": quant_elapsed,
+            "gpu_mem_before_quant_gb": mem_before,
+        }
+    )
 
     # Step 4: Save quantized model
     print(f"\n[4/4] Saving quantized model to {AWQ_OUTPUT_DIR}...")
@@ -131,6 +138,7 @@ def main():
 
     # Also copy the modeling file with our patch
     import shutil
+
     src_modeling = os.path.join(MERGED_MODEL_DIR, "modeling_exaone.py")
     src_config_py = os.path.join(MERGED_MODEL_DIR, "configuration_exaone.py")
     if os.path.exists(src_modeling):
@@ -142,7 +150,7 @@ def main():
     total_size = sum(
         os.path.getsize(os.path.join(AWQ_OUTPUT_DIR, f))
         for f in os.listdir(AWQ_OUTPUT_DIR)
-        if f.endswith(('.safetensors', '.bin'))
+        if f.endswith((".safetensors", ".bin"))
     )
     awq_size_gb = total_size / 1024**3
     print(f"  AWQ model size on disk: {awq_size_gb:.2f} GB")
@@ -151,7 +159,7 @@ def main():
     merged_size = sum(
         os.path.getsize(os.path.join(MERGED_MODEL_DIR, f))
         for f in os.listdir(MERGED_MODEL_DIR)
-        if f.endswith(('.safetensors', '.bin'))
+        if f.endswith((".safetensors", ".bin"))
     )
     merged_size_gb = merged_size / 1024**3
     compression_ratio = merged_size_gb / awq_size_gb if awq_size_gb > 0 else 0
@@ -162,12 +170,14 @@ def main():
     print(f"  Compression ratio: {compression_ratio:.2f}x")
     print(f"  Size reduction: {size_reduction_pct:.1f}%")
 
-    wandb.log({
-        "awq_model_size_gb": awq_size_gb,
-        "merged_model_size_gb": merged_size_gb,
-        "compression_ratio": compression_ratio,
-        "size_reduction_pct": size_reduction_pct,
-    })
+    wandb.log(
+        {
+            "awq_model_size_gb": awq_size_gb,
+            "merged_model_size_gb": merged_size_gb,
+            "compression_ratio": compression_ratio,
+            "size_reduction_pct": size_reduction_pct,
+        }
+    )
 
     elapsed = time.time() - start_time
     print(f"\n{'=' * 60}")
@@ -203,6 +213,7 @@ def main():
     torch.cuda.empty_cache()
 
     return quant_log
+
 
 if __name__ == "__main__":
     main()

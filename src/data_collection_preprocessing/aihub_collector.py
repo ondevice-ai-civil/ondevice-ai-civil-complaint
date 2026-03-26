@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DatasetInfo:
     """Information about an AI Hub dataset"""
+
     key: str
     name: str
     description: str
@@ -41,28 +42,28 @@ KNOWN_DATASETS: Dict[str, DatasetInfo] = {
         name="Public Civil Complaint LLM Data",
         description="Public institution civil complaint Q&A with reasoning process",
         expected_format="json",
-        priority=1
+        priority=1,
     ),
     "71844": DatasetInfo(
         key="71844",
         name="Private Civil Complaint LLM Data",
         description="Private sector civil complaint consultation and summary data",
         expected_format="json",
-        priority=2
+        priority=2,
     ),
     "98": DatasetInfo(
         key="98",
         name="Call Center Q&A Data",
         description="Traditional call center Q&A pairs with standard answers",
         expected_format="json",
-        priority=3
+        priority=3,
     ),
     "619": DatasetInfo(
         key="619",
         name="Civil Complaint Automation Language Data",
         description="Legal and administrative terminology for NLP processing",
         expected_format="json",
-        priority=4
+        priority=4,
     ),
 }
 
@@ -119,12 +120,7 @@ class AIHubCollector:
         """
         try:
             cmd = [self.config.shell_path, "-mode", "l"]
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=60
-            )
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
 
             if result.returncode != 0:
                 logger.error(f"Failed to list datasets: {result.stderr}")
@@ -163,22 +159,13 @@ class AIHubCollector:
                 "name": info.name,
                 "description": info.description,
                 "format": info.expected_format,
-                "priority": info.priority
+                "priority": info.priority,
             }
 
         # Otherwise, query AI Hub
         try:
-            cmd = [
-                self.config.shell_path,
-                "-mode", "l",
-                "-datasetkey", dataset_key
-            ]
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=60
-            )
+            cmd = [self.config.shell_path, "-mode", "l", "-datasetkey", dataset_key]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
 
             if result.returncode == 0:
                 return {"key": dataset_key, "info": result.stdout}
@@ -190,10 +177,7 @@ class AIHubCollector:
             return None
 
     def download_dataset(
-        self,
-        dataset_key: str,
-        file_key: Optional[str] = None,
-        output_dir: Optional[str] = None
+        self, dataset_key: str, file_key: Optional[str] = None, output_dir: Optional[str] = None
     ) -> Optional[Path]:
         """
         Download a dataset from AI Hub.
@@ -218,9 +202,12 @@ class AIHubCollector:
         try:
             cmd = [
                 self.config.shell_path,
-                "-mode", "d",
-                "-datasetkey", dataset_key,
-                "-aihubapikey", self.config.api_key
+                "-mode",
+                "d",
+                "-datasetkey",
+                dataset_key,
+                "-aihubapikey",
+                self.config.api_key,
             ]
 
             if file_key:
@@ -232,7 +219,7 @@ class AIHubCollector:
                 cwd=str(output_path),
                 capture_output=True,
                 text=True,
-                timeout=3600  # 1 hour timeout for large downloads
+                timeout=3600,  # 1 hour timeout for large downloads
             )
 
             if result.returncode == 0:
@@ -249,10 +236,7 @@ class AIHubCollector:
             logger.error(f"Download error: {e}")
             return None
 
-    def download_all_priority_datasets(
-        self,
-        max_concurrent: int = 2
-    ) -> Dict[str, Optional[Path]]:
+    def download_all_priority_datasets(self, max_concurrent: int = 2) -> Dict[str, Optional[Path]]:
         """
         Download all priority datasets concurrently.
 
@@ -266,8 +250,7 @@ class AIHubCollector:
 
         with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
             future_to_key = {
-                executor.submit(self.download_dataset, key): key
-                for key in self.config.dataset_keys
+                executor.submit(self.download_dataset, key): key for key in self.config.dataset_keys
             }
 
             for future in as_completed(future_to_key):
@@ -323,9 +306,7 @@ class AIHubCollector:
         return list(directory.rglob("*.json"))
 
     def load_json_dataset(
-        self,
-        json_path: Path,
-        encoding: str = "utf-8"
+        self, json_path: Path, encoding: str = "utf-8"
     ) -> Optional[Dict[str, Any]]:
         """
         Load a JSON dataset file.
@@ -350,9 +331,7 @@ class AIHubCollector:
             return None
 
     def iterate_dataset(
-        self,
-        directory: Path,
-        batch_size: int = 1000
+        self, directory: Path, batch_size: int = 1000
     ) -> Generator[List[Dict[str, Any]], None, None]:
         """
         Iterate through all JSON files in a dataset directory.
@@ -458,43 +437,51 @@ def create_mock_dataset(output_path: Path, num_samples: int = 100) -> Path:
         "info": {
             "name": "Mock Civil Complaint Dataset",
             "version": "1.0",
-            "description": "Test dataset for development"
+            "description": "Test dataset for development",
         },
-        "data": []
+        "data": [],
     }
 
     categories = [
-        "road/traffic", "environment", "housing",
-        "welfare", "culture", "economy", "education", "safety"
+        "road/traffic",
+        "environment",
+        "housing",
+        "welfare",
+        "culture",
+        "economy",
+        "education",
+        "safety",
     ]
 
     templates = [
         {
             "question": "Our neighborhood road has potholes that need repair.",
             "answer": "Thank you for your report. We have forwarded this to the road maintenance department.",
-            "category": "road/traffic"
+            "category": "road/traffic",
         },
         {
             "question": "Illegal parking is blocking the fire lane every evening.",
             "answer": "We will increase enforcement patrols in your area.",
-            "category": "road/traffic"
+            "category": "road/traffic",
         },
         {
             "question": "The streetlights on our block have been out for a week.",
             "answer": "We have scheduled a repair crew to visit your area within 3 business days.",
-            "category": "safety"
-        }
+            "category": "safety",
+        },
     ]
 
     for i in range(num_samples):
         template = templates[i % len(templates)]
-        mock_data["data"].append({
-            "id": f"MOCK_{i:05d}",
-            "question": f"{template['question']} (Case #{i})",
-            "answer": template["answer"],
-            "category": template["category"],
-            "date": "2024-01-01"
-        })
+        mock_data["data"].append(
+            {
+                "id": f"MOCK_{i:05d}",
+                "question": f"{template['question']} (Case #{i})",
+                "answer": template["answer"],
+                "category": template["category"],
+                "date": "2024-01-01",
+            }
+        )
 
     output_file = output_path / "mock_civil_complaints.json"
     with open(output_file, "w", encoding="utf-8") as f:
@@ -516,10 +503,7 @@ if __name__ == "__main__":
     print(f"Download directory: {collector.download_dir}")
 
     # Create mock dataset for testing
-    mock_path = create_mock_dataset(
-        collector.download_dir / "mock",
-        num_samples=50
-    )
+    mock_path = create_mock_dataset(collector.download_dir / "mock", num_samples=50)
     print(f"\nMock dataset created: {mock_path}")
 
     # Test iteration

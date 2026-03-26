@@ -32,8 +32,8 @@ engine = create_engine(
     DATABASE_URL,
     pool_size=10,
     max_overflow=20,
-    pool_pre_ping=True,          # 연결 유효성 사전 검사
-    pool_recycle=3600,           # 1시간마다 커넥션 재활용
+    pool_pre_ping=True,  # 연결 유효성 사전 검사
+    pool_recycle=3600,  # 1시간마다 커넥션 재활용
     echo=os.getenv("SQL_ECHO", "").lower() in ("1", "true"),
 )
 

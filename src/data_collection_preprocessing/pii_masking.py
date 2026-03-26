@@ -24,22 +24,24 @@ logger = logging.getLogger(__name__)
 
 class PIIType(Enum):
     """Types of PII that can be detected and masked"""
-    RESIDENT_ID = "resident_id"          # Korean resident registration number
-    PHONE = "phone"                       # Phone numbers
-    EMAIL = "email"                       # Email addresses
-    NAME = "name"                         # Person names
-    ADDRESS = "address"                   # Physical addresses
-    BANK_ACCOUNT = "bank_account"         # Bank account numbers
-    CREDIT_CARD = "credit_card"           # Credit card numbers
-    PASSPORT = "passport"                 # Passport numbers
-    DRIVER_LICENSE = "driver_license"    # Driver's license numbers
-    VEHICLE_PLATE = "vehicle_plate"      # Vehicle license plates
-    IP_ADDRESS = "ip_address"            # IP addresses
+
+    RESIDENT_ID = "resident_id"  # Korean resident registration number
+    PHONE = "phone"  # Phone numbers
+    EMAIL = "email"  # Email addresses
+    NAME = "name"  # Person names
+    ADDRESS = "address"  # Physical addresses
+    BANK_ACCOUNT = "bank_account"  # Bank account numbers
+    CREDIT_CARD = "credit_card"  # Credit card numbers
+    PASSPORT = "passport"  # Passport numbers
+    DRIVER_LICENSE = "driver_license"  # Driver's license numbers
+    VEHICLE_PLATE = "vehicle_plate"  # Vehicle license plates
+    IP_ADDRESS = "ip_address"  # IP addresses
 
 
 @dataclass
 class PIIMatch:
     """Represents a detected PII match"""
+
     pii_type: PIIType
     original_text: str
     start_pos: int
@@ -50,6 +52,7 @@ class PIIMatch:
 @dataclass
 class PIIPattern:
     """PII detection pattern configuration"""
+
     pii_type: PIIType
     pattern: str
     mask_template: str
@@ -63,103 +66,139 @@ PII_PATTERNS: List[PIIPattern] = [
     # Format: YYMMDD-GNNNNNN (13 digits with hyphen)
     PIIPattern(
         pii_type=PIIType.RESIDENT_ID,
-        pattern=r'\b(\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01]))\s*[-]\s*([1-4]\d{6})\b',
+        pattern=r"\b(\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01]))\s*[-]\s*([1-4]\d{6})\b",
         mask_template="[RESIDENT_ID_MASKED]",
         description="Korean resident registration number",
-        priority=10
+        priority=10,
     ),
-
     # Korean Phone Numbers
     # Mobile: 010-XXXX-XXXX, 010XXXXXXXX
     PIIPattern(
         pii_type=PIIType.PHONE,
-        pattern=r'\b(01[016789])[-.\s]?(\d{3,4})[-.\s]?(\d{4})\b',
+        pattern=r"\b(01[016789])[-.\s]?(\d{3,4})[-.\s]?(\d{4})\b",
         mask_template="[PHONE_MASKED]",
         description="Korean mobile phone number",
-        priority=8
+        priority=8,
     ),
-
     # Landline: 02-XXXX-XXXX, 031-XXX-XXXX
     PIIPattern(
         pii_type=PIIType.PHONE,
-        pattern=r'\b(0[2-6][0-5]?)[-.\s]?(\d{3,4})[-.\s]?(\d{4})\b',
+        pattern=r"\b(0[2-6][0-5]?)[-.\s]?(\d{3,4})[-.\s]?(\d{4})\b",
         mask_template="[PHONE_MASKED]",
         description="Korean landline phone number",
-        priority=7
+        priority=7,
     ),
-
     # Email addresses
     PIIPattern(
         pii_type=PIIType.EMAIL,
-        pattern=r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+        pattern=r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
         mask_template="[EMAIL_MASKED]",
         description="Email address",
-        priority=6
+        priority=6,
     ),
-
     # Korean addresses (simplified pattern)
     # Matches patterns like "서울시 강남구 xxx동 xxx번지"
     PIIPattern(
         pii_type=PIIType.ADDRESS,
-        pattern=r'([가-힣]{2,4}(?:시|도))\s*([가-힣]{2,4}(?:시|군|구))\s*([가-힣]{2,10}(?:읍|면|동|로|길))\s*(\d{1,5}(?:번지|번)?(?:-\d{1,5})?)',
+        pattern=r"([가-힣]{2,4}(?:시|도))\s*([가-힣]{2,4}(?:시|군|구))\s*([가-힣]{2,10}(?:읍|면|동|로|길))\s*(\d{1,5}(?:번지|번)?(?:-\d{1,5})?)",
         mask_template="[ADDRESS_MASKED]",
         description="Korean physical address",
-        priority=5
+        priority=5,
     ),
-
     # Postal code (Korean 5-digit)
     PIIPattern(
         pii_type=PIIType.ADDRESS,
-        pattern=r'\b(\d{5})\b(?=\s*[가-힣])',
+        pattern=r"\b(\d{5})\b(?=\s*[가-힣])",
         mask_template="[POSTAL_CODE_MASKED]",
         description="Korean postal code",
-        priority=4
+        priority=4,
     ),
-
     # Bank account numbers (Korean banks, various formats)
     PIIPattern(
         pii_type=PIIType.BANK_ACCOUNT,
-        pattern=r'\b(\d{3,4})[-\s]?(\d{2,6})[-\s]?(\d{2,6})[-\s]?(\d{1,4})?\b',
+        pattern=r"\b(\d{3,4})[-\s]?(\d{2,6})[-\s]?(\d{2,6})[-\s]?(\d{1,4})?\b",
         mask_template="[BANK_ACCOUNT_MASKED]",
         description="Bank account number",
-        priority=3
+        priority=3,
     ),
-
     # Credit card numbers (16 digits, various formats)
     PIIPattern(
         pii_type=PIIType.CREDIT_CARD,
-        pattern=r'\b(\d{4})[-\s]?(\d{4})[-\s]?(\d{4})[-\s]?(\d{4})\b',
+        pattern=r"\b(\d{4})[-\s]?(\d{4})[-\s]?(\d{4})[-\s]?(\d{4})\b",
         mask_template="[CREDIT_CARD_MASKED]",
         description="Credit card number",
-        priority=9
+        priority=9,
     ),
-
     # Vehicle license plates (Korean format)
     PIIPattern(
         pii_type=PIIType.VEHICLE_PLATE,
-        pattern=r'\b(\d{2,3})\s*([가-힣])\s*(\d{4})\b',
+        pattern=r"\b(\d{2,3})\s*([가-힣])\s*(\d{4})\b",
         mask_template="[VEHICLE_PLATE_MASKED]",
         description="Korean vehicle license plate",
-        priority=2
+        priority=2,
     ),
-
     # IP addresses
     PIIPattern(
         pii_type=PIIType.IP_ADDRESS,
-        pattern=r'\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b',
+        pattern=r"\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b",
         mask_template="[IP_ADDRESS_MASKED]",
         description="IP address",
-        priority=1
+        priority=1,
     ),
 ]
 
 # Common Korean surnames (for name detection)
 KOREAN_SURNAMES: Set[str] = {
-    "김", "이", "박", "최", "정", "강", "조", "윤", "장", "임",
-    "한", "오", "서", "신", "권", "황", "안", "송", "류", "전",
-    "홍", "고", "문", "양", "손", "배", "백", "허", "유", "남",
-    "심", "노", "하", "곽", "성", "차", "주", "우", "구", "민",
-    "진", "지", "엄", "변", "추", "도", "소", "석", "선", "설"
+    "김",
+    "이",
+    "박",
+    "최",
+    "정",
+    "강",
+    "조",
+    "윤",
+    "장",
+    "임",
+    "한",
+    "오",
+    "서",
+    "신",
+    "권",
+    "황",
+    "안",
+    "송",
+    "류",
+    "전",
+    "홍",
+    "고",
+    "문",
+    "양",
+    "손",
+    "배",
+    "백",
+    "허",
+    "유",
+    "남",
+    "심",
+    "노",
+    "하",
+    "곽",
+    "성",
+    "차",
+    "주",
+    "우",
+    "구",
+    "민",
+    "진",
+    "지",
+    "엄",
+    "변",
+    "추",
+    "도",
+    "소",
+    "석",
+    "선",
+    "설",
 }
 
 
@@ -174,7 +213,7 @@ class PIIMasker:
         self,
         patterns: Optional[List[PIIPattern]] = None,
         enabled_types: Optional[Set[PIIType]] = None,
-        custom_mask_templates: Optional[Dict[PIIType, str]] = None
+        custom_mask_templates: Optional[Dict[PIIType, str]] = None,
     ):
         """
         Initialize the PII masker.
@@ -189,11 +228,7 @@ class PIIMasker:
         self.custom_mask_templates = custom_mask_templates or {}
 
         # Sort patterns by priority (higher first)
-        self.patterns = sorted(
-            self.patterns,
-            key=lambda p: p.priority,
-            reverse=True
-        )
+        self.patterns = sorted(self.patterns, key=lambda p: p.priority, reverse=True)
 
         # Compile regex patterns
         self._compiled_patterns: List[Tuple[PIIPattern, re.Pattern]] = []
@@ -247,13 +282,15 @@ class PIIMasker:
 
                 if not overlap:
                     masked_positions.add((start, end))
-                    matches.append(PIIMatch(
-                        pii_type=pattern.pii_type,
-                        original_text=match.group(),
-                        start_pos=start,
-                        end_pos=end,
-                        masked_text=self._get_mask_template(pattern.pii_type, pattern)
-                    ))
+                    matches.append(
+                        PIIMatch(
+                            pii_type=pattern.pii_type,
+                            original_text=match.group(),
+                            start_pos=start,
+                            end_pos=end,
+                            masked_text=self._get_mask_template(pattern.pii_type, pattern),
+                        )
+                    )
 
         return sorted(matches, key=lambda m: m.start_pos)
 
@@ -278,7 +315,7 @@ class PIIMasker:
         # Build masked text from end to start to preserve positions
         result = text
         for match in reversed(matches):
-            result = result[:match.start_pos] + match.masked_text + result[match.end_pos:]
+            result = result[: match.start_pos] + match.masked_text + result[match.end_pos :]
             self.stats[match.pii_type] += 1
 
         return result
@@ -303,7 +340,7 @@ class PIIMasker:
 
         # Pattern: Korean surname + 1-2 Korean characters
         name_pattern = re.compile(
-            r'([' + ''.join(KOREAN_SURNAMES) + r'])([가-힣]{1,2})(?=\s|님|씨|$|[^가-힣])'
+            r"([" + "".join(KOREAN_SURNAMES) + r"])([가-힣]{1,2})(?=\s|님|씨|$|[^가-힣])"
         )
 
         for match in name_pattern.finditer(text):
@@ -314,11 +351,7 @@ class PIIMasker:
 
         return result
 
-    def mask_all(
-        self,
-        text: str,
-        include_name_detection: bool = True
-    ) -> str:
+    def mask_all(self, text: str, include_name_detection: bool = True) -> str:
         """
         Apply all masking strategies.
 

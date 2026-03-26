@@ -40,10 +40,12 @@ class TestOrmToDataclass:
 
     def test_case_specific_fields_in_extras(self, db_session, sample_doc_kwargs):
         """CASE 전용 필드가 extras에 포함된다."""
-        sample_doc_kwargs.update({
-            "complaint_text": "민원 내용",
-            "answer_text": "답변 내용",
-        })
+        sample_doc_kwargs.update(
+            {
+                "complaint_text": "민원 내용",
+                "answer_text": "답변 내용",
+            }
+        )
         doc = create_document_source(db_session, **sample_doc_kwargs)
         meta = orm_to_dataclass(doc)
 
@@ -54,12 +56,14 @@ class TestOrmToDataclass:
 
     def test_law_specific_fields_in_extras(self, db_session, sample_doc_kwargs):
         """LAW 전용 필드가 extras에 포함된다."""
-        sample_doc_kwargs.update({
-            "source_type": "law",
-            "law_number": "제1234호",
-            "article_number": "제5조",
-            "enforcement_date": date(2026, 1, 1),
-        })
+        sample_doc_kwargs.update(
+            {
+                "source_type": "law",
+                "law_number": "제1234호",
+                "article_number": "제5조",
+                "enforcement_date": date(2026, 1, 1),
+            }
+        )
         doc = create_document_source(db_session, **sample_doc_kwargs)
         meta = orm_to_dataclass(doc)
 
@@ -96,10 +100,12 @@ class TestOrmToDataclass:
         """valid_from/valid_until이 ISO 문자열로 변환된다."""
         now = datetime(2026, 1, 1, 0, 0, 0)
         later = datetime(2027, 1, 1, 0, 0, 0)
-        sample_doc_kwargs.update({
-            "valid_from": now,
-            "valid_until": later,
-        })
+        sample_doc_kwargs.update(
+            {
+                "valid_from": now,
+                "valid_until": later,
+            }
+        )
         doc = create_document_source(db_session, **sample_doc_kwargs)
         meta = orm_to_dataclass(doc)
 
@@ -145,11 +151,13 @@ class TestDataclassToOrm:
 
     def test_type_specific_fields_from_extras(self):
         """extras의 타입별 전용 필드가 kwargs 최상위로 분리된다."""
-        meta = self._make_meta(extras={
-            "complaint_text": "민원 텍스트",
-            "answer_text": "답변 텍스트",
-            "custom_key": "custom_value",
-        })
+        meta = self._make_meta(
+            extras={
+                "complaint_text": "민원 텍스트",
+                "answer_text": "답변 텍스트",
+                "custom_key": "custom_value",
+            }
+        )
         kwargs = dataclass_to_orm(meta, content="본문")
 
         # 타입별 필드는 최상위로
@@ -220,10 +228,12 @@ class TestOrmToPydantic:
 
     def test_type_specific_fields_in_metadata(self, db_session, sample_doc_kwargs):
         """타입별 전용 필드가 Pydantic 모델의 metadata에 포함된다."""
-        sample_doc_kwargs.update({
-            "complaint_text": "민원 내용",
-            "answer_text": "답변 내용",
-        })
+        sample_doc_kwargs.update(
+            {
+                "complaint_text": "민원 내용",
+                "answer_text": "답변 내용",
+            }
+        )
         doc = create_document_source(db_session, **sample_doc_kwargs)
         schema = orm_to_pydantic(doc)
 

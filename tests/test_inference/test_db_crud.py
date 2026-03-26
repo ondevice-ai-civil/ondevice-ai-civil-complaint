@@ -27,7 +27,6 @@ from src.inference.db.crud import (
 )
 from src.inference.db.models import DocumentSource, IndexVersion
 
-
 # ============================================================================
 # DocumentSource CRUD
 # ============================================================================
@@ -302,9 +301,7 @@ class TestUpdateQueueStatus:
             priority=0,
         )
 
-        updated = update_queue_status(
-            db_session, item.id, "skipped", skip_reason="중복 문서"
-        )
+        updated = update_queue_status(db_session, item.id, "skipped", skip_reason="중복 문서")
         assert updated is not None
         assert updated.status == "skipped"
         assert updated.skip_reason == "중복 문서"

@@ -52,6 +52,7 @@ def pipeline():
         mock_model.device = "cpu"
 
         from src.data_collection_preprocessing.embedding import EmbeddingPipeline
+
         p = EmbeddingPipeline()
         yield p
 
@@ -240,8 +241,7 @@ class TestEmbedDocuments:
 class TestProcessJsonl:
     def test_full_pipeline(self, pipeline, tmp_path):
         records = [
-            {"text": SAMPLE_TEXT, "category": "세금", "id": f"test-{i:03d}"}
-            for i in range(5)
+            {"text": SAMPLE_TEXT, "category": "세금", "id": f"test-{i:03d}"} for i in range(5)
         ]
         jsonl_path = _make_jsonl_file(records, tmp_path)
         embeddings, metadata_list = pipeline.process_jsonl(jsonl_path)

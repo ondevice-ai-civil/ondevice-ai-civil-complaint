@@ -40,7 +40,6 @@ from sqlalchemy.orm import sessionmaker
 
 from src.inference.db.models import Base, DocumentSource, IndexingQueue, IndexVersion
 
-
 # ---------------------------------------------------------------------------
 # SQLite 호환 UUID TypeDecorator
 # ---------------------------------------------------------------------------

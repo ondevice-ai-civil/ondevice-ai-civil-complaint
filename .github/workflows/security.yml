@@ -1,0 +1,42 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    - cron: '0 0 * * 1'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install security tools
+        run: |
+          pip install bandit safety
+
+      - name: Run Bandit (Static Analysis)
+        # 초기 단계이므로 High 수준의 보안 이슈만 체크하여 안정성 확보
+        run: |
+          bandit -r src -lll -x tests
+
+      - name: Run Safety (Dependency Check)
+        # Safety는 종속성 보안 취약점을 체크하므로 유지하되, 리포트 결과가 없어도 빌드를 계속 진행
+        continue-on-error: true
+        run: |
+          if [ -f requirements.txt ]; then
+            safety check -r requirements.txt
+          else
+            echo "requirements.txt not found, skipping safety check."
+          fi

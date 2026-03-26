@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ProcessedRecord:
     """Represents a processed training record"""
+
     id: str
     instruction: str
     input: str
@@ -43,6 +44,7 @@ class ProcessedRecord:
 @dataclass
 class DataQualityReport:
     """Data quality report after preprocessing"""
+
     total_raw_records: int = 0
     total_processed_records: int = 0
     filtered_too_short: int = 0
@@ -78,9 +80,7 @@ Category Distribution:
     def _format_categories(self) -> str:
         lines = []
         for cat, count in sorted(
-            self.category_distribution.items(),
-            key=lambda x: x[1],
-            reverse=True
+            self.category_distribution.items(), key=lambda x: x[1], reverse=True
         ):
             lines.append(f"  - {cat}: {count}")
         return "\n".join(lines)
@@ -95,9 +95,7 @@ class DataPreprocessor:
     """
 
     def __init__(
-        self,
-        config: Optional[PreprocessingConfig] = None,
-        pii_masker: Optional[PIIMasker] = None
+        self, config: Optional[PreprocessingConfig] = None, pii_masker: Optional[PIIMasker] = None
     ):
         """
         Initialize the preprocessor.
@@ -121,7 +119,7 @@ class DataPreprocessor:
 
     def _compute_hash(self, text: str) -> str:
         """Compute hash for deduplication"""
-        return hashlib.md5(text.encode()).hexdigest()
+        return hashlib.md5(text.encode(), usedforsecurity=False).hexdigest()
 
     def _is_duplicate(self, question: str, answer: str) -> bool:
         """Check if record is duplicate"""
@@ -132,11 +130,7 @@ class DataPreprocessor:
         self._processed_hashes.add(hash_val)
         return False
 
-    def _validate_record(
-        self,
-        question: str,
-        answer: str
-    ) -> Tuple[bool, str]:
+    def _validate_record(self, question: str, answer: str) -> Tuple[bool, str]:
         """
         Validate a single record.
 
@@ -201,11 +195,7 @@ class DataPreprocessor:
 
         return "other"
 
-    def _generate_thought_process(
-        self,
-        category: str,
-        question: str
-    ) -> str:
+    def _generate_thought_process(self, category: str, question: str) -> str:
         """
         Generate a thinking process for EXAONE's <thought> tag.
 
@@ -232,9 +222,20 @@ class DataPreprocessor:
         """Extract key phrases from text (simplified implementation)"""
         # Simple keyword extraction based on common complaint terms
         keywords = [
-            "repair", "maintenance", "parking", "noise", "construction",
-            "lighting", "waste", "water", "safety", "welfare",
-            "complaint", "request", "report", "inquiry"
+            "repair",
+            "maintenance",
+            "parking",
+            "noise",
+            "construction",
+            "lighting",
+            "waste",
+            "water",
+            "safety",
+            "welfare",
+            "complaint",
+            "request",
+            "report",
+            "inquiry",
         ]
 
         found = []
@@ -246,12 +247,7 @@ class DataPreprocessor:
         return found
 
     def _format_exaone_record(
-        self,
-        record_id: str,
-        question: str,
-        answer: str,
-        category: str,
-        source: str = "unknown"
+        self, record_id: str, question: str, answer: str, category: str, source: str = "unknown"
     ) -> Optional[ProcessedRecord]:
         """
         Format a record into EXAONE instruction-tuning format.
@@ -302,7 +298,7 @@ class DataPreprocessor:
             category=normalized_category,
             original_question_length=len(question),
             original_answer_length=len(answer),
-            source=source
+            source=source,
         )
 
         return record
@@ -314,7 +310,7 @@ class DataPreprocessor:
         question_field: str = "question",
         answer_field: str = "answer",
         category_field: str = "category",
-        id_field: str = "id"
+        id_field: str = "id",
     ) -> List[ProcessedRecord]:
         """
         Process a list of raw data records.
@@ -331,30 +327,36 @@ class DataPreprocessor:
             List of processed records
         """
         start_time = datetime.now()
-        
+
         # Special handling for 98 (Dasan Call Center) pairing
-        if source == "aihub" and any("도메인" in r and r["도메인"] == "다산콜센터" for r in raw_data[:10]):
+        if source == "aihub" and any(
+            "도메인" in r and r["도메인"] == "다산콜센터" for r in raw_data[:10]
+        ):
             logger.info("Detected Dasan Call Center format (98). Matching Q&A pairs...")
             dialog_map = {}
             for r in raw_data:
                 did = r.get("대화셋일련번호")
-                if not did: continue
-                if did not in dialog_map: dialog_map[did] = {"Q": "", "A": "", "cat": r.get("카테고리", "기타")}
+                if not did:
+                    continue
+                if did not in dialog_map:
+                    dialog_map[did] = {"Q": "", "A": "", "cat": r.get("카테고리", "기타")}
                 if r.get("QA") == "Q":
                     dialog_map[did]["Q"] = r.get("고객질문(요청)", "")
                 elif r.get("QA") == "A":
                     dialog_map[did]["A"] = r.get("상담사답변", "")
-            
+
             new_raw = []
             for did, content in dialog_map.items():
                 if content["Q"] and content["A"]:
-                    new_raw.append({
-                        "question": content["Q"],
-                        "answer": content["A"],
-                        "category": content["cat"],
-                        "id": did,
-                        "_source": "aihub"
-                    })
+                    new_raw.append(
+                        {
+                            "question": content["Q"],
+                            "answer": content["A"],
+                            "category": content["cat"],
+                            "id": did,
+                            "_source": "aihub",
+                        }
+                    )
             raw_data = new_raw
 
         self.report.total_raw_records += len(raw_data)
@@ -378,36 +380,34 @@ class DataPreprocessor:
 
             # Extract fields (handle various naming conventions)
             question = (
-                raw_record.get(question_field) or
-                raw_record.get("QSTN_CONT") or
-                raw_record.get("Q_refined") or
-                raw_record.get("question_content") or
-                raw_record.get("body") or
-                raw_record.get("question") or
-                ""
+                raw_record.get(question_field)
+                or raw_record.get("QSTN_CONT")
+                or raw_record.get("Q_refined")
+                or raw_record.get("question_content")
+                or raw_record.get("body")
+                or raw_record.get("question")
+                or ""
             )
 
             answer = (
-                raw_record.get(answer_field) or
-                raw_record.get("ANSW_CONT") or
-                raw_record.get("answer_content") or
-                raw_record.get("response") or
-                raw_record.get("answer") or
-                ""
+                raw_record.get(answer_field)
+                or raw_record.get("ANSW_CONT")
+                or raw_record.get("answer_content")
+                or raw_record.get("response")
+                or raw_record.get("answer")
+                or ""
             )
 
             category = (
-                raw_record.get(category_field) or
-                raw_record.get("MENU_NM") or
-                raw_record.get("category_name") or
-                raw_record.get("카테고리") or
-                "other"
+                raw_record.get(category_field)
+                or raw_record.get("MENU_NM")
+                or raw_record.get("category_name")
+                or raw_record.get("카테고리")
+                or "other"
             )
 
             record_id = (
-                raw_record.get(id_field) or
-                raw_record.get("CASE_NO") or
-                f"{source}_{idx:06d}"
+                raw_record.get(id_field) or raw_record.get("CASE_NO") or f"{source}_{idx:06d}"
             )
 
             # Process record
@@ -416,7 +416,7 @@ class DataPreprocessor:
                 question=str(question),
                 answer=str(answer),
                 category=str(category),
-                source=source
+                source=source,
             )
 
             if processed:
@@ -424,9 +424,7 @@ class DataPreprocessor:
 
         # Update report
         self.report.total_processed_records += len(processed_records)
-        self.report.processing_time_seconds += (
-            datetime.now() - start_time
-        ).total_seconds()
+        self.report.processing_time_seconds += (datetime.now() - start_time).total_seconds()
 
         # Calculate statistics
         if processed_records:
@@ -444,17 +442,12 @@ class DataPreprocessor:
                     self.report.category_distribution.get(record.category, 0) + 1
                 )
 
-        logger.info(
-            f"Processed {len(processed_records)}/{len(raw_data)} records from {source}"
-        )
+        logger.info(f"Processed {len(processed_records)}/{len(raw_data)} records from {source}")
 
         return processed_records
 
     def split_dataset(
-        self,
-        records: List[ProcessedRecord],
-        shuffle: bool = True,
-        random_seed: int = 42
+        self, records: List[ProcessedRecord], shuffle: bool = True, random_seed: int = 42
     ) -> Tuple[List[ProcessedRecord], List[ProcessedRecord], List[ProcessedRecord]]:
         """
         Split dataset into train/validation/test sets.
@@ -481,17 +474,13 @@ class DataPreprocessor:
         test_set = records[val_end:]
 
         logger.info(
-            f"Dataset split: train={len(train_set)}, "
-            f"val={len(val_set)}, test={len(test_set)}"
+            f"Dataset split: train={len(train_set)}, " f"val={len(val_set)}, test={len(test_set)}"
         )
 
         return train_set, val_set, test_set
 
     def save_dataset(
-        self,
-        records: List[ProcessedRecord],
-        filename: str,
-        format: str = "jsonl"
+        self, records: List[ProcessedRecord], filename: str, format: str = "jsonl"
     ) -> Path:
         """
         Save processed records to file.
@@ -539,7 +528,7 @@ class DataPreprocessor:
         val: List[ProcessedRecord],
         test: List[ProcessedRecord],
         prefix: str = "civil_complaint",
-        format: str = "jsonl"
+        format: str = "jsonl",
     ) -> Dict[str, Path]:
         """
         Save all dataset splits.
@@ -581,10 +570,7 @@ class DataPreprocessor:
         self.pii_masker.reset_statistics()
 
 
-def create_sample_processed_data(
-    output_dir: Path,
-    num_samples: int = 100
-) -> Path:
+def create_sample_processed_data(output_dir: Path, num_samples: int = 100) -> Path:
     """
     Create sample processed data for testing.
 
@@ -599,23 +585,27 @@ def create_sample_processed_data(
 
     samples = []
     categories = [
-        "road/traffic", "environment/sanitation", "housing/construction",
-        "welfare/health", "safety/disaster", "administration"
+        "road/traffic",
+        "environment/sanitation",
+        "housing/construction",
+        "welfare/health",
+        "safety/disaster",
+        "administration",
     ]
 
     templates = [
         {
             "question": "There are potholes in front of our apartment building causing difficulty for residents. Please repair them.",
-            "answer": "Hello. Regarding your road repair request, our department has confirmed the location. Repairs are scheduled to begin within 7 days."
+            "answer": "Hello. Regarding your road repair request, our department has confirmed the location. Repairs are scheduled to begin within 7 days.",
         },
         {
             "question": "Illegal dumping of waste in the alley is causing sanitation issues. Please take enforcement action.",
-            "answer": "Thank you for your report. We have notified the environmental department and will increase patrols in your area."
+            "answer": "Thank you for your report. We have notified the environmental department and will increase patrols in your area.",
         },
         {
             "question": "Late-night construction noise is disturbing sleep. Please check construction hours.",
-            "answer": "We have confirmed the construction site's hours. They have been warned about nighttime work restrictions."
-        }
+            "answer": "We have confirmed the construction site's hours. They have been warned about nighttime work restrictions.",
+        },
     ]
 
     preprocessor = DataPreprocessor()
@@ -628,13 +618,10 @@ def create_sample_processed_data(
             "id": f"SAMPLE_{i:05d}",
             "question": f"{template['question']} (Case #{i})",
             "answer": template["answer"],
-            "category": category
+            "category": category,
         }
 
-        processed = preprocessor.process_raw_data(
-            [raw_record],
-            source="sample"
-        )
+        processed = preprocessor.process_raw_data([raw_record], source="sample")
 
         if processed:
             samples.extend(processed)
@@ -659,20 +646,20 @@ if __name__ == "__main__":
             "id": "TEST_001",
             "question": "Contact me at 010-1234-5678. The road in front of our neighborhood has large potholes making it difficult to drive. Please repair them quickly.",
             "answer": "Hello. Thank you for your road repair request. Our road maintenance team has confirmed the location and repairs are scheduled to begin within 7 days.",
-            "category": "road/traffic"
+            "category": "road/traffic",
         },
         {
             "id": "TEST_002",
             "question": "Illegal parking continues every evening blocking the fire lane. This is a safety issue.",
             "answer": "Thank you for your report. We have notified the traffic enforcement team to increase patrols in your area.",
-            "category": "road/traffic"
+            "category": "road/traffic",
         },
         {
             "id": "TEST_003",
             "question": "Short",  # Will be filtered
             "answer": "OK",
-            "category": "other"
-        }
+            "category": "other",
+        },
     ]
 
     # Process data

@@ -37,7 +37,6 @@ from sqlalchemy.orm import (
     relationship,
 )
 
-
 # ---------------------------------------------------------------------------
 # Base 클래스
 # ---------------------------------------------------------------------------
@@ -45,6 +44,7 @@ from sqlalchemy.orm import (
 
 class Base(DeclarativeBase):
     """모든 ORM 모델의 공통 기반 클래스."""
+
     pass
 
 
@@ -63,7 +63,9 @@ class DocumentSource(Base):
     __tablename__ = "document_source"
     __table_args__ = (
         UniqueConstraint(
-            "source_type", "source_id", "chunk_index",
+            "source_type",
+            "source_id",
+            "chunk_index",
             name="uq_source_type_source_id_chunk",
         ),
         CheckConstraint(
@@ -96,39 +98,48 @@ class DocumentSource(Base):
 
     # -- 공통 필드 --
     source_type: Mapped[str] = mapped_column(
-        String(20), nullable=False,
+        String(20),
+        nullable=False,
         comment="문서 타입: case, law, manual, notice",
     )
     source_id: Mapped[str] = mapped_column(
-        String(255), nullable=False,
+        String(255),
+        nullable=False,
         comment="원본 문서 식별자",
     )
     source_name: Mapped[Optional[str]] = mapped_column(
-        String(200), nullable=True,
+        String(200),
+        nullable=True,
         comment="출처명 (AI Hub, 법제처 등)",
     )
     title: Mapped[str] = mapped_column(
-        String(500), nullable=False,
+        String(500),
+        nullable=False,
         comment="문서 제목",
     )
     content: Mapped[str] = mapped_column(
-        Text, nullable=False,
+        Text,
+        nullable=False,
         comment="문서 본문",
     )
     category: Mapped[Optional[str]] = mapped_column(
-        String(50), nullable=True,
+        String(50),
+        nullable=True,
         comment="카테고리 (도로/교통, 환경/위생 등)",
     )
     chunk_index: Mapped[int] = mapped_column(
-        Integer, server_default=text("0"),
+        Integer,
+        server_default=text("0"),
         comment="청크 인덱스",
     )
     total_chunks: Mapped[int] = mapped_column(
-        Integer, server_default=text("1"),
+        Integer,
+        server_default=text("1"),
         comment="전체 청크 수",
     )
     reliability_score: Mapped[float] = mapped_column(
-        Float, server_default=text("0.6"),
+        Float,
+        server_default=text("0.6"),
         comment="신뢰도 점수 (0.0~1.0)",
     )
     valid_from: Mapped[Optional[datetime]] = mapped_column(
@@ -142,66 +153,80 @@ class DocumentSource(Base):
         comment="유효 종료일",
     )
     status: Mapped[str] = mapped_column(
-        String(20), server_default=text("'active'"),
+        String(20),
+        server_default=text("'active'"),
         comment="문서 상태: active, expired, deprecated",
     )
     version: Mapped[str] = mapped_column(
-        String(20), server_default=text("'1.0'"),
+        String(20),
+        server_default=text("'1.0'"),
         comment="문서 버전",
     )
     # 'metadata'는 SQLAlchemy 내부 예약어이므로 Python 속성은 metadata_로 매핑
     metadata_: Mapped[Dict[str, Any]] = mapped_column(
-        "metadata", JSONB, server_default=text("'{}'::jsonb"),
+        "metadata",
+        JSONB,
+        server_default=text("'{}'::jsonb"),
         comment="추가 메타데이터 (JSONB)",
     )
 
     # -- CASE 전용 --
     complaint_text: Mapped[Optional[str]] = mapped_column(
-        Text, nullable=True,
+        Text,
+        nullable=True,
         comment="민원 텍스트 (CASE 전용)",
     )
     answer_text: Mapped[Optional[str]] = mapped_column(
-        Text, nullable=True,
+        Text,
+        nullable=True,
         comment="답변 텍스트 (CASE 전용)",
     )
 
     # -- LAW 전용 --
     law_number: Mapped[Optional[str]] = mapped_column(
-        String(100), nullable=True,
+        String(100),
+        nullable=True,
         comment="법률 번호 (LAW 전용)",
     )
     article_number: Mapped[Optional[str]] = mapped_column(
-        String(50), nullable=True,
+        String(50),
+        nullable=True,
         comment="조항 번호 (LAW 전용)",
     )
     enforcement_date: Mapped[Optional[date]] = mapped_column(
-        Date, nullable=True,
+        Date,
+        nullable=True,
         comment="시행일 (LAW 전용)",
     )
 
     # -- MANUAL 전용 --
     department: Mapped[Optional[str]] = mapped_column(
-        String(100), nullable=True,
+        String(100),
+        nullable=True,
         comment="담당 부서 (MANUAL 전용)",
     )
 
     # -- NOTICE 전용 --
     notice_number: Mapped[Optional[str]] = mapped_column(
-        String(100), nullable=True,
+        String(100),
+        nullable=True,
         comment="공시 번호 (NOTICE 전용)",
     )
     effective_date: Mapped[Optional[date]] = mapped_column(
-        Date, nullable=True,
+        Date,
+        nullable=True,
         comment="시행일 (NOTICE 전용)",
     )
 
     # -- 인덱싱 관련 --
     faiss_index_id: Mapped[Optional[int]] = mapped_column(
-        Integer, nullable=True,
+        Integer,
+        nullable=True,
         comment="FAISS 인덱스 내 ID",
     )
     embedding_version: Mapped[str] = mapped_column(
-        String(50), server_default=text("'e5-large-v1'"),
+        String(50),
+        server_default=text("'e5-large-v1'"),
         comment="임베딩 모델 버전",
     )
 
@@ -213,20 +238,20 @@ class DocumentSource(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        server_default=func.now(), onupdate=func.now(),
+        server_default=func.now(),
+        onupdate=func.now(),
         comment="수정 시각",
     )
 
     # -- 관계 --
     queue_items: Mapped[List["IndexingQueue"]] = relationship(
-        back_populates="document", cascade="all, delete-orphan", lazy="select",
+        back_populates="document",
+        cascade="all, delete-orphan",
+        lazy="select",
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<DocumentSource(id={self.id}, "
-            f"type={self.source_type}, title={self.title!r})>"
-        )
+        return f"<DocumentSource(id={self.id}, " f"type={self.source_type}, title={self.title!r})>"
 
 
 # ---------------------------------------------------------------------------
@@ -266,39 +291,48 @@ class IndexingQueue(Base):
         comment="연결된 문서 원본 ID",
     )
     session_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), nullable=True,
+        UUID(as_uuid=True),
+        nullable=True,
         comment="상담 세션 ID (FK 없음)",
     )
     message_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), nullable=True,
+        UUID(as_uuid=True),
+        nullable=True,
         comment="메시지 ID (FK 없음)",
     )
     doc_type: Mapped[str] = mapped_column(
-        String(20), server_default=text("'CASE'"),
+        String(20),
+        server_default=text("'CASE'"),
         comment="문서 타입",
     )
     complaint_text: Mapped[str] = mapped_column(
-        Text, nullable=False,
+        Text,
+        nullable=False,
         comment="민원 텍스트",
     )
     answer_text: Mapped[str] = mapped_column(
-        Text, nullable=False,
+        Text,
+        nullable=False,
         comment="답변 텍스트",
     )
     category: Mapped[Optional[str]] = mapped_column(
-        String(50), nullable=True,
+        String(50),
+        nullable=True,
         comment="카테고리",
     )
     status: Mapped[str] = mapped_column(
-        String(20), server_default=text("'pending'"),
+        String(20),
+        server_default=text("'pending'"),
         comment="처리 상태: pending, processing, completed, skipped, failed",
     )
     priority: Mapped[int] = mapped_column(
-        Integer, server_default=text("0"),
+        Integer,
+        server_default=text("0"),
         comment="우선순위 (높을수록 먼저)",
     )
     skip_reason: Mapped[Optional[str]] = mapped_column(
-        String(200), nullable=True,
+        String(200),
+        nullable=True,
         comment="건너뛰기 사유",
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -314,14 +348,12 @@ class IndexingQueue(Base):
 
     # -- 관계 --
     document: Mapped[Optional["DocumentSource"]] = relationship(
-        back_populates="queue_items", lazy="select",
+        back_populates="queue_items",
+        lazy="select",
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<IndexingQueue(id={self.id}, "
-            f"status={self.status}, doc_type={self.doc_type})>"
-        )
+        return f"<IndexingQueue(id={self.id}, " f"status={self.status}, doc_type={self.doc_type})>"
 
 
 # ---------------------------------------------------------------------------
@@ -358,27 +390,33 @@ class IndexVersion(Base):
         comment="인덱스 버전 고유 식별자",
     )
     index_type: Mapped[str] = mapped_column(
-        String(20), nullable=False,
+        String(20),
+        nullable=False,
         comment="인덱스 타입 (case, law, manual, notice)",
     )
     version: Mapped[str] = mapped_column(
-        String(50), nullable=False,
+        String(50),
+        nullable=False,
         comment="인덱스 버전 (예: v1.0.0)",
     )
     total_documents: Mapped[int] = mapped_column(
-        Integer, nullable=False,
+        Integer,
+        nullable=False,
         comment="포함 문서 수",
     )
     index_file_path: Mapped[str] = mapped_column(
-        String(500), nullable=False,
+        String(500),
+        nullable=False,
         comment="FAISS 인덱스 파일 경로",
     )
     meta_file_path: Mapped[str] = mapped_column(
-        String(500), nullable=False,
+        String(500),
+        nullable=False,
         comment="메타데이터 파일 경로",
     )
     snapshot_path: Mapped[Optional[str]] = mapped_column(
-        Text, nullable=True,
+        Text,
+        nullable=True,
         comment="스냅샷 경로",
     )
     built_at: Mapped[datetime] = mapped_column(
@@ -387,15 +425,18 @@ class IndexVersion(Base):
         comment="빌드 시각",
     )
     is_active: Mapped[bool] = mapped_column(
-        Boolean, server_default=text("true"),
+        Boolean,
+        server_default=text("true"),
         comment="활성 버전 여부",
     )
     build_duration_seconds: Mapped[Optional[float]] = mapped_column(
-        Float, nullable=True,
+        Float,
+        nullable=True,
         comment="빌드 소요 시간 (초)",
     )
     notes: Mapped[Optional[str]] = mapped_column(
-        Text, nullable=True,
+        Text,
+        nullable=True,
         comment="비고",
     )
 

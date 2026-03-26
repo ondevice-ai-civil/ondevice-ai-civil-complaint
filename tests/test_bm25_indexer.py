@@ -19,7 +19,6 @@ import pytest
 
 from src.inference.bm25_indexer import BM25Indexer, KoreanTokenizer
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -64,6 +63,7 @@ def jsonl_file(tmp_path):
 # KoreanTokenizer tests
 # ---------------------------------------------------------------------------
 
+
 class TestKoreanTokenizer:
     def test_okt_initialization(self):
         tok = KoreanTokenizer("okt")
@@ -101,6 +101,7 @@ class TestKoreanTokenizer:
 # BM25Indexer build tests
 # ---------------------------------------------------------------------------
 
+
 class TestBM25IndexerBuild:
     def test_build_from_list(self, indexer):
         assert indexer.is_ready()
@@ -136,6 +137,7 @@ class TestBM25IndexerBuild:
 # ---------------------------------------------------------------------------
 # BM25Indexer search tests
 # ---------------------------------------------------------------------------
+
 
 class TestBM25IndexerSearch:
     def test_search_returns_list(self, indexer):
@@ -188,6 +190,7 @@ class TestBM25IndexerSearch:
 # ---------------------------------------------------------------------------
 # BM25Indexer save / load tests
 # ---------------------------------------------------------------------------
+
 
 class TestBM25IndexerPersistence:
     def test_save_and_load(self, indexer, tmp_path):
@@ -256,6 +259,7 @@ class TestBM25IndexerPersistence:
     def test_load_tokenizer_mismatch_warns(self, indexer, tmp_path):
         """Loading an index built with a different tokenizer emits a warning."""
         from unittest.mock import patch
+
         save_path = str(tmp_path / "bm25.pkl")
         indexer.save(save_path)
 
@@ -335,6 +339,7 @@ class TestBM25IndexerPersistence:
 # Bug regression tests (found by agents)
 # ---------------------------------------------------------------------------
 
+
 class TestBM25IndexerRegressions:
     def test_all_empty_token_docs_raises(self):
         """All-stopword corpus raises ValueError, not ZeroDivisionError."""
@@ -404,6 +409,7 @@ class TestBM25IndexerRegressions:
 # ---------------------------------------------------------------------------
 # _extract_complaint_from_template unit tests
 # ---------------------------------------------------------------------------
+
 
 class TestExtractComplaintFromTemplate:
     def test_extracts_minwon_naeyo(self):

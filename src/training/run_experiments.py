@@ -31,8 +31,8 @@ from trl import SFTTrainer
 # ─── Paths ──────────────────────────────────────────────────────────────────
 PROJECT_ROOT = os.environ.get("PROJECT_ROOT", "/content/GovOn")
 TRAIN_PATH = os.path.join(PROJECT_ROOT, "data/processed/civil_complaint_train.jsonl")
-VAL_PATH   = os.path.join(PROJECT_ROOT, "data/processed/civil_complaint_val.jsonl")
-TEST_PATH  = os.path.join(PROJECT_ROOT, "data/processed/civil_complaint_test.jsonl")
+VAL_PATH = os.path.join(PROJECT_ROOT, "data/processed/civil_complaint_val.jsonl")
+TEST_PATH = os.path.join(PROJECT_ROOT, "data/processed/civil_complaint_test.jsonl")
 OUTPUT_BASE = os.path.join(PROJECT_ROOT, "models/checkpoints")
 RESULTS_DIR = os.path.join(PROJECT_ROOT, "docs/outputs/experiments")
 os.makedirs(RESULTS_DIR, exist_ok=True)
@@ -139,6 +139,7 @@ EXPERIMENTS = [
 
 # ─── Model QA Specialist: Evaluation Functions ──────────────────────────────
 
+
 def compute_bleu_rouge(model, tokenizer, data, max_samples=50):
     """
     Model QA Specialist: Compute BLEU (approx) and ROUGE-L scores.
@@ -146,6 +147,7 @@ def compute_bleu_rouge(model, tokenizer, data, max_samples=50):
     """
     try:
         from rouge_score import rouge_scorer as rs_module
+
         scorer = rs_module.RougeScorer(["rougeL"], use_stemmer=False)
         has_rouge = True
     except ImportError:
@@ -172,9 +174,11 @@ def compute_bleu_rouge(model, tokenizer, data, max_samples=50):
                 )
 
             generated = tokenizer.decode(
-                output[0][input_ids.shape[1]:], skip_special_tokens=True
+                output[0][input_ids.shape[1] :], skip_special_tokens=True
             ).strip()
-            generated_clean = re.sub(r"<thought>.*?</thought>", "", generated, flags=re.DOTALL).strip()
+            generated_clean = re.sub(
+                r"<thought>.*?</thought>", "", generated, flags=re.DOTALL
+            ).strip()
             reference_clean = re.sub(
                 r"<thought>.*?</thought>", "", item.get("output", ""), flags=re.DOTALL
             ).strip()
@@ -204,6 +208,7 @@ def compute_bleu_rouge(model, tokenizer, data, max_samples=50):
 
 def load_eval_data(path, max_samples=100):
     import random
+
     random.seed(SEED)
     data = []
     with open(path) as f:
@@ -217,6 +222,7 @@ def load_eval_data(path, max_samples=100):
 
 
 # ─── AI Engineer: Training Pipeline ─────────────────────────────────────────
+
 
 def load_base_model_and_tokenizer(model_id):
     tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
@@ -263,8 +269,10 @@ def run_single_experiment(exp_cfg, tokenizer, eval_data):
     print(f"\n{'='*65}")
     print(f"[Experiment Tracker] Starting: {exp_id}")
     print(f"  Hypothesis: {exp_cfg['hypothesis']}")
-    print(f"  Config: rank={exp_cfg['lora_r']}, lr={exp_cfg['lr']}, "
-          f"scheduler={exp_cfg['lr_scheduler']}, epochs={exp_cfg['epochs']}")
+    print(
+        f"  Config: rank={exp_cfg['lora_r']}, lr={exp_cfg['lr']}, "
+        f"scheduler={exp_cfg['lr_scheduler']}, epochs={exp_cfg['epochs']}"
+    )
     print(f"{'='*65}")
 
     # Initialize W&B run
@@ -304,8 +312,15 @@ def run_single_experiment(exp_cfg, tokenizer, eval_data):
         lora_config = LoraConfig(
             r=exp_cfg["lora_r"],
             lora_alpha=exp_cfg["lora_alpha"],
-            target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
-                            "gate_proj", "up_proj", "down_proj"],
+            target_modules=[
+                "q_proj",
+                "k_proj",
+                "v_proj",
+                "o_proj",
+                "gate_proj",
+                "up_proj",
+                "down_proj",
+            ],
             lora_dropout=0.05,
             bias="none",
             task_type="CAUSAL_LM",
@@ -320,8 +335,14 @@ def run_single_experiment(exp_cfg, tokenizer, eval_data):
             output_texts = []
             for i in range(len(example["instruction"])):
                 messages = [
-                    {"role": "system", "content": "당신은 지자체 민원 담당 공무원을 돕는 AI 어시스턴트입니다."},
-                    {"role": "user", "content": f"{example['instruction'][i]}\n\n{example['input'][i]}"},
+                    {
+                        "role": "system",
+                        "content": "당신은 지자체 민원 담당 공무원을 돕는 AI 어시스턴트입니다.",
+                    },
+                    {
+                        "role": "user",
+                        "content": f"{example['instruction'][i]}\n\n{example['input'][i]}",
+                    },
                     {"role": "assistant", "content": example["output"][i]},
                 ]
                 text = tokenizer.apply_chat_template(
@@ -395,10 +416,14 @@ def run_single_experiment(exp_cfg, tokenizer, eval_data):
         wandb.log(final_metrics)
 
         print(f"\n[Experiment Tracker] Results for {exp_id}:")
-        print(f"  BLEU:   {bleu:.2f}  (baseline: 17.32, target: >=30) "
-              f"{'✓ PASS' if bleu_target_met else '✗ FAIL'}")
-        print(f"  ROUGE-L:{rouge_l:.2f}  (baseline: 18.28, target: >=40) "
-              f"{'✓ PASS' if rouge_target_met else '✗ FAIL'}")
+        print(
+            f"  BLEU:   {bleu:.2f}  (baseline: 17.32, target: >=30) "
+            f"{'✓ PASS' if bleu_target_met else '✗ FAIL'}"
+        )
+        print(
+            f"  ROUGE-L:{rouge_l:.2f}  (baseline: 18.28, target: >=40) "
+            f"{'✓ PASS' if rouge_target_met else '✗ FAIL'}"
+        )
         print(f"  Improvement: BLEU +{improvement_bleu:.2f}, ROUGE-L +{improvement_rouge:.2f}")
 
         result = {
@@ -422,6 +447,7 @@ def run_single_experiment(exp_cfg, tokenizer, eval_data):
 
     finally:
         import gc
+
         del model
         gc.collect()
         torch.cuda.empty_cache()
@@ -431,6 +457,7 @@ def run_single_experiment(exp_cfg, tokenizer, eval_data):
 
 
 # ─── Experiment Tracker: Summary Report ─────────────────────────────────────
+
 
 def print_experiment_summary(results):
     """
@@ -447,10 +474,15 @@ def print_experiment_summary(results):
     successful.sort(key=lambda x: x["bleu"] + x["rouge_l"], reverse=True)
 
     for r in successful:
-        status = "✓ BOTH" if r["bleu_target_met"] and r["rouge_target_met"] else \
-                 "~ PARTIAL" if r["bleu_target_met"] or r["rouge_target_met"] else "✗ BELOW"
-        print(f"{r['exp_id']:<28} {r['bleu']:>8.2f} {r['rouge_l']:>9.2f} "
-              f"{r['bleu_improvement']:>+8.2f} {r['rouge_improvement']:>+8.2f} {status:<12}")
+        status = (
+            "✓ BOTH"
+            if r["bleu_target_met"] and r["rouge_target_met"]
+            else "~ PARTIAL" if r["bleu_target_met"] or r["rouge_target_met"] else "✗ BELOW"
+        )
+        print(
+            f"{r['exp_id']:<28} {r['bleu']:>8.2f} {r['rouge_l']:>9.2f} "
+            f"{r['bleu_improvement']:>+8.2f} {r['rouge_improvement']:>+8.2f} {status:<12}"
+        )
 
     for r in results:
         if "error" in r:
@@ -466,8 +498,10 @@ def print_experiment_summary(results):
         print(f"  BLEU       : {best['bleu']:.2f} (target ≥30, baseline 17.32)")
         print(f"  ROUGE-L    : {best['rouge_l']:.2f} (target ≥40, baseline 18.28)")
         cfg = best["config"]
-        print(f"  Config     : rank={cfg['lora_r']}, lr={cfg['lr']}, "
-              f"scheduler={cfg['lr_scheduler']}, epochs={cfg['epochs']}")
+        print(
+            f"  Config     : rank={cfg['lora_r']}, lr={cfg['lr']}, "
+            f"scheduler={cfg['lr_scheduler']}, epochs={cfg['epochs']}"
+        )
         print(f"\n[Experiment Tracker] Recommendation:")
         if best["bleu_target_met"] and best["rouge_target_met"]:
             print(f"  GO — Both targets met. Deploy best model to HuggingFace.")
@@ -481,11 +515,14 @@ def print_experiment_summary(results):
 
 # ─── Main ────────────────────────────────────────────────────────────────────
 
+
 def main():
     import argparse
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("--exp_ids", nargs="*", default=None,
-                        help="Run specific experiment IDs (default: all)")
+    parser.add_argument(
+        "--exp_ids", nargs="*", default=None, help="Run specific experiment IDs (default: all)"
+    )
     parser.add_argument("--wandb_key", type=str, default=None)
     args = parser.parse_args()
 
@@ -531,14 +568,20 @@ def main():
     # Save final results
     final_path = os.path.join(RESULTS_DIR, "hparam_search_results.json")
     with open(final_path, "w") as f:
-        json.dump({
-            "issue": 67,
-            "timestamp": datetime.now().isoformat(),
-            "baseline": {"exp_id": "EXP-001", "bleu": 17.32, "rouge_l": 18.28},
-            "targets": {"bleu": 30.0, "rouge_l": 40.0},
-            "results": results,
-            "best_config": best["config"] if best else None,
-        }, f, indent=2, ensure_ascii=False, default=str)
+        json.dump(
+            {
+                "issue": 67,
+                "timestamp": datetime.now().isoformat(),
+                "baseline": {"exp_id": "EXP-001", "bleu": 17.32, "rouge_l": 18.28},
+                "targets": {"bleu": 30.0, "rouge_l": 40.0},
+                "results": results,
+                "best_config": best["config"] if best else None,
+            },
+            f,
+            indent=2,
+            ensure_ascii=False,
+            default=str,
+        )
 
     print(f"\n[Experiment Tracker] Full results saved: {final_path}")
     print(f"[W&B] Project dashboard: https://wandb.ai/{WANDB_PROJECT}")

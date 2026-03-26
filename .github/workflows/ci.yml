@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install 3.10
+
+      - name: Install dependencies
+        run: |
+          # uv.lock을 기반으로 모든 의존성(dev, database, inference 등)을 동기화
+          uv sync --all-extras
+
+      - name: Lint & Type Check
+        continue-on-error: true
+        run: |
+          uv run black --check .
+          uv run isort --check .
+          uv run flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          uv run mypy .
+
+      - name: Run Unit Tests (Logic Only)
+        run: |
+          export SKIP_MODEL_LOAD=true
+          uv run pytest tests/test_inference/test_api_logic.py --cov=src/inference --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ./coverage.xml
+          fail_ci_if_error: false

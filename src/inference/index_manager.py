@@ -20,10 +20,10 @@ from loguru import logger
 class IndexType(str, Enum):
     """RAG 검색 대상 데이터 타입."""
 
-    CASE = "case"       # 유사 민원 사례
-    LAW = "law"         # 법령/규정
-    MANUAL = "manual"   # 업무 매뉴얼
-    NOTICE = "notice"   # 기관 공시 정보
+    CASE = "case"  # 유사 민원 사례
+    LAW = "law"  # 법령/규정
+    MANUAL = "manual"  # 업무 매뉴얼
+    NOTICE = "notice"  # 기관 공시 정보
 
 
 @dataclass
@@ -36,17 +36,17 @@ class DocumentMetadata:
     """
 
     doc_id: str
-    doc_type: str               # IndexType.value
-    source: str                 # 출처 (예: "AI Hub", "법제처", "기관 내부")
+    doc_type: str  # IndexType.value
+    source: str  # 출처 (예: "AI Hub", "법제처", "기관 내부")
     title: str
-    category: str               # 민원 카테고리 (도로/교통, 환경/위생 등)
-    reliability_score: float    # 신뢰도 (0.0 ~ 1.0)
-    created_at: str             # ISO 8601 문자열
-    updated_at: str             # ISO 8601 문자열
-    valid_from: Optional[str] = None   # 유효 시작일 (법령 시행일)
+    category: str  # 민원 카테고리 (도로/교통, 환경/위생 등)
+    reliability_score: float  # 신뢰도 (0.0 ~ 1.0)
+    created_at: str  # ISO 8601 문자열
+    updated_at: str  # ISO 8601 문자열
+    valid_from: Optional[str] = None  # 유효 시작일 (법령 시행일)
     valid_until: Optional[str] = None  # 유효 종료일 (폐지/개정 시)
-    chunk_index: int = 0        # 청크 인덱스 (긴 문서 분할 시)
-    chunk_total: int = 1        # 전체 청크 수
+    chunk_index: int = 0  # 청크 인덱스 (긴 문서 분할 시)
+    chunk_total: int = 1  # 전체 청크 수
     extras: Optional[Dict[str, Any]] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -65,9 +65,9 @@ class DocumentMetadata:
 # ---------------------------------------------------------------------------
 # IVFFlat 자동 전환 상수
 # ---------------------------------------------------------------------------
-_IVF_THRESHOLD = 100_000   # 문서 수 >= 10만건이면 IVFFlat 전환
-_IVF_NLIST = 256           # IVFFlat 클러스터 수
-_IVF_NPROBE = 16           # 검색 시 탐색할 클러스터 수
+_IVF_THRESHOLD = 100_000  # 문서 수 >= 10만건이면 IVFFlat 전환
+_IVF_NLIST = 256  # IVFFlat 클러스터 수
+_IVF_NPROBE = 16  # 검색 시 탐색할 클러스터 수
 
 
 class MultiIndexManager:
@@ -108,9 +108,7 @@ class MultiIndexManager:
                 try:
                     self.load_index(index_type)
                 except Exception as e:
-                    logger.warning(
-                        f"인덱스 자동 로드 실패 ({index_type.value}): {e}"
-                    )
+                    logger.warning(f"인덱스 자동 로드 실패 ({index_type.value}): {e}")
 
     # ------------------------------------------------------------------
     # 레지스트리 관리
@@ -139,9 +137,7 @@ class MultiIndexManager:
     def _create_index(self, index_type: IndexType) -> faiss.Index:
         """새 IndexFlatIP 인덱스를 생성한다."""
         index = faiss.IndexFlatIP(self.embedding_dim)
-        logger.info(
-            f"새 IndexFlatIP 생성 (type={index_type.value}, dim={self.embedding_dim})"
-        )
+        logger.info(f"새 IndexFlatIP 생성 (type={index_type.value}, dim={self.embedding_dim})")
         return index
 
     def load_index(self, index_type: IndexType) -> faiss.Index:
@@ -160,20 +156,15 @@ class MultiIndexManager:
                 f"(벡터 수: {self.indexes[index_type].ntotal})"
             )
         else:
-            logger.info(
-                f"인덱스 파일 없음, 새 인덱스 생성: {index_type.value}"
-            )
+            logger.info(f"인덱스 파일 없음, 새 인덱스 생성: {index_type.value}")
             self.indexes[index_type] = self._create_index(index_type)
 
         if os.path.exists(meta_path):
             with open(meta_path, "r", encoding="utf-8") as f:
                 raw_list = json.load(f)
-            self.metadata[index_type] = [
-                DocumentMetadata.from_dict(item) for item in raw_list
-            ]
+            self.metadata[index_type] = [DocumentMetadata.from_dict(item) for item in raw_list]
             logger.info(
-                f"메타데이터 로드 완료: {meta_path} "
-                f"(문서 수: {len(self.metadata[index_type])})"
+                f"메타데이터 로드 완료: {meta_path} " f"(문서 수: {len(self.metadata[index_type])})"
             )
         else:
             self.metadata[index_type] = []
@@ -267,8 +258,7 @@ class MultiIndexManager:
                 results.append(item)
             else:
                 logger.warning(
-                    f"메타데이터 인덱스 범위 초과: idx={idx}, "
-                    f"meta_len={len(meta_list)}"
+                    f"메타데이터 인덱스 범위 초과: idx={idx}, " f"meta_len={len(meta_list)}"
                 )
 
         return results
@@ -326,8 +316,7 @@ class MultiIndexManager:
         self.metadata[index_type].extend(metadata)
 
         logger.info(
-            f"문서 추가 완료: type={index_type.value}, "
-            f"추가={len(metadata)}, 총={index.ntotal}"
+            f"문서 추가 완료: type={index_type.value}, " f"추가={len(metadata)}, 총={index.ntotal}"
         )
 
         # IVFFlat 자동 전환 체크
@@ -363,9 +352,11 @@ class MultiIndexManager:
 
         # 기존 벡터 추출
         n = index.ntotal
-        vectors = faiss.rev_swig_ptr(
-            index.get_xb(), n * self.embedding_dim
-        ).reshape(n, self.embedding_dim).copy()
+        vectors = (
+            faiss.rev_swig_ptr(index.get_xb(), n * self.embedding_dim)
+            .reshape(n, self.embedding_dim)
+            .copy()
+        )
 
         # IVFFlat 인덱스 생성
         quantizer = faiss.IndexFlatIP(self.embedding_dim)
@@ -380,10 +371,7 @@ class MultiIndexManager:
         ivf_index.add(vectors)
 
         self.indexes[index_type] = ivf_index
-        logger.info(
-            f"IVFFlat 전환 완료: type={index_type.value}, "
-            f"ntotal={ivf_index.ntotal}"
-        )
+        logger.info(f"IVFFlat 전환 완료: type={index_type.value}, " f"ntotal={ivf_index.ntotal}")
 
     # ------------------------------------------------------------------
     # 통계
@@ -406,9 +394,7 @@ class MultiIndexManager:
                 entry["loaded"] = True
                 entry["doc_count"] = idx.ntotal
                 entry["index_class"] = type(idx).__name__
-                entry["metadata_count"] = len(
-                    self.metadata.get(index_type, [])
-                )
+                entry["metadata_count"] = len(self.metadata.get(index_type, []))
             else:
                 entry["loaded"] = False
                 entry["doc_count"] = 0

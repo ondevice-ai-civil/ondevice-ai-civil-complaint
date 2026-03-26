@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class CalibrationSample:
     """A single calibration sample"""
+
     text: str
     token_count: int
     category: str
@@ -38,6 +39,7 @@ class CalibrationSample:
 @dataclass
 class CalibrationStats:
     """Statistics for the calibration dataset"""
+
     total_samples: int = 0
     total_tokens: int = 0
     avg_tokens_per_sample: float = 0.0
@@ -55,11 +57,7 @@ class CalibrationDatasetGenerator:
     complaint data for use in AWQ quantization of EXAONE-Deep-7.8B.
     """
 
-    def __init__(
-        self,
-        config: Optional[CalibrationConfig] = None,
-        tokenizer: Optional[Any] = None
-    ):
+    def __init__(self, config: Optional[CalibrationConfig] = None, tokenizer: Optional[Any] = None):
         """
         Initialize the generator.
 
@@ -129,7 +127,7 @@ class CalibrationDatasetGenerator:
 
     def _compute_hash(self, text: str) -> str:
         """Compute hash for deduplication"""
-        return hashlib.md5(text.encode()).hexdigest()
+        return hashlib.md5(text.encode(), usedforsecurity=False).hexdigest()
 
     def _is_duplicate(self, text: str) -> bool:
         """Check if sample is duplicate"""
@@ -140,9 +138,7 @@ class CalibrationDatasetGenerator:
         return False
 
     def _select_diverse_samples(
-        self,
-        records: List[ProcessedRecord],
-        num_samples: int
+        self, records: List[ProcessedRecord], num_samples: int
     ) -> List[ProcessedRecord]:
         """
         Select diverse samples for calibration.
@@ -189,9 +185,7 @@ class CalibrationDatasetGenerator:
                 # Sort by estimated token count and select evenly distributed
                 sorted_records = sorted(
                     cat_records,
-                    key=lambda r: self._estimate_tokens(
-                        self._format_calibration_text(r)
-                    )
+                    key=lambda r: self._estimate_tokens(self._format_calibration_text(r)),
                 )
                 step = len(sorted_records) // n
                 selected.extend(sorted_records[::step][:n])
@@ -211,7 +205,7 @@ class CalibrationDatasetGenerator:
         self,
         records: List[ProcessedRecord],
         num_samples: Optional[int] = None,
-        max_seq_length: Optional[int] = None
+        max_seq_length: Optional[int] = None,
     ) -> List[CalibrationSample]:
         """
         Generate calibration dataset from processed records.
@@ -254,24 +248,18 @@ class CalibrationDatasetGenerator:
             # Skip if too long
             if token_count > max_seq_length:
                 # Truncate if necessary
-                text = text[:max_seq_length * 4]  # Rough character limit
+                text = text[: max_seq_length * 4]  # Rough character limit
                 token_count = self._estimate_tokens(text)
 
             sample = CalibrationSample(
-                text=text,
-                token_count=token_count,
-                category=record.category,
-                source=record.source
+                text=text, token_count=token_count, category=record.category, source=record.source
             )
             calibration_samples.append(sample)
 
         logger.info(f"Generated {len(calibration_samples)} calibration samples")
         return calibration_samples
 
-    def compute_statistics(
-        self,
-        samples: List[CalibrationSample]
-    ) -> CalibrationStats:
+    def compute_statistics(self, samples: List[CalibrationSample]) -> CalibrationStats:
         """
         Compute statistics for calibration dataset.
 
@@ -288,7 +276,7 @@ class CalibrationDatasetGenerator:
             total_samples=len(samples),
             total_tokens=sum(s.token_count for s in samples),
             min_tokens=min(s.token_count for s in samples),
-            max_tokens=max(s.token_count for s in samples)
+            max_tokens=max(s.token_count for s in samples),
         )
 
         stats.avg_tokens_per_sample = stats.total_tokens / stats.total_samples
@@ -309,7 +297,7 @@ class CalibrationDatasetGenerator:
         self,
         samples: List[CalibrationSample],
         filename: str = "calibration_dataset",
-        format: str = "json"
+        format: str = "json",
     ) -> Dict[str, Path]:
         """
         Save calibration dataset to files.
@@ -330,17 +318,17 @@ class CalibrationDatasetGenerator:
             "config": {
                 "num_samples": self.config.num_samples,
                 "seq_length": self.config.seq_length,
-                "random_seed": self.config.random_seed
+                "random_seed": self.config.random_seed,
             },
             "samples": [
                 {
                     "text": s.text,
                     "token_count": s.token_count,
                     "category": s.category,
-                    "source": s.source
+                    "source": s.source,
                 }
                 for s in samples
-            ]
+            ],
         }
 
         with open(json_path, "w", encoding="utf-8") as f:
@@ -362,15 +350,20 @@ class CalibrationDatasetGenerator:
         stats = self.compute_statistics(samples)
         stats_path = self.output_dir / f"{filename}_stats.json"
         with open(stats_path, "w", encoding="utf-8") as f:
-            json.dump({
-                "total_samples": stats.total_samples,
-                "total_tokens": stats.total_tokens,
-                "avg_tokens_per_sample": stats.avg_tokens_per_sample,
-                "min_tokens": stats.min_tokens,
-                "max_tokens": stats.max_tokens,
-                "category_distribution": stats.category_distribution,
-                "source_distribution": stats.source_distribution
-            }, f, ensure_ascii=False, indent=2)
+            json.dump(
+                {
+                    "total_samples": stats.total_samples,
+                    "total_tokens": stats.total_tokens,
+                    "avg_tokens_per_sample": stats.avg_tokens_per_sample,
+                    "min_tokens": stats.min_tokens,
+                    "max_tokens": stats.max_tokens,
+                    "category_distribution": stats.category_distribution,
+                    "source_distribution": stats.source_distribution,
+                },
+                f,
+                ensure_ascii=False,
+                indent=2,
+            )
 
         paths["stats"] = stats_path
         logger.info(f"Saved calibration stats to {stats_path}")
@@ -378,9 +371,7 @@ class CalibrationDatasetGenerator:
         return paths
 
     def generate_and_save(
-        self,
-        records: List[ProcessedRecord],
-        filename: str = "calibration_dataset"
+        self, records: List[ProcessedRecord], filename: str = "calibration_dataset"
     ) -> Dict[str, Path]:
         """
         Generate and save calibration dataset in one step.
@@ -396,10 +387,7 @@ class CalibrationDatasetGenerator:
         return self.save_calibration_dataset(samples, filename)
 
 
-def generate_sample_calibration_data(
-    output_dir: Path,
-    num_samples: int = 50
-) -> Path:
+def generate_sample_calibration_data(output_dir: Path, num_samples: int = 50) -> Path:
     """
     Generate sample calibration data for testing.
 
@@ -416,8 +404,12 @@ def generate_sample_calibration_data(
     from .data_preprocessor import ProcessedRecord
 
     categories = [
-        "road/traffic", "environment/sanitation", "housing/construction",
-        "welfare/health", "safety/disaster", "administration"
+        "road/traffic",
+        "environment/sanitation",
+        "housing/construction",
+        "welfare/health",
+        "safety/disaster",
+        "administration",
     ]
 
     records = []
@@ -430,7 +422,7 @@ def generate_sample_calibration_data(
             category=categories[i % len(categories)],
             original_question_length=50 + i % 100,
             original_answer_length=80 + i % 50,
-            source="sample"
+            source="sample",
         )
         records.append(record)
 

@@ -50,13 +50,14 @@ MIN_PER_CATEGORY = 30
 MAX_71847_RATIO = 0.30
 
 # 답변 길이 필터
-MIN_ANSWER_LEN_71847 = 100   # 71847 최소 답변 길이
-MIN_ANSWER_LEN_GLOBAL = 50   # 전체 최소 답변 길이
+MIN_ANSWER_LEN_71847 = 100  # 71847 최소 답변 길이
+MIN_ANSWER_LEN_GLOBAL = 50  # 전체 최소 답변 길이
 
 STANDARD_CATEGORIES = ["교통", "환경", "복지", "건축", "행정", "세금", "안전", "기타"]
 
 SYSTEM_MESSAGE = "당신은 지자체 민원 담당 공무원을 돕는 AI 어시스턴트입니다."
 INSTRUCTION = "다음 민원에 대해 공손하고 명확한 답변을 작성하세요."
+
 
 # ─── EXAONE Chat Template ─────────────────────────────────────────────
 def format_chat_template(system: str, user: str, assistant: str) -> str:
@@ -70,44 +71,108 @@ def format_chat_template(system: str, user: str, assistant: str) -> str:
 
 # ─── 카테고리 매핑 (71852/98용) ────────────────────────────────────────
 CATEGORY_MAP = {
-    "교통": "교통", "교통행정": "교통", "교통과": "교통",
-    "대중교통": "교통", "도로교통": "교통", "교통정책": "교통",
-    "교통정책과": "교통", "도로과": "교통",
-    "환경": "환경", "환경과": "환경", "환경미화": "환경",
-    "환경위생": "환경", "환경정책": "환경", "상하수도": "환경",
-    "수도": "환경", "하수도": "환경", "청소행정": "환경",
-    "공원녹지": "환경", "산림": "환경", "녹지": "환경",
-    "복지": "복지", "복지과": "복지", "복지정책": "복지",
-    "사회복지": "복지", "보건": "복지", "보건소": "복지",
-    "보건의료": "복지", "노인복지": "복지", "아동복지": "복지",
-    "장애인복지": "복지", "여성가족": "복지", "주민생활지원": "복지",
-    "건축": "건축", "건축과": "건축", "건축허가": "건축",
-    "건설": "건축", "도시계획": "건축", "주택": "건축",
-    "도시개발": "건축", "건축행정": "건축", "개발행위": "건축",
-    "토지": "건축", "부동산": "건축",
-    "행정": "행정", "행정과": "행정", "일반행정": "행정",
-    "총무": "행정", "민원봉사": "행정", "자치행정": "행정",
-    "인사": "행정", "기획": "행정", "감사": "행정",
-    "법무": "행정", "홍보": "행정", "문화체육": "행정",
-    "문화": "행정", "체육": "행정", "관광": "행정",
-    "정보통신": "행정", "전산": "행정",
-    "세무": "세금", "세금": "세금", "세무과": "세금",
-    "재정": "세금", "회계": "세금", "징수": "세금",
-    "안전": "안전", "재난안전": "안전", "안전건설": "안전",
-    "소방": "안전", "방재": "안전", "민방위": "안전",
-    "안전관리": "안전", "재난": "안전",
-    "기타": "기타", "경제": "기타", "농업": "기타",
-    "축산": "기타", "수산": "기타", "위생": "기타",
+    "교통": "교통",
+    "교통행정": "교통",
+    "교통과": "교통",
+    "대중교통": "교통",
+    "도로교통": "교통",
+    "교통정책": "교통",
+    "교통정책과": "교통",
+    "도로과": "교통",
+    "환경": "환경",
+    "환경과": "환경",
+    "환경미화": "환경",
+    "환경위생": "환경",
+    "환경정책": "환경",
+    "상하수도": "환경",
+    "수도": "환경",
+    "하수도": "환경",
+    "청소행정": "환경",
+    "공원녹지": "환경",
+    "산림": "환경",
+    "녹지": "환경",
+    "복지": "복지",
+    "복지과": "복지",
+    "복지정책": "복지",
+    "사회복지": "복지",
+    "보건": "복지",
+    "보건소": "복지",
+    "보건의료": "복지",
+    "노인복지": "복지",
+    "아동복지": "복지",
+    "장애인복지": "복지",
+    "여성가족": "복지",
+    "주민생활지원": "복지",
+    "건축": "건축",
+    "건축과": "건축",
+    "건축허가": "건축",
+    "건설": "건축",
+    "도시계획": "건축",
+    "주택": "건축",
+    "도시개발": "건축",
+    "건축행정": "건축",
+    "개발행위": "건축",
+    "토지": "건축",
+    "부동산": "건축",
+    "행정": "행정",
+    "행정과": "행정",
+    "일반행정": "행정",
+    "총무": "행정",
+    "민원봉사": "행정",
+    "자치행정": "행정",
+    "인사": "행정",
+    "기획": "행정",
+    "감사": "행정",
+    "법무": "행정",
+    "홍보": "행정",
+    "문화체육": "행정",
+    "문화": "행정",
+    "체육": "행정",
+    "관광": "행정",
+    "정보통신": "행정",
+    "전산": "행정",
+    "세무": "세금",
+    "세금": "세금",
+    "세무과": "세금",
+    "재정": "세금",
+    "회계": "세금",
+    "징수": "세금",
+    "안전": "안전",
+    "재난안전": "안전",
+    "안전건설": "안전",
+    "소방": "안전",
+    "방재": "안전",
+    "민방위": "안전",
+    "안전관리": "안전",
+    "재난": "안전",
+    "기타": "기타",
+    "경제": "기타",
+    "농업": "기타",
+    "축산": "기타",
+    "수산": "기타",
+    "위생": "기타",
     "자동차": "기타",
 }
 
 CATEGORY_619_MAP = {
-    "건축허가": "건축", "경제": "기타", "공통": "행정",
-    "교통": "교통", "농업_축산": "기타", "문화_체육_관광": "행정",
-    "보건소": "복지", "복지": "복지", "산림": "환경",
-    "상하수도": "환경", "세무": "세금", "안전건설": "안전",
-    "위생": "환경", "자동차": "교통", "정보통신": "행정",
-    "토지": "건축", "행정": "행정", "환경미화": "환경",
+    "건축허가": "건축",
+    "경제": "기타",
+    "공통": "행정",
+    "교통": "교통",
+    "농업_축산": "기타",
+    "문화_체육_관광": "행정",
+    "보건소": "복지",
+    "복지": "복지",
+    "산림": "환경",
+    "상하수도": "환경",
+    "세무": "세금",
+    "안전건설": "안전",
+    "위생": "환경",
+    "자동차": "교통",
+    "정보통신": "행정",
+    "토지": "건축",
+    "행정": "행정",
+    "환경미화": "환경",
 }
 
 DASAN_CATEGORY_MAP = {
@@ -121,36 +186,118 @@ DASAN_CATEGORY_MAP = {
 # 키워드 → 카테고리 (우선순위 순서대로 매칭)
 LAW_TITLE_CATEGORY_KEYWORDS = {
     "교통": [
-        "도로교통", "교통", "자동차", "여객", "운수", "운송", "화물",
-        "철도", "항공", "항만", "해운", "선박", "도로법", "고속도로",
-        "주차", "면허", "운전",
+        "도로교통",
+        "교통",
+        "자동차",
+        "여객",
+        "운수",
+        "운송",
+        "화물",
+        "철도",
+        "항공",
+        "항만",
+        "해운",
+        "선박",
+        "도로법",
+        "고속도로",
+        "주차",
+        "면허",
+        "운전",
     ],
     "환경": [
-        "환경", "대기", "수질", "폐기물", "소음", "진동", "토양오염",
-        "자연환경", "생태", "녹색", "탄소", "기후", "물관리",
-        "하수", "상수", "수도", "공원", "녹지", "산림", "산지",
-        "야생", "동물보호",
+        "환경",
+        "대기",
+        "수질",
+        "폐기물",
+        "소음",
+        "진동",
+        "토양오염",
+        "자연환경",
+        "생태",
+        "녹색",
+        "탄소",
+        "기후",
+        "물관리",
+        "하수",
+        "상수",
+        "수도",
+        "공원",
+        "녹지",
+        "산림",
+        "산지",
+        "야생",
+        "동물보호",
     ],
     "건축": [
-        "건축", "주택", "도시계획", "국토", "도시개발", "택지",
-        "공동주택", "임대주택", "부동산", "토지", "건설",
-        "개발제한", "도시정비", "주거환경", "재건축", "재개발",
-        "산업단지", "공장설립", "공유재산",
+        "건축",
+        "주택",
+        "도시계획",
+        "국토",
+        "도시개발",
+        "택지",
+        "공동주택",
+        "임대주택",
+        "부동산",
+        "토지",
+        "건설",
+        "개발제한",
+        "도시정비",
+        "주거환경",
+        "재건축",
+        "재개발",
+        "산업단지",
+        "공장설립",
+        "공유재산",
     ],
     "복지": [
-        "복지", "기초생활", "아동", "노인", "장애인", "보육",
-        "의료", "건강보험", "국민연금", "연금", "고용보험",
-        "산업재해", "보건", "사회보장", "양육", "출산",
-        "보훈", "국가유공자", "청년기본",
+        "복지",
+        "기초생활",
+        "아동",
+        "노인",
+        "장애인",
+        "보육",
+        "의료",
+        "건강보험",
+        "국민연금",
+        "연금",
+        "고용보험",
+        "산업재해",
+        "보건",
+        "사회보장",
+        "양육",
+        "출산",
+        "보훈",
+        "국가유공자",
+        "청년기본",
     ],
     "세금": [
-        "세법", "세금", "국세", "지방세", "소득세", "법인세",
-        "부가가치세", "상속세", "증여세", "관세", "조세",
-        "세징수", "세특례", "세기본",
+        "세법",
+        "세금",
+        "국세",
+        "지방세",
+        "소득세",
+        "법인세",
+        "부가가치세",
+        "상속세",
+        "증여세",
+        "관세",
+        "조세",
+        "세징수",
+        "세특례",
+        "세기본",
     ],
     "안전": [
-        "안전", "재난", "소방", "방재", "민방위", "위험물",
-        "승강기", "원자력", "화재", "방화", "보행안전",
+        "안전",
+        "재난",
+        "소방",
+        "방재",
+        "민방위",
+        "위험물",
+        "승강기",
+        "원자력",
+        "화재",
+        "방화",
+        "보행안전",
         "어린이 식생활안전",
     ],
 }
@@ -179,7 +326,7 @@ def map_71847_category_by_agenda(agenda: str) -> str:
     if not agenda:
         return "행정"
     # 「법률명」 패턴에서 첫 번째 법률명 추출
-    matches = re.findall(r'「([^」]+)」', agenda)
+    matches = re.findall(r"「([^」]+)」", agenda)
     for law_name in matches:
         cat = map_71847_category_by_title(law_name)
         if cat != "행정":
@@ -189,6 +336,7 @@ def map_71847_category_by_agenda(agenda: str) -> str:
 
 
 # ─── 유틸리티 함수 ─────────────────────────────────────────────────────
+
 
 def map_category(raw_category: str) -> str:
     if not raw_category:
@@ -209,39 +357,39 @@ def improve_pii_masking_v2(text: str) -> str:
     result = text
 
     # 표준 PII 태그 치환
-    result = re.sub(r'(\[NAME_MASKED\])+', '[이름]', result)
-    result = re.sub(r'<NAME>', '[이름]', result)
-    result = re.sub(r'<MOBILE_NUMBER>', '[전화번호]', result)
-    result = re.sub(r'<PHONE_NUMBER>', '[전화번호]', result)
-    result = re.sub(r'<ADDRESS>', '[주소]', result)
-    result = re.sub(r'<DATE>', '[날짜]', result)
-    result = re.sub(r'<TIME>', '[시간]', result)
-    result = re.sub(r'<CHARGE>', '[금액]', result)
-    result = re.sub(r'<BIRTH_NUMBER>', '[생년월일]', result)
+    result = re.sub(r"(\[NAME_MASKED\])+", "[이름]", result)
+    result = re.sub(r"<NAME>", "[이름]", result)
+    result = re.sub(r"<MOBILE_NUMBER>", "[전화번호]", result)
+    result = re.sub(r"<PHONE_NUMBER>", "[전화번호]", result)
+    result = re.sub(r"<ADDRESS>", "[주소]", result)
+    result = re.sub(r"<DATE>", "[날짜]", result)
+    result = re.sub(r"<TIME>", "[시간]", result)
+    result = re.sub(r"<CHARGE>", "[금액]", result)
+    result = re.sub(r"<BIRTH_NUMBER>", "[생년월일]", result)
 
     # 해시태그 형식 PII
-    result = re.sub(r'#@주소#', '[주소]', result)
-    result = re.sub(r'#@이름#', '[이름]', result)
-    result = re.sub(r'#@전화번호#', '[전화번호]', result)
-    result = re.sub(r'#@생년월일#', '[생년월일]', result)
-    result = re.sub(r'#@카드번호#', '[카드번호]', result)
-    result = re.sub(r'#@계좌번호#', '[계좌번호]', result)
+    result = re.sub(r"#@주소#", "[주소]", result)
+    result = re.sub(r"#@이름#", "[이름]", result)
+    result = re.sub(r"#@전화번호#", "[전화번호]", result)
+    result = re.sub(r"#@생년월일#", "[생년월일]", result)
+    result = re.sub(r"#@카드번호#", "[카드번호]", result)
+    result = re.sub(r"#@계좌번호#", "[계좌번호]", result)
 
     # v2: 특수문자 마스킹 패턴 제거 (빈 문자열로)
-    result = re.sub(r'[▲]{2,}', '', result)
-    result = re.sub(r'[○]{2,}', '', result)
-    result = re.sub(r'[●]{2,}', '', result)
-    result = re.sub(r'[△]{2,}', '', result)
-    result = re.sub(r'[□]{2,}', '', result)
-    result = re.sub(r'[■]{2,}', '', result)
+    result = re.sub(r"[▲]{2,}", "", result)
+    result = re.sub(r"[○]{2,}", "", result)
+    result = re.sub(r"[●]{2,}", "", result)
+    result = re.sub(r"[△]{2,}", "", result)
+    result = re.sub(r"[□]{2,}", "", result)
+    result = re.sub(r"[■]{2,}", "", result)
 
     # 연속 PII 태그 병합
-    result = re.sub(r'(\[이름\])\s*(\[이름\])+', '[이름]', result)
-    result = re.sub(r'(\[전화번호\])\s*(\[전화번호\])+', '[전화번호]', result)
-    result = re.sub(r'(\[주소\])\s*(\[주소\])+', '[주소]', result)
+    result = re.sub(r"(\[이름\])\s*(\[이름\])+", "[이름]", result)
+    result = re.sub(r"(\[전화번호\])\s*(\[전화번호\])+", "[전화번호]", result)
+    result = re.sub(r"(\[주소\])\s*(\[주소\])+", "[주소]", result)
 
     # 다중 공백 정리
-    result = re.sub(r'  +', ' ', result).strip()
+    result = re.sub(r"  +", " ", result).strip()
     return result
 
 
@@ -250,10 +398,19 @@ def calculate_pii_density(text: str) -> float:
     if not text:
         return 0.0
     pii_patterns = [
-        r'\[이름\]', r'\[전화번호\]', r'\[주소\]', r'\[날짜\]',
-        r'\[시간\]', r'\[금액\]', r'\[생년월일\]', r'\[카드번호\]',
-        r'\[계좌번호\]', r'\[NAME_MASKED\]',
-        r'[○]{2,}', r'[▲]{2,}', r'[●]{2,}',
+        r"\[이름\]",
+        r"\[전화번호\]",
+        r"\[주소\]",
+        r"\[날짜\]",
+        r"\[시간\]",
+        r"\[금액\]",
+        r"\[생년월일\]",
+        r"\[카드번호\]",
+        r"\[계좌번호\]",
+        r"\[NAME_MASKED\]",
+        r"[○]{2,}",
+        r"[▲]{2,}",
+        r"[●]{2,}",
     ]
     total_len = len(text)
     pii_len = sum(len(m.group()) for pat in pii_patterns for m in re.finditer(pat, text))
@@ -280,7 +437,7 @@ def has_repetition_pattern(text: str) -> bool:
         if words[i] == words[i + 1] == words[i + 2] and len(words[i]) > 1:
             return True
     # 같은 문장이 3번 이상 반복
-    sentences = re.split(r'[.!?。]\s*', text)
+    sentences = re.split(r"[.!?。]\s*", text)
     if len(sentences) >= 3:
         sentence_counter = Counter(s.strip() for s in sentences if len(s.strip()) > 5)
         if sentence_counter and sentence_counter.most_common(1)[0][1] >= 3:
@@ -318,18 +475,18 @@ def parse_consulting_content(content: str) -> Tuple[str, str, str]:
 
     question, answer = "", ""
     if q_match and a_match:
-        question = content[q_match.end():a_match.start()].strip()
-        answer = content[a_match.end():].strip()
+        question = content[q_match.end() : a_match.start()].strip()
+        answer = content[a_match.end() :].strip()
     elif q_match:
-        question = content[q_match.end():].strip()
+        question = content[q_match.end() :].strip()
     elif a_match:
-        question = content[:a_match.start()].strip()
-        answer = content[a_match.end():].strip()
+        question = content[: a_match.start()].strip()
+        answer = content[a_match.end() :].strip()
     else:
         question = content.strip()
 
     if title and question.startswith(title):
-        question = question[len(title):].strip()
+        question = question[len(title) :].strip()
 
     return title, question, answer
 
@@ -342,6 +499,7 @@ def save_jsonl(records: list, filepath: str):
 
 
 # ─── 1. 71852 데이터 처리 ──────────────────────────────────────────────
+
 
 def process_71852() -> list:
     print("\n" + "=" * 60)
@@ -384,13 +542,15 @@ def process_71852() -> list:
             continue
 
         category = map_category(raw_category)
-        records.append({
-            "id": f"71852_{file_type}_{filename}",
-            "question": question,
-            "answer": answer,
-            "category": category,
-            "source_dataset": f"71852_{file_type}",
-        })
+        records.append(
+            {
+                "id": f"71852_{file_type}_{filename}",
+                "question": question,
+                "answer": answer,
+                "category": category,
+                "source_dataset": f"71852_{file_type}",
+            }
+        )
 
     print(f"유효: {len(records)}")
     for k, v in sorted(stats.items(), key=lambda x: -x[1]):
@@ -407,6 +567,7 @@ def process_71852() -> list:
 
 
 # ─── 2. 98 다산콜센터 필터링 ───────────────────────────────────────────
+
 
 def process_98() -> list:
     print("\n" + "=" * 60)
@@ -464,19 +625,22 @@ def process_98() -> list:
                 filtered += 1
                 continue
 
-            records.append({
-                "id": f"98_{dialog_id}",
-                "question": full_q,
-                "answer": full_a,
-                "category": std_category,
-                "source_dataset": "98",
-            })
+            records.append(
+                {
+                    "id": f"98_{dialog_id}",
+                    "question": full_q,
+                    "answer": full_a,
+                    "category": std_category,
+                    "source_dataset": "98",
+                }
+            )
 
     print(f"민원 관련: {len(records)}, 스킵(비민원): {skipped}, 저품질제거: {filtered}")
     return records
 
 
 # ─── 3. 71847 행정법 QA 데이터 처리 (카테고리 세분화 + 샘플링) ────────
+
 
 def process_71847(max_records: int = None) -> list:
     """71847 데이터를 카테고리 세분화하여 처리.
@@ -544,13 +708,15 @@ def process_71847(max_records: int = None) -> list:
             continue
 
         cat_stats[category] += 1
-        records.append({
-            "id": f"71847_{filename}",
-            "question": question,
-            "answer": answer,
-            "category": category,
-            "source_dataset": "71847",
-        })
+        records.append(
+            {
+                "id": f"71847_{filename}",
+                "question": question,
+                "answer": answer,
+                "category": category,
+                "source_dataset": "71847",
+            }
+        )
 
     print(f"품질 필터 통과: {len(records)}")
     for k, v in sorted(stats.items(), key=lambda x: -x[1]):
@@ -583,7 +749,9 @@ def sample_71847(records_71847: list, other_count: int) -> list:
     target_count = int(other_count * MAX_71847_RATIO / (1 - MAX_71847_RATIO))
     target_count = min(target_count, len(records_71847))
 
-    print(f"\n71847 샘플링: {len(records_71847)} -> {target_count} (목표 비율 {MAX_71847_RATIO*100:.0f}%)")
+    print(
+        f"\n71847 샘플링: {len(records_71847)} -> {target_count} (목표 비율 {MAX_71847_RATIO*100:.0f}%)"
+    )
 
     # 카테고리별 그룹핑
     cat_groups = defaultdict(list)
@@ -637,6 +805,7 @@ def sample_71847(records_71847: list, other_count: int) -> list:
 
 # ─── 4. Chat Template 변환 + Split + 저장 ─────────────────────────────
 
+
 def format_and_split(records_71852: list, records_98: list, records_71847: list = None):
     if records_71847 is None:
         records_71847 = []
@@ -650,27 +819,33 @@ def format_and_split(records_71852: list, records_98: list, records_71847: list 
     seen = set()
     unique_71852 = []
     for rec in records_71852:
-        h = hashlib.md5(rec["question"].encode()).hexdigest()
+        h = hashlib.md5(rec["question"].encode(), usedforsecurity=False).hexdigest()
         if h not in seen:
             seen.add(h)
             unique_71852.append(rec)
 
     unique_98 = []
     for rec in records_98:
-        h = hashlib.md5(rec["question"].encode()).hexdigest()
+        h = hashlib.md5(rec["question"].encode(), usedforsecurity=False).hexdigest()
         if h not in seen:
             seen.add(h)
             unique_98.append(rec)
 
     unique_71847_all = []
     for rec in records_71847:
-        h = hashlib.md5(rec["question"].encode()).hexdigest()
+        h = hashlib.md5(rec["question"].encode(), usedforsecurity=False).hexdigest()
         if h not in seen:
             seen.add(h)
             unique_71847_all.append(rec)
 
-    dedup_removed = (len(records_71852) + len(records_98) + len(records_71847)
-                     - len(unique_71852) - len(unique_98) - len(unique_71847_all))
+    dedup_removed = (
+        len(records_71852)
+        + len(records_98)
+        + len(records_71847)
+        - len(unique_71852)
+        - len(unique_98)
+        - len(unique_71847_all)
+    )
     print(f"중복 제거: {dedup_removed}건 제거")
     print(f"  71852: {len(records_71852)} -> {len(unique_71852)}")
     print(f"  98: {len(records_98)} -> {len(unique_98)}")
@@ -681,9 +856,11 @@ def format_and_split(records_71852: list, records_98: list, records_71847: list 
     sampled_71847 = sample_71847(unique_71847_all, other_count)
 
     unique = unique_71852 + unique_98 + sampled_71847
-    print(f"\n최종 레코드: {len(unique)} "
-          f"(71852: {len(unique_71852)}, 98: {len(unique_98)}, "
-          f"71847: {len(sampled_71847)}/{len(unique_71847_all)})")
+    print(
+        f"\n최종 레코드: {len(unique)} "
+        f"(71852: {len(unique_71852)}, 98: {len(unique_98)}, "
+        f"71847: {len(sampled_71847)}/{len(unique_71847_all)})"
+    )
 
     # 71847 비율 확인
     ratio_71847 = len(sampled_71847) / len(unique) * 100 if unique else 0
@@ -697,12 +874,14 @@ def format_and_split(records_71852: list, records_98: list, records_71847: list 
         user_text = f"{INSTRUCTION}\n\n[카테고리: {cat}]\n민원 내용: {rec['question']}"
         text = format_chat_template(SYSTEM_MESSAGE, user_text, rec["answer"])
 
-        formatted.append({
-            "text": text,
-            "category": cat,
-            "id": rec["id"],
-            "source": rec.get("source_dataset", ""),
-        })
+        formatted.append(
+            {
+                "text": text,
+                "category": cat,
+                "id": rec["id"],
+                "source": rec.get("source_dataset", ""),
+            }
+        )
 
     print(f"최종 레코드: {len(formatted)}")
 
@@ -756,8 +935,8 @@ def format_and_split(records_71852: list, records_98: list, records_71847: list 
         reordered = data_71852 + data_other
 
         test.extend(reordered[:test_size])
-        val.extend(reordered[test_size:test_size + val_size])
-        train.extend(reordered[test_size + val_size:])
+        val.extend(reordered[test_size : test_size + val_size])
+        train.extend(reordered[test_size + val_size :])
 
     random.shuffle(train)
     random.shuffle(val)
@@ -779,9 +958,9 @@ def format_and_split(records_71852: list, records_98: list, records_71847: list 
         print(f"  {src}: {cnt}")
 
     # ─── 데이터 누출 검증 ───
-    train_h = {hashlib.md5(r["text"].encode()).hexdigest() for r in train}
-    val_h = {hashlib.md5(r["text"].encode()).hexdigest() for r in val}
-    test_h = {hashlib.md5(r["text"].encode()).hexdigest() for r in test}
+    train_h = {hashlib.md5(r["text"].encode(), usedforsecurity=False).hexdigest() for r in train}
+    val_h = {hashlib.md5(r["text"].encode(), usedforsecurity=False).hexdigest() for r in val}
+    test_h = {hashlib.md5(r["text"].encode(), usedforsecurity=False).hexdigest() for r in test}
     leak_tv = len(train_h & val_h)
     leak_tt = len(train_h & test_h)
     leak_vt = len(val_h & test_h)
@@ -802,7 +981,7 @@ def format_and_split(records_71852: list, records_98: list, records_71847: list 
         marker = "[|assistant|]"
         idx = text.rfind(marker)
         if idx >= 0:
-            answer = text[idx + len(marker):]
+            answer = text[idx + len(marker) :]
             answer = answer.replace("[|endofturn|]", "").strip()
             return answer
         return ""
@@ -882,14 +1061,17 @@ def format_and_split(records_71852: list, records_98: list, records_71847: list 
     print(f"Train/Val/Test: {report['train']:,} / {report['val']:,} / {report['test']:,}")
     print(f"카테고리: {report['unique_categories']}개")
     print(f"71847 비율: {ratio_71847:.1f}% (v2: 85.7% -> v2.1: {ratio_71847:.1f}%)")
-    print(f"답변 길이: 평균 {report['answer_length']['mean']:.0f}자, "
-          f"중앙값 {report['answer_length']['median']:.0f}자")
+    print(
+        f"답변 길이: 평균 {report['answer_length']['mean']:.0f}자, "
+        f"중앙값 {report['answer_length']['median']:.0f}자"
+    )
     print(f"PII 밀도: {report['pii_density_percent']:.2f}%")
 
     return formatted, train, val, test
 
 
 # ─── Main ──────────────────────────────────────────────────────────────
+
 
 def main():
     print("=" * 60)

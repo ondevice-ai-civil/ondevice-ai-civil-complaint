@@ -11,9 +11,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel
 import bert_score
 
-# 2025-03-19: 학습 호환 마지막 revision
-# 2026-02-06 이후 modeling_exaone.py가 transformers v5 전용으로 재작성됨
-EXAONE_REVISION = "17b70148e344"
+# 2024-12-11: transformers v5 업데이트(2026-02-06) 이전 마지막 호환 revision
+EXAONE_REVISION = "0ff6b5ec7c13b049b253a16a889aa269e6b79a94"
 
 # Paths (defaults)
 BASE_MODEL_ID = "LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct"

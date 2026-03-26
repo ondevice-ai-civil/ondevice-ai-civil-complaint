@@ -30,8 +30,8 @@ jobs:
 
       - name: Install Project Dependencies
         run: |
-          uv pip install .[dev,inference]
-          uv pip install autoawq vllm
+          # inference 전용 의존성까지 동기화
+          uv sync --extra dev --extra inference
 
       - name: Run Evaluation on T4 GPU
         env:

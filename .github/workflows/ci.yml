@@ -23,8 +23,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install .[dev]
-          uv pip install fastapi uvicorn httpx pytest-mock
+          # uv.lock을 기반으로 모든 의존성(dev 포함)을 동기화
+          uv sync --extra dev
 
       - name: Lint & Type Check
         continue-on-error: true

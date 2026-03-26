@@ -8,6 +8,10 @@ on:
       - 'src/evaluation/**'
       - 'data/processed/v2_*.jsonl'
 
+concurrency:
+  group: model-eval-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   pull-requests: write

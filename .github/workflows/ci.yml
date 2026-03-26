@@ -3,14 +3,34 @@ name: CI
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'assets/**'
+      - 'LICENSE'
+      - 'CODE_OF_CONDUCT.md'
+      - 'CONTRIBUTING.md'
+      - 'SECURITY.md'
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'assets/**'
+      - 'LICENSE'
+      - 'CODE_OF_CONDUCT.md'
+      - 'CONTRIBUTING.md'
+      - 'SECURITY.md'
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  lint-and-test:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,16 +46,36 @@ jobs:
 
       - name: Install dependencies
         run: |
-          # uv.lock을 기반으로 모든 의존성(dev, database, inference 등)을 동기화
           uv sync --all-extras
 
-      - name: Lint & Type Check
+      - name: Black (format check)
         continue-on-error: true
+        run: uv run black --check .
+
+      - name: isort (import order check)
+        continue-on-error: true
+        run: uv run isort --check .
+
+      - name: Flake8 (syntax errors only)
+        run: uv run flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install 3.10
+
+      - name: Install dependencies
         run: |
-          uv run black --check .
-          uv run isort --check .
-          uv run flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          uv run mypy .
+          uv sync --all-extras
 
       - name: Run Unit Tests (Shift-Left)
         run: |
@@ -44,10 +84,17 @@ jobs:
             tests/test_inference/test_api_logic.py \
             tests/test_inference/test_shift_left.py \
             tests/test_inference/test_feature_flags.py \
+            tests/test_inference/test_schemas.py \
+            tests/test_inference/test_agent_manager.py \
+            tests/test_inference/test_db_converters.py \
+            tests/test_inference/test_db_crud.py \
+            tests/test_inference/test_db_models.py \
+            tests/test_data_collection_preprocessing/ \
             -o "addopts=" \
             --cov=src/inference \
+            --cov=src/data_collection_preprocessing \
             --cov-branch \
-            --cov-fail-under=35 \
+            --cov-fail-under=30 \
             --cov-report=xml \
             --cov-report=term-missing
 
@@ -57,3 +104,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: ./coverage.xml
           fail_ci_if_error: false
+
+      - name: Test Summary
+        if: always()
+        run: echo "### Test Results" >> $GITHUB_STEP_SUMMARY

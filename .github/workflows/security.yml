@@ -3,10 +3,30 @@ name: Security Scan
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'assets/**'
+      - 'LICENSE'
+      - 'CODE_OF_CONDUCT.md'
+      - 'CONTRIBUTING.md'
+      - 'SECURITY.md'
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'assets/**'
+      - 'LICENSE'
+      - 'CODE_OF_CONDUCT.md'
+      - 'CONTRIBUTING.md'
+      - 'SECURITY.md'
   schedule:
     - cron: '0 0 * * 1'
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -24,19 +44,26 @@ jobs:
 
       - name: Install security tools
         run: |
-          pip install bandit safety
+          pip install bandit
 
       - name: Run Bandit (Static Analysis)
         # 초기 단계이므로 High 수준의 보안 이슈만 체크하여 안정성 확보
         run: |
           bandit -r src -lll -x tests
 
-      - name: Run Safety (Dependency Check)
-        # Safety는 종속성 보안 취약점을 체크하므로 유지하되, 리포트 결과가 없어도 빌드를 계속 진행
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Run Dependency Audit
         continue-on-error: true
         run: |
-          if [ -f requirements.txt ]; then
-            safety check -r requirements.txt
+          uv pip compile pyproject.toml -o /tmp/requirements-lock.txt 2>/dev/null || true
+          if [ -f /tmp/requirements-lock.txt ]; then
+            pip install pip-audit
+            pip-audit -r /tmp/requirements-lock.txt
+          elif [ -f requirements.txt ]; then
+            pip install pip-audit
+            pip-audit -r requirements.txt
           else
-            echo "requirements.txt not found, skipping safety check."
+            echo "No dependency file found, skipping audit."
           fi

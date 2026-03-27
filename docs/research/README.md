@@ -10,9 +10,9 @@
 | 문서 | 내용 | 원본 위치 |
 |------|------|-----------|
 | [exaone_analysis.md](01_model_analysis/exaone_analysis.md) | EXAONE-Deep-7.8B 아키텍처, GQA, RoPE, AWQ 양자화 특징, 한국어 성능, 하드웨어 요구사항, vLLM 호환성 종합 분석 | `docs/outputs/M1_Planning/01_Kickoff/` |
-| [govon_exaone_policy_overview.md](01_model_analysis/govon_exaone_policy_overview.md) | GovOn이 실제로 사용하는 EXAONE-Deep-7.8B의 특징, 공공 AI·AX 정책 맥락, K-EXAONE과의 관계를 정리한 조사 문서 | 신규 작성 |
+| [govon_exaone_policy_overview.md](01_model_analysis/govon_exaone_policy_overview.md) | GovOn이 실제로 사용하는 EXAONE-Deep-7.8B의 특징, 공공 AI·AX 정책 맥락, 클라우드 전환 정책 하의 온프레미스 적용 근거, K-EXAONE과의 관계를 정리한 조사 문서 | 신규 작성 |
 
-**주요 내용**: 7.8B 파라미터, 32 레이어, GQA(32Q/8KV), RoPE(llama3), 32K 컨텍스트, 102,400 어휘, CSAT Math 89.9%, MATH-500 94.8%, 공공AX 정책 맥락, GovOn 적용 이유
+**주요 내용**: 7.8B 파라미터, 32 레이어, GQA(32Q/8KV), RoPE(llama3), 32K 컨텍스트, 102,400 어휘, CSAT Math 89.9%, MATH-500 94.8%, 공공AX 정책 맥락, GovOn 적용 이유, 사건별 처리 핵심부의 온프레미스 적용 근거
 
 ---
 

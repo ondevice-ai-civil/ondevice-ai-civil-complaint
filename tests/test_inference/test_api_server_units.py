@@ -51,7 +51,6 @@ with patch("src.inference.vllm_stabilizer.apply_transformers_patch"):
 from src.inference.index_manager import IndexType
 from src.inference.schemas import SearchResult
 
-
 # ---------------------------------------------------------------------------
 # _escape_special_tokens 테스트
 # ---------------------------------------------------------------------------

@@ -25,12 +25,11 @@ if not _faiss_is_real:
     sys.modules.setdefault("faiss", _faiss_mock)
 
 from src.inference.index_manager import (
+    _IVF_THRESHOLD,
     DocumentMetadata,
     IndexType,
     MultiIndexManager,
-    _IVF_THRESHOLD,
 )
-
 
 # ---------------------------------------------------------------------------
 # DocumentMetadata 테스트

@@ -99,12 +99,8 @@ def _parse_exaone_chat(text: str) -> tuple[str, str]:
     Returns:
         (user_input, assistant_answer) 튜플. 파싱 실패 시 빈 문자열 반환.
     """
-    user_match = re.search(
-        r"\[\|user\|\](.*?)\[\|endofturn\|\]", text, re.DOTALL
-    )
-    assistant_match = re.search(
-        r"\[\|assistant\|\](.*?)\[\|endofturn\|\]", text, re.DOTALL
-    )
+    user_match = re.search(r"\[\|user\|\](.*?)\[\|endofturn\|\]", text, re.DOTALL)
+    assistant_match = re.search(r"\[\|assistant\|\](.*?)\[\|endofturn\|\]", text, re.DOTALL)
 
     user_input = user_match.group(1).strip() if user_match else ""
     assistant_answer = assistant_match.group(1).strip() if assistant_match else ""
@@ -143,8 +139,7 @@ def _stratified_sample(data: list[dict], n: int, seed: int = 42) -> list[dict]:
 
     rng.shuffle(sampled)
     logger.info(
-        f"층화 추출: {total}건 → {len(sampled)}건 "
-        f"(카테고리 {len(by_category)}개 비율 유지)"
+        f"층화 추출: {total}건 → {len(sampled)}건 " f"(카테고리 {len(by_category)}개 비율 유지)"
     )
     return sampled
 
@@ -342,13 +337,9 @@ def run_condition(
             logger.info(f"[{condition_name}] {idx + 1}/{len(test_data)} 처리 완료")
 
     if skipped_empty_ref > 0:
-        logger.warning(
-            f"[{condition_name}] 빈 참조/입력으로 건너뛴 샘플: {skipped_empty_ref}건"
-        )
+        logger.warning(f"[{condition_name}] 빈 참조/입력으로 건너뛴 샘플: {skipped_empty_ref}건")
     if skipped_empty_gen > 0:
-        logger.warning(
-            f"[{condition_name}] 빈 생성 결과로 건너뛴 샘플: {skipped_empty_gen}건"
-        )
+        logger.warning(f"[{condition_name}] 빈 생성 결과로 건너뛴 샘플: {skipped_empty_gen}건")
 
     if not generations:
         logger.error(f"[{condition_name}] 유효한 평가 샘플이 없습니다.")
@@ -366,9 +357,7 @@ def run_condition(
             "rouge_l_scores": [],
         }
 
-    logger.info(
-        f"[{condition_name}] 유효 샘플 {len(generations)}/{len(test_data)}건으로 평가 진행"
-    )
+    logger.info(f"[{condition_name}] 유효 샘플 {len(generations)}/{len(test_data)}건으로 평가 진행")
 
     # BERTScore 계산
     logger.info(f"[{condition_name}] BERTScore 계산 중...")

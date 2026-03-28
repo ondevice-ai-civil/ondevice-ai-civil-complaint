@@ -21,8 +21,7 @@ class FeatureFlags:
     def from_env(cls) -> "FeatureFlags":
         """환경변수에서 Feature Flag를 로드한다."""
         flags = cls(
-            use_rag_pipeline=os.getenv("USE_RAG_PIPELINE", "true").lower()
-            in ("true", "1", "yes"),
+            use_rag_pipeline=os.getenv("USE_RAG_PIPELINE", "true").lower() in ("true", "1", "yes"),
             model_version=os.getenv("MODEL_VERSION", "v2_lora"),
         )
         logger.info(f"Feature Flags 로드: {flags}")

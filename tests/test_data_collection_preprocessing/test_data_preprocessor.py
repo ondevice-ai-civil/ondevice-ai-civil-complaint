@@ -2,17 +2,18 @@
 Tests for Data Preprocessor Module
 """
 
-import pytest
 import json
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
+import pytest
+
+from src.data_collection_preprocessing.config import PreprocessingConfig
 from src.data_collection_preprocessing.data_preprocessor import (
     DataPreprocessor,
-    ProcessedRecord,
     DataQualityReport,
+    ProcessedRecord,
 )
-from src.data_collection_preprocessing.config import PreprocessingConfig
 
 
 class TestDataPreprocessor:

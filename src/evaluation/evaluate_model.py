@@ -4,17 +4,18 @@ Evaluates AWQ quantized EXAONE-Deep-7.8B on civil complaint tasks.
 Metrics: Perplexity, Classification Accuracy, BLEU, ROUGE-L, Inference Speed, VRAM Usage
 """
 
+import gc
+import json
 import os
+import re
 import sys
 import time
-import json
+from collections import defaultdict
+from datetime import datetime
+
+import numpy as np
 import torch
 import wandb
-import gc
-import re
-import numpy as np
-from datetime import datetime
-from collections import defaultdict
 
 MERGED_MODEL_DIR = "/content/ondevice-ai-civil-complaint/models/merged_model"
 AWQ_MODEL_DIR = "/content/ondevice-ai-civil-complaint/models/awq_quantized_model"
@@ -389,8 +390,8 @@ def main():
 
     # Load AWQ model using autoawq directly (avoids gptqmodel ExLlama kernel issue)
     print("\n[2/6] Loading AWQ quantized model...")
-    from transformers import AutoTokenizer
     from awq import AutoAWQForCausalLM
+    from transformers import AutoTokenizer
 
     tokenizer = AutoTokenizer.from_pretrained(AWQ_MODEL_DIR, trust_remote_code=True)
     model = AutoAWQForCausalLM.from_quantized(

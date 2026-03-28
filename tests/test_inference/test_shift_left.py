@@ -586,9 +586,7 @@ class TestGenerateShiftLeft:
         manager.retriever.search = MagicMock(return_value=[])
         manager.engine = MagicMock()
         manager.engine.generate = AsyncMock(
-            return_value=_make_vllm_output_mock(
-                "<thought>내부 추론 과정</thought>최종 답변입니다."
-            )
+            return_value=_make_vllm_output_mock("<thought>내부 추론 과정</thought>최종 답변입니다.")
         )
 
         payload = {
@@ -1163,17 +1161,13 @@ class TestStreamShiftLeft:
 
     def test_stream_returns_event_stream_content_type(self, client_with_stream):
         """SSE 응답의 Content-Type이 text/event-stream이다."""
-        resp = client_with_stream.post(
-            "/v1/stream", json={"prompt": "테스트 민원", "stream": True}
-        )
+        resp = client_with_stream.post("/v1/stream", json={"prompt": "테스트 민원", "stream": True})
         assert resp.status_code == 200
         assert "text/event-stream" in resp.headers.get("content-type", "")
 
     def test_stream_response_contains_data_prefix(self, client_with_stream):
         """SSE 응답 본문이 'data: ' 접두사를 포함한다."""
-        resp = client_with_stream.post(
-            "/v1/stream", json={"prompt": "테스트 민원", "stream": True}
-        )
+        resp = client_with_stream.post("/v1/stream", json={"prompt": "테스트 민원", "stream": True})
         assert resp.status_code == 200
         body = resp.text
         assert "data: " in body
@@ -1182,9 +1176,7 @@ class TestStreamShiftLeft:
         """SSE 응답에 request_id가 포함된다."""
         import json as json_mod
 
-        resp = client_with_stream.post(
-            "/v1/stream", json={"prompt": "테스트 민원", "stream": True}
-        )
+        resp = client_with_stream.post("/v1/stream", json={"prompt": "테스트 민원", "stream": True})
         assert resp.status_code == 200
         for line in resp.text.strip().split("\n"):
             if line.startswith("data: "):
@@ -1196,9 +1188,7 @@ class TestStreamShiftLeft:
         """SSE 응답에 생성된 텍스트가 포함된다."""
         import json as json_mod
 
-        resp = client_with_stream.post(
-            "/v1/stream", json={"prompt": "테스트 민원", "stream": True}
-        )
+        resp = client_with_stream.post("/v1/stream", json={"prompt": "테스트 민원", "stream": True})
         assert resp.status_code == 200
         for line in resp.text.strip().split("\n"):
             if line.startswith("data: "):
@@ -1210,9 +1200,7 @@ class TestStreamShiftLeft:
         """스트리밍 완료 이벤트에 retrieved_cases가 포함된다."""
         import json as json_mod
 
-        resp = client_with_stream.post(
-            "/v1/stream", json={"prompt": "테스트 민원", "stream": True}
-        )
+        resp = client_with_stream.post("/v1/stream", json={"prompt": "테스트 민원", "stream": True})
         assert resp.status_code == 200
         events = [
             json_mod.loads(line[6:])

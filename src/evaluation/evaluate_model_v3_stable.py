@@ -1,15 +1,16 @@
+import argparse
+import json
 import os
 import sys
 import time
-import json
-import argparse
-import torch
-import numpy as np
-import wandb
 from datetime import datetime
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-from peft import PeftModel
+
 import bert_score
+import numpy as np
+import torch
+import wandb
+from peft import PeftModel
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 # 2024-12-11: transformers v5 업데이트(2026-02-06) 이전 마지막 호환 revision
 EXAONE_REVISION = "0ff6b5ec7c13b049b253a16a889aa269e6b79a94"
@@ -22,12 +23,18 @@ DEFAULT_TEST_DATA_PATH = "data/processed/v2_test.jsonl"
 
 def parse_args():
     parser = argparse.ArgumentParser(description="GovOn v2 Model Evaluation")
-    parser.add_argument("--model_path", type=str, default=ADAPTER_ID,
-                        help="LoRA adapter ID or path")
-    parser.add_argument("--data_path", type=str, default=DEFAULT_TEST_DATA_PATH,
-                        help="Path to test data JSONL file")
-    parser.add_argument("--output_report", type=str, default="evaluation_report.md",
-                        help="Path to output evaluation report")
+    parser.add_argument(
+        "--model_path", type=str, default=ADAPTER_ID, help="LoRA adapter ID or path"
+    )
+    parser.add_argument(
+        "--data_path", type=str, default=DEFAULT_TEST_DATA_PATH, help="Path to test data JSONL file"
+    )
+    parser.add_argument(
+        "--output_report",
+        type=str,
+        default="evaluation_report.md",
+        help="Path to output evaluation report",
+    )
     return parser.parse_args()
 
 

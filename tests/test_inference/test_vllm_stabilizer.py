@@ -41,7 +41,6 @@ if "src.inference.vllm_stabilizer" in sys.modules:
 
 from src.inference.vllm_stabilizer import apply_transformers_patch
 
-
 # ---------------------------------------------------------------------------
 # apply_transformers_patch 테스트 (No-op 검증)
 # ---------------------------------------------------------------------------
@@ -58,9 +57,9 @@ class TestApplyTransformersPatch:
         """비어있는 mock 모듈에 더 이상 속성을 주입하지 않는다."""
         if hasattr(_rope_utils, "RopeParameters"):
             delattr(_rope_utils, "RopeParameters")
-            
+
         apply_transformers_patch()
-        
+
         # 몽키 패치가 제거되었으므로 속성이 생기지 않아야 함
         assert not hasattr(_rope_utils, "RopeParameters")
 

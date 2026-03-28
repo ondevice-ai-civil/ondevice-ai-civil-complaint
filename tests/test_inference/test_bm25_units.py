@@ -37,8 +37,7 @@ if not _faiss_is_real:
     _faiss_mock.IndexFlatIP = type("IndexFlatIP", (), {})
     sys.modules.setdefault("faiss", _faiss_mock)
 
-from src.inference.bm25_indexer import BM25Indexer, KoreanTokenizer, _STOPWORDS
-
+from src.inference.bm25_indexer import _STOPWORDS, BM25Indexer, KoreanTokenizer
 
 # ---------------------------------------------------------------------------
 # KoreanTokenizer 테스트

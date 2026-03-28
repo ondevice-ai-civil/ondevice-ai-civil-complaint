@@ -9,17 +9,17 @@ Supports dataset keys:
 - 619: Civil Complaint Automation Language Data
 """
 
-import os
 import json
+import logging
+import os
 import subprocess
 import zipfile
-import logging
-from pathlib import Path
-from typing import Optional, List, Dict, Any, Generator
-from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, Generator, List, Optional
 
-from .config import get_config, AIHubConfig
+from .config import AIHubConfig, get_config
 
 logger = logging.getLogger(__name__)
 

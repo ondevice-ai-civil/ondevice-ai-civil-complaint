@@ -29,7 +29,6 @@ if not _faiss_is_real:
 
 from src.inference.retriever import CivilComplaintRetriever
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

@@ -57,9 +57,9 @@ if "torch" not in sys.modules:
 with patch("src.inference.vllm_stabilizer.apply_transformers_patch"):
     from src.inference.api_server import app, manager
 
-from src.inference.index_manager import DocumentMetadata, IndexType, MultiIndexManager
-
 from fastapi.testclient import TestClient
+
+from src.inference.index_manager import DocumentMetadata, IndexType, MultiIndexManager
 
 # /search 엔드포인트 존재 여부 확인
 _has_search_endpoint = any(
@@ -734,7 +734,8 @@ def client_with_classifier(client):
     original_engine = getattr(manager, "engine", None)
 
     # 임시 에이전트 디렉토리 생성
-    import tempfile, os
+    import os
+    import tempfile
 
     tmpdir = tempfile.mkdtemp()
     with open(os.path.join(tmpdir, "classifier.md"), "w", encoding="utf-8") as f:

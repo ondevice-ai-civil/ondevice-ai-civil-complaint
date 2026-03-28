@@ -55,6 +55,7 @@ from src.inference.index_manager import DocumentMetadata, IndexType
 # konlpy 설치 여부에 따라 BM25 의존 테스트를 건너뛴다.
 try:
     import konlpy  # noqa: F401
+
     from src.inference.bm25_indexer import BM25Indexer
 
     HAS_KONLPY = True

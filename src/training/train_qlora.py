@@ -3,12 +3,14 @@ EXAONE-Deep-7.8B QLoRA Fine-tuning Script
 Optimized for Civil Complaint Dataset & Colab A100/L4 Environment
 """
 
-import os
-import torch
 import argparse
 import json
+import os
 from datetime import datetime
+
+import torch
 from datasets import load_dataset
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -16,8 +18,7 @@ from transformers import (
     TrainingArguments,
     set_seed,
 )
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
+from trl import DataCollatorForCompletionOnlyLM, SFTTrainer
 
 
 def parse_args():

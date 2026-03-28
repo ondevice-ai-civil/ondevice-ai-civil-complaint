@@ -1,14 +1,15 @@
+import json
 import os
+import re
 import sys
 import time
-import json
-import re
-import numpy as np
-import wandb
 from datetime import datetime
+
+import numpy as np
 
 # 1. Critical Runtime Library Patching
 import transformers.modeling_rope_utils
+import wandb
 
 if not hasattr(transformers.modeling_rope_utils, "RopeParameters"):
 
@@ -22,10 +23,11 @@ import transformers.utils.generic
 if not hasattr(transformers.utils.generic, "check_model_inputs"):
     transformers.utils.generic.check_model_inputs = lambda *args, **kwargs: None
 
-# 2. VLLM Initialization
-from vllm import LLM, SamplingParams
 import bert_score
 from rouge_score import rouge_scorer
+
+# 2. VLLM Initialization
+from vllm import LLM, SamplingParams
 
 MODEL_DIR = "/content/civil-complaint-exaone-awq"
 TEST_DATA_PATH = "/content/ondevice-ai-civil-complaint/data/processed/civil_complaint_test.jsonl"

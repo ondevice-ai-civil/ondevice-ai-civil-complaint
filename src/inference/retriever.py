@@ -1,10 +1,11 @@
 import json
 import os
-import numpy as np
+from typing import Any, Dict, List, Optional
+
 import faiss
-from typing import List, Dict, Any, Optional
-from sentence_transformers import SentenceTransformer
+import numpy as np
 from loguru import logger
+from sentence_transformers import SentenceTransformer
 
 
 class CivilComplaintRetriever:

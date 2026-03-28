@@ -1,22 +1,23 @@
+import json
 import os
+import re
 import sys
 import time
-import json
-import torch
-import re
-import numpy as np
-import wandb
 from datetime import datetime
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-from peft import PeftModel
+
 import bert_score
+import numpy as np
+import torch
+import wandb
+from peft import PeftModel
 from rouge_score import rouge_scorer
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 
 # CRITICAL: Structural patches at runtime instead of editing files
 def patch_exaone_dynamic():
-    import transformers.utils.generic
     import transformers.modeling_rope_utils
+    import transformers.utils.generic
 
     # Fix 1: check_model_inputs
     if not hasattr(transformers.utils.generic, "check_model_inputs"):

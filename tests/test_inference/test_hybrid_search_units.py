@@ -33,7 +33,6 @@ from src.inference.hybrid_search import (
 )
 from src.inference.index_manager import IndexType
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -138,7 +137,9 @@ class TestDenseSearch:
     @pytest.mark.asyncio
     async def test_dense_search_zero_topk(self, engine):
         """top_k=0은 빈 결과를 반환한다."""
-        results, mode = await engine.search("테스트", IndexType.CASE, top_k=0, mode=SearchMode.DENSE)
+        results, mode = await engine.search(
+            "테스트", IndexType.CASE, top_k=0, mode=SearchMode.DENSE
+        )
         assert results == []
 
     @pytest.mark.asyncio
@@ -205,9 +206,7 @@ class TestHybridSearch:
         assert mode == SearchMode.DENSE
 
     @pytest.mark.asyncio
-    async def test_hybrid_fallback_when_bm25_not_ready(
-        self, mock_index_manager, mock_embed_model
-    ):
+    async def test_hybrid_fallback_when_bm25_not_ready(self, mock_index_manager, mock_embed_model):
         """BM25가 준비되지 않으면 Dense로 폴백한다."""
         bm25 = MagicMock()
         bm25.is_ready.return_value = False

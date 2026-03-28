@@ -1,26 +1,27 @@
+import json
 import os
+import re
 import sys
 import time
-import json
-import torch
-import re
-import numpy as np
-import wandb
-from datetime import datetime
 from collections import defaultdict
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from datetime import datetime
+
 import bert_score
-from rouge_score import rouge_scorer
+import numpy as np
+import torch
 
 # Structural Fixes for library compatibility
 import transformers.utils.auto_docstring
+import wandb
+from rouge_score import rouge_scorer
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 transformers.utils.auto_docstring.auto_docstring = lambda *args, **kwargs: (lambda obj: obj)
 
-import transformers.utils.generic
-import transformers.modeling_rope_utils
 import transformers.integrations
 import transformers.masking_utils
+import transformers.modeling_rope_utils
+import transformers.utils.generic
 
 if not hasattr(transformers.utils.generic, "check_model_inputs"):
     transformers.utils.generic.check_model_inputs = lambda *args, **kwargs: (

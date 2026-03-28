@@ -36,6 +36,10 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   ESTIMATED_COLD_INSTALL_SECONDS: 60
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   # ──────────────────────────────────────────────
   # 1. Lint — 코드 스타일 검사 (단일 환경)
@@ -70,20 +74,47 @@ jobs:
         run: echo "time=$(date +%s%N)" >> "$GITHUB_OUTPUT"
 
       - name: Black (format check)
-        continue-on-error: true
+        id: black
         run: uv run black --check .
 
       - name: isort (import order check)
-        continue-on-error: true
+        id: isort
         run: uv run isort --check .
 
       - name: Flake8 (syntax errors only)
-        continue-on-error: true
+        id: flake8
         run: uv run flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=.venv,.git,__pycache__,build,dist
 
       - name: Record task end time
         id: task-end
         run: echo "time=$(date +%s%N)" >> "$GITHUB_OUTPUT"
+
+      - name: Comment on PR if Lint fails
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const steps_info = ${{ toJSON(steps) }};
+            let failedTool = "알 수 없는 단계";
+            if (steps_info.black && steps_info.black.outcome === 'failure') failedTool = "Black (포맷팅)";
+            else if (steps_info.isort && steps_info.isort.outcome === 'failure') failedTool = "isort (임포트 순서)";
+            else if (steps_info.flake8 && steps_info.flake8.outcome === 'failure') failedTool = "Flake8 (코드 스타일)";
+            
+            const body = `❌ **Lint 단계 실패 요약**
+            
+            검사 중 다음 도구에서 오류가 발견되었습니다: **${failedTool}**
+            
+            [상세 로그 확인](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            
+            수정 후 다시 푸시해 주세요.`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: body
+            });
 
       - name: Cache Performance Report
         if: always()
@@ -128,10 +159,67 @@ jobs:
           EOF
 
   # ──────────────────────────────────────────────
+  # 1.1 Frontend — 프론트엔드 검증 및 빌드
+  # ──────────────────────────────────────────────
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        id: frontend_install
+        run: npm ci
+        working-directory: frontend
+
+      - name: Lint frontend
+        id: frontend_lint
+        run: npm run lint
+        working-directory: frontend
+
+      - name: Build frontend
+        id: frontend_build
+        run: npm run build
+        working-directory: frontend
+
+      - name: Comment on PR if Frontend fails
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const steps_info = ${{ toJSON(steps) }};
+            let failedStep = "알 수 없는 단계";
+            if (steps_info.frontend_install && steps_info.frontend_install.outcome === 'failure') failedStep = "의존성 설치 (npm ci)";
+            else if (steps_info.frontend_lint && steps_info.frontend_lint.outcome === 'failure') failedStep = "Lint (eslint)";
+            else if (steps_info.frontend_build && steps_info.frontend_build.outcome === 'failure') failedStep = "Build (next build)";
+            
+            const body = `❌ **Frontend 단계 실패 요약**
+            
+            프론트엔드 검증/빌드 중 오류가 발생했습니다: **${failedStep}**
+            
+            [상세 로그 확인](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            
+            수정 후 다시 푸시해 주세요.`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: body
+            });
+
+  # ──────────────────────────────────────────────
   # 2. Test — 재사용 가능한 워크플로우로 다중 환경 테스트
   # ──────────────────────────────────────────────
   test:
-    needs: [lint]
+    needs: [lint, frontend]
     uses: ./.github/workflows/reusable-test.yml
     with:
       python-versions: '["3.10", "3.11"]'
@@ -139,6 +227,31 @@ jobs:
       coverage-threshold: 80
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  test-failure-notification:
+    needs: [test]
+    if: failure() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment on PR if Test fails
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const body = `❌ **Test 단계 실패 요약**
+            
+            단위 테스트 중 오류가 발견되었습니다.
+            
+            [상세 로그 확인](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            
+            테스트를 통과하도록 코드를 수정한 후 다시 푸시해 주세요.`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: body
+            });
 
   # ──────────────────────────────────────────────
   # 3. Build — 패키지 빌드 및 아티팩트 업로드

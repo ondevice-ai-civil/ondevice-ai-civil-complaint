@@ -11,16 +11,16 @@ Requirements:
 - Proper tokenization matching the target model
 """
 
-import os
-import json
-import random
-import logging
-from pathlib import Path
-from typing import Optional, List, Dict, Any, Union
-from dataclasses import dataclass, field
 import hashlib
+import json
+import logging
+import os
+import random
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
-from .config import get_config, CalibrationConfig
+from .config import CalibrationConfig, get_config
 from .data_preprocessor import ProcessedRecord
 
 logger = logging.getLogger(__name__)

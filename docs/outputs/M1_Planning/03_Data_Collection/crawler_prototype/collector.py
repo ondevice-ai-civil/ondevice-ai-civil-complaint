@@ -1,6 +1,7 @@
-import os
 import json
+import os
 import subprocess
+
 from dotenv import load_dotenv
 
 # .env 파일에서 AIHUB_API_KEY 로드

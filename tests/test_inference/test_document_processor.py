@@ -12,7 +12,6 @@ import pytest
 
 from src.inference.index_manager import DocumentMetadata, IndexType
 
-
 # ---------------------------------------------------------------------------
 # 모든 테스트에서 토크나이저 로딩을 차단 (EXAONE 다운로드 방지)
 # ---------------------------------------------------------------------------
@@ -40,7 +39,6 @@ from src.inference.document_processor import (
     _parse_txt,
     _split_semantic,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -290,7 +288,9 @@ class TestDocumentProcessor:
         results = processor.process(str(tmp_empty_txt), IndexType.CASE)
         assert results == []
 
-    def test_process_header_only_file(self, processor: DocumentProcessor, tmp_header_only_txt: Path):
+    def test_process_header_only_file(
+        self, processor: DocumentProcessor, tmp_header_only_txt: Path
+    ):
         """정제 후 빈 문서는 빈 리스트를 반환해야 한다."""
         results = processor.process(str(tmp_header_only_txt), IndexType.CASE)
         assert results == []

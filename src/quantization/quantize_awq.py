@@ -3,14 +3,15 @@ AWQ Quantization Script for EXAONE-Deep-7.8B (Merged Model)
 Applies W4A16g128 quantization using AutoAWQ.
 """
 
+import gc
+import json
 import os
 import sys
 import time
-import json
+from datetime import datetime
+
 import torch
 import wandb
-import gc
-from datetime import datetime
 
 MERGED_MODEL_DIR = "/content/ondevice-ai-civil-complaint/models/merged_model"
 AWQ_OUTPUT_DIR = "/content/ondevice-ai-civil-complaint/models/awq_quantized_model"

@@ -91,8 +91,7 @@ def _parse_hwp(file_path: str) -> str:
         import hwp
     except ImportError as e:
         raise ImportError(
-            "HWP 파서가 설치되지 않았습니다. "
-            "pyhwp 또는 호환 라이브러리를 설치해 주세요."
+            "HWP 파서가 설치되지 않았습니다. " "pyhwp 또는 호환 라이브러리를 설치해 주세요."
         ) from e
 
     doc = hwp.open(file_path)
@@ -152,9 +151,7 @@ def _clean_text(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 # 법령: 제N조, 제N항, 제N호
-_LAW_ARTICLE_RE = re.compile(
-    r"(?=\n\s*제\s*\d+\s*조(?:의\d+)?\s*[\(（])"
-)
+_LAW_ARTICLE_RE = re.compile(r"(?=\n\s*제\s*\d+\s*조(?:의\d+)?\s*[\(（])")
 # 문단 분할 (빈 줄 기준)
 _PARAGRAPH_RE = re.compile(r"\n\s*\n")
 
@@ -442,9 +439,7 @@ class DocumentProcessor:
             else _DEFAULT_RELIABILITY.get(doc_type, 0.5)
         )
         # doc_id: 원본 문서 단위 안정 ID (모든 청크가 동일)
-        doc_id = hashlib.sha256(
-            f"{file_path}:{doc_type.value}".encode()
-        ).hexdigest()[:12]
+        doc_id = hashlib.sha256(f"{file_path}:{doc_type.value}".encode()).hexdigest()[:12]
 
         results: List[DocumentMetadata] = []
         for idx, chunk in enumerate(chunks):

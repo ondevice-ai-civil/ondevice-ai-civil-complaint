@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.security import APIKeyHeader
 from loguru import logger
+
 try:
     from vllm import AsyncLLM, SamplingParams
 except ImportError:
@@ -27,6 +28,7 @@ SKIP_MODEL_LOAD = os.getenv("SKIP_MODEL_LOAD", "false").lower() in ("true", "1",
 
 from .agent_manager import AgentManager
 from .bm25_indexer import BM25Indexer
+from .feature_flags import FeatureFlags
 from .hybrid_search import HybridSearchEngine, SearchMode
 from .index_manager import IndexType, MultiIndexManager
 from .retriever import CivilComplaintRetriever
@@ -42,13 +44,13 @@ from .schemas import (
     SearchResult,
     StreamResponse,
 )
-from .feature_flags import FeatureFlags
 
 if not SKIP_MODEL_LOAD:
     try:
         from vllm.engine.arg_utils import AsyncEngineArgs
         from vllm.engine.async_llm_engine import AsyncLLMEngine
         from vllm.sampling_params import SamplingParams
+
         from .vllm_stabilizer import apply_transformers_patch
     except ImportError:
         logger.warning("vllm modules not found. Model loading will fail if attempted.")
@@ -120,7 +122,7 @@ class vLLMEngineManager:
 
         # 1. Initialize Optimized vLLM Engine
         logger.info(f"Initializing vLLM M3 engine with model: {MODEL_PATH}")
-        
+
         # vllm.v1.engine.async_llm.AsyncLLM 또는 vllm.engine.async_llm_engine.AsyncLLMEngine 모두
         # from_engine_args를 지원하므로 이를 통해 초기화한다.
         try:
@@ -132,7 +134,7 @@ class vLLMEngineManager:
                 dtype="half",
                 enforce_eager=True,
             )
-            
+
             if hasattr(AsyncLLM, "from_engine_args"):
                 self.engine = AsyncLLM.from_engine_args(engine_args)
             else:
@@ -317,7 +319,7 @@ class vLLMEngineManager:
     async def _run_engine(self, prompt: str, sampling_params: SamplingParams, request_id: str):
         """vLLM 엔진의 generate를 실행하고 최종 결과를 반환한다. (제너레이터 처리 포함)"""
         result = self.engine.generate(prompt, sampling_params, request_id)
-        
+
         if hasattr(result, "__aiter__"):
             final_output = None
             async for output in result:
@@ -348,7 +350,7 @@ class vLLMEngineManager:
             stream = self.engine.stream(augmented_prompt, sampling_params, request_id)
         else:
             stream = self.engine.generate(augmented_prompt, sampling_params, request_id)
-            
+
         return stream, retrieved_cases
 
 

@@ -4,11 +4,12 @@ Configuration Module for Data Collection and Preprocessing
 Manages environment variables, API keys, and pipeline configurations.
 """
 
-import os
 import logging
-from pathlib import Path
+import os
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict
+from pathlib import Path
+from typing import Dict, List, Optional
+
 from dotenv import load_dotenv
 
 # Load environment variables from .env file

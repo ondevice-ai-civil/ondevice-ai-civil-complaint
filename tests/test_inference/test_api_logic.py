@@ -1,7 +1,7 @@
+import importlib.util
 import os
 import sys
-import importlib.util
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # ---------------------------------------------------------------------------
 # 무거운 의존성 mock 등록 (import 전에 등록해야 함)

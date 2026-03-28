@@ -116,14 +116,10 @@ class PersonaEvaluator:
         total_input = len(generations)
         if empty_ref_count > 0:
             pct = empty_ref_count / total_input * 100
-            logger.warning(
-                f"빈 참조 문장 {empty_ref_count}건 감지 ({pct:.1f}%) — 평가에서 제외"
-            )
+            logger.warning(f"빈 참조 문장 {empty_ref_count}건 감지 ({pct:.1f}%) — 평가에서 제외")
         if empty_gen_count > 0:
             pct = empty_gen_count / total_input * 100
-            logger.warning(
-                f"빈 생성 문장 {empty_gen_count}건 감지 ({pct:.1f}%) — 평가에서 제외"
-            )
+            logger.warning(f"빈 생성 문장 {empty_gen_count}건 감지 ({pct:.1f}%) — 평가에서 제외")
 
         if not filtered_gens:
             logger.error("필터링 후 유효한 평가 샘플이 없습니다.")

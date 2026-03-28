@@ -12,12 +12,12 @@ Supports Korean-specific PII patterns including:
 - Credit card numbers
 """
 
-import re
 import logging
-from typing import List, Dict, Tuple, Optional, Set
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import lru_cache
+from typing import Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 

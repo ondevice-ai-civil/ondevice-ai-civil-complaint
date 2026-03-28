@@ -52,6 +52,9 @@ markdown_extensions:
   - pymdownx.details
   - toc:
       permalink: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
   - tables
   - attr_list
   - md_in_html

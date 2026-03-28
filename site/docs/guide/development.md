@@ -1,354 +1,398 @@
 # 개발 규칙
 
-이 문서는 GovOn 프로젝트에 기여할 때 따라야 하는 브랜치 전략, 커밋 컨벤션, PR 규칙, 코드 스타일을 안내한다.
+이 문서는 GovOn 프로젝트의 브랜치 전략, 커밋 컨벤션, PR 프로세스, 코드 스타일, 테스트 요구사항을 정의한다.
+모든 기여자는 이 규칙을 따른다.
 
 ---
 
 ## 브랜치 전략
 
-GovOn은 **GitHub Flow** 기반의 `main` 단일 브랜치 전략을 사용한다.
+GovOn은 **GitHub Flow** 기반의 단일 브랜치 전략을 사용한다. `main` 브랜치만 운영하며, 모든 변경은 PR을 통해 머지한다.
 
-```
-main (프로덕션)
- ├── feat/42-add-law-index
- ├── fix/55-faiss-metadata-error
- ├── docs/60-api-reference
- └── chore/70-ci-cache
+```mermaid
+gitGraph
+    commit id: "main"
+    branch feat/42-rag-search
+    commit id: "feat: RAG 검색 구현"
+    commit id: "test: RAG 검색 테스트"
+    checkout main
+    merge feat/42-rag-search id: "PR #43 머지"
+    branch fix/45-oom-error
+    commit id: "fix: GPU OOM 오류 수정"
+    checkout main
+    merge fix/45-oom-error id: "PR #46 머지"
 ```
 
-| 브랜치 | 용도 | 규칙 |
+### 브랜치 네이밍 규칙
+
+| 접두사 | 용도 | 예시 |
 |--------|------|------|
-| `main` | 프로덕션 (안정 버전) | 직접 push 금지, PR 머지만 허용 |
-| `feat/*` | 새 기능 개발 | `feat/이슈번호-설명` 형식 |
-| `fix/*` | 버그 수정 | `fix/이슈번호-설명` 형식 |
-| `docs/*` | 문서 작업 | `docs/이슈번호-설명` 형식 |
-| `chore/*` | 설정/인프라 작업 | `chore/이슈번호-설명` 형식 |
+| `feat/` | 새 기능 개발 | `feat/42-rag-search` |
+| `fix/` | 버그 수정 | `fix/45-oom-error` |
+| `docs/` | 문서 변경 | `docs/50-api-reference` |
+| `chore/` | 설정, 의존성, CI 변경 | `chore/55-upgrade-vllm` |
+| `refactor/` | 코드 리팩토링 | `refactor/60-retriever-cleanup` |
+| `test/` | 테스트 추가/수정 | `test/65-coverage-improvement` |
 
-### 작업 흐름
+!!! warning "main 브랜치 직접 push 금지"
+    `main` 브랜치에는 직접 push할 수 없다. 반드시 PR을 생성하고 리뷰를 받은 뒤 머지한다.
+    브랜치 보호 규칙으로 강제된다.
+
+### 브랜치 생명주기
 
 ```bash
 # 1. main에서 최신 코드를 가져온다
 git checkout main
 git pull origin main
 
-# 2. 이슈 번호를 포함한 브랜치를 생성한다
-git checkout -b feat/42-add-law-index
+# 2. 작업 브랜치를 생성한다
+git checkout -b feat/42-rag-search
 
 # 3. 작업 후 커밋한다
-git add <변경된 파일>
-git commit -m "feat: 법령 인덱스 검색 엔드포인트 추가"
+git add src/inference/retriever.py
+git commit -m "feat: FAISS 기반 유사 민원 검색 구현"
 
-# 4. 원격에 push한다
-git push origin feat/42-add-law-index
+# 4. 원격에 push하고 PR을 생성한다
+git push -u origin feat/42-rag-search
 
-# 5. GitHub에서 main 대상으로 PR을 생성한다
+# 5. PR 머지 후 로컬 브랜치를 삭제한다
+git checkout main
+git pull origin main
+git branch -d feat/42-rag-search
 ```
 
 ---
 
 ## 커밋 컨벤션
 
-[Conventional Commits](https://www.conventionalcommits.org/) 형식을 따른다. 커밋 메시지는 **한글**로 작성한다.
+[Conventional Commits](https://www.conventionalcommits.org/) 형식을 따르며, **커밋 메시지는 한글**로 작성한다.
 
 ### 형식
 
 ```
-<type>: <설명>
+<type>: <subject>
 
-[선택 본문]
-
-[선택 꼬리말]
+[optional body]
+[optional footer]
 ```
 
-### 사용 가능한 type
+### 타입 목록
 
-| type | 용도 | 예시 |
+| 타입 | 설명 | 예시 |
 |------|------|------|
-| `feat` | 새 기능 추가 | `feat: QLoRA 학습 스크립트 구현` |
-| `fix` | 버그 수정 | `fix: AWQ 양자화 OOM 해결` |
-| `docs` | 문서 추가/수정 | `docs: API 명세서 업데이트` |
-| `style` | 코드 포매팅 (로직 변경 없음) | `style: black 포맷터 적용` |
-| `refactor` | 리팩토링 (기능 변경 없음) | `refactor: 추론 엔진 구조 개선` |
-| `test` | 테스트 추가/수정 | `test: 민원 분류 단위 테스트 추가` |
-| `chore` | 빌드, CI, 의존성 관리 | `chore: GitHub Actions 워크플로우 추가` |
-| `perf` | 성능 개선 | `perf: vLLM 배치 추론 속도 최적화` |
+| `feat` | 새 기능 추가 | `feat: 민원 분류 에이전트 구현` |
+| `fix` | 버그 수정 | `fix: FAISS 인덱스 로드 시 메타데이터 누락 수정` |
+| `docs` | 문서 변경 | `docs: API 레퍼런스 업데이트` |
+| `style` | 포맷팅, 세미콜론 등 (코드 동작 변경 없음) | `style: black 포맷팅 적용` |
+| `refactor` | 코드 리팩토링 (기능 변경 없음) | `refactor: retriever 검색 로직 분리` |
+| `test` | 테스트 추가/수정 | `test: api_server 유닛 테스트 추가` |
+| `chore` | 빌드, CI, 의존성 변경 | `chore: vLLM 0.6.x로 업그레이드` |
+| `perf` | 성능 개선 | `perf: 임베딩 배치 처리로 검색 속도 개선` |
 
 ### 좋은 커밋 메시지 예시
 
-```bash
-# 구체적이고 명확한 메시지
-git commit -m "feat: 법령 인덱스 검색 엔드포인트 추가"
-git commit -m "fix: FAISS 인덱스 메타데이터 경로 오류 수정"
-git commit -m "refactor: vLLMEngineManager 초기화 로직 분리"
+```
+feat: MultiIndexManager에 법령 인덱스 타입 추가
 
-# 본문이 필요한 경우
-git commit -m "fix: GPU OOM 발생 시 서버 크래시 방지
+CASE, LAW, MANUAL, NOTICE 4개 타입을 지원하도록 확장한다.
+각 타입별 독립 FAISS 인덱스를 관리하며, index_registry.json으로
+메타데이터를 추적한다.
 
-GPU_UTILIZATION 기본값을 0.85에서 0.8로 변경하고,
-OOM 발생 시 graceful shutdown 로직을 추가한다.
-
-Closes #55"
+Closes #156
 ```
 
----
+### 나쁜 커밋 메시지 예시
 
-## PR 규칙
+```
+# 너무 모호함
+fix: 버그 수정
 
-### PR 작성 규칙
+# 영어 사용 (한글 규칙 위반)
+feat: add RAG search functionality
 
-1. **대상 브랜치**: 항상 `main`을 대상으로 PR을 생성한다.
-2. **제목**: 커밋 컨벤션과 동일한 형식을 사용한다 (예: `feat: 법령 인덱스 검색 엔드포인트 추가`).
-3. **본문**: PR 템플릿에 따라 작성한다.
-    - 작업 배경 설명
-    - 주요 변경 사항 요약
-    - 테스트 결과 기록
-4. **이슈 연결**: 관련 이슈를 `Closes #이슈번호`로 연결한다.
-5. **리뷰어**: 최소 1명의 리뷰어를 지정한다.
+# 타입 누락
+민원 분류 기능 추가
+```
 
-### PR 체크리스트
+!!! note "Breaking Change 표기"
+    하위 호환성을 깨는 변경은 타입 뒤에 `!`를 붙인다.
+    ```
+    feat!: 검색 API 응답 스키마 변경
 
-PR을 생성하기 전에 다음 항목을 확인한다.
-
-- [ ] 커밋 메시지가 컨벤션을 따르는가?
-- [ ] 관련 이슈가 연결되어 있는가?
-- [ ] 테스트가 통과하는가? (`pytest tests/ -v`)
-- [ ] 린트가 통과하는가? (`black --check .` / `isort --check .` / `flake8 .`)
-- [ ] 문서가 업데이트되었는가? (해당하는 경우)
-
-### CI 자동 검사
-
-PR을 생성하면 다음 CI 파이프라인이 자동으로 실행된다.
-
-| 단계 | 내용 |
-|------|------|
-| **Lint** | Black, isort, Flake8 코드 스타일 검사 |
-| **Test** | Python 3.10, 3.11 / Ubuntu latest, 22.04 매트릭스 테스트 |
-| **Build** | 패키지 빌드 및 아티팩트 업로드 |
-| **Security** | Bandit 정적 분석 + pip-audit 의존성 취약점 스캔 |
-
-모든 CI 검사를 통과해야 PR을 머지할 수 있다.
+    BREAKING CHANGE: SearchResponse의 results 필드가 items로 변경됨.
+    v1 API를 사용하는 클라이언트는 필드명을 업데이트해야 한다.
+    ```
 
 ---
 
-## 코드 리뷰 가이드
+## PR 프로세스
 
-### 리뷰 태그
+### PR 생성 규칙
 
-리뷰어는 다음 태그를 사용하여 코멘트의 중요도를 표시한다.
+1. **PR 제목**: 커밋 컨벤션과 동일한 형식을 사용한다 (예: `feat: FAISS 기반 유사 민원 검색 구현`)
+2. **PR 본문**: 아래 템플릿을 따른다
+3. **대상 브랜치**: 항상 `main`
+4. **리뷰어**: 최소 2명의 승인이 필요하다
+5. **라벨**: 변경 유형에 맞는 라벨을 부착한다
 
-| 태그 | 의미 | 대응 |
+### PR 템플릿
+
+```markdown
+## 변경 사항
+
+<!-- 이 PR에서 무엇을 변경했는지 설명한다 -->
+
+## 변경 이유
+
+<!-- 왜 이 변경이 필요한지 설명한다 -->
+
+## 테스트 방법
+
+<!-- 변경 사항을 어떻게 테스트했는지 설명한다 -->
+- [ ] 단위 테스트 통과
+- [ ] 통합 테스트 통과
+- [ ] 수동 테스트 완료
+
+## 관련 이슈
+
+<!-- 관련 이슈 번호를 링크한다 -->
+Closes #이슈번호
+
+## 체크리스트
+
+- [ ] 코드 스타일 검사 통과 (black, isort, flake8)
+- [ ] 테스트 커버리지 유지 또는 개선
+- [ ] 문서 업데이트 (해당되는 경우)
+- [ ] breaking change 여부 확인
+```
+
+### PR 라벨
+
+| 라벨 | 색상 | 용도 |
 |------|------|------|
-| `[MUST]` | 반드시 수정해야 할 사항 (보안, 버그, 성능) | 수정 후 re-review 요청 |
-| `[SHOULD]` | 수정을 강하게 권장하는 사항 | 가능한 한 반영 |
-| `[NITS]` | 사소한 개선 사항 (코드 스타일 등) | 선택적 반영 |
-| `[QUESTION]` | 이해를 위한 질문 | 답변 후 진행 |
+| `feat` | 녹색 | 새 기능 |
+| `fix` | 빨간색 | 버그 수정 |
+| `docs` | 파란색 | 문서 변경 |
+| `chore` | 회색 | 설정, 의존성 |
+| `breaking` | 주황색 | 하위 호환성 깨짐 |
+| `security` | 보라색 | 보안 관련 |
 
-### 리뷰 기준
+### 머지 전 필수 조건
 
-1. **정확성**: 코드가 의도한 대로 동작하는가?
-2. **가독성**: 코드가 이해하기 쉬운가?
-3. **테스트**: 적절한 테스트가 포함되어 있는가?
-4. **보안**: 민감 정보(API 키, 모델 가중치 경로)가 노출되지 않는가?
+```mermaid
+graph LR
+    A[PR 생성] --> B{CI 통과?}
+    B -->|실패| C[코드 수정]
+    C --> B
+    B -->|통과| D{리뷰 2명 승인?}
+    D -->|미달| E[리뷰 요청]
+    E --> D
+    D -->|승인| F{충돌 없음?}
+    F -->|충돌| G[충돌 해결]
+    G --> F
+    F -->|깔끔| H[Squash & Merge]
+```
+
+- [x] CI 파이프라인 전체 통과 (lint, test, security scan)
+- [x] 최소 2명의 리뷰어 승인
+- [x] 머지 충돌 해결
+- [x] 관련 이슈 연결
 
 ---
 
 ## 코드 스타일
 
-### 도구 설정
+### Python 기본 규칙
 
-| 항목 | 도구 | 설정 |
-|------|------|------|
-| 포매터 | `black` | line-length=100, target-version py310~py312 |
-| import 정렬 | `isort` | black profile, line_length=100 |
-| 린터 | `flake8` | 기본 설정 |
-| 타입 검사 | `mypy` | python_version=3.10, warn_return_any=true |
+| 항목 | 규칙 |
+|------|------|
+| Python 버전 | 3.10+ |
+| 포매터 | `black` (line-length=100) |
+| import 정렬 | `isort` (black profile) |
+| 린터 | `flake8` |
+| 타입 검사 | `mypy` (점진적 도입) |
+| 타입 힌트 | 모든 public 함수에 필수 |
+| 로깅 | `loguru.logger` (`print()` 금지) |
 
-### 포매팅 및 린트 실행
+### 포맷팅 실행
 
 ```bash
-# 코드 포매팅
-black --line-length 100 src/
+# 코드 포매팅 (자동 수정)
+black --line-length 100 src/ tests/
 
-# import 정렬
-isort --profile black src/
+# import 정렬 (자동 수정)
+isort --profile black src/ tests/
 
-# 린트 검사
+# 린트 검사 (보고만)
 flake8 src/
 
 # 타입 검사
-mypy src/
+mypy src/ --ignore-missing-imports
 ```
 
-### 코드 작성 규칙
+### 로깅 규칙
 
-**타입 힌트를 적극 활용한다.**
-
-```python
-def classify_complaint(text: str, model_name: str = "exaone") -> dict:
-    """민원 텍스트를 분류합니다.
-
-    Args:
-        text: 분류할 민원 텍스트
-        model_name: 사용할 모델 이름
-
-    Returns:
-        분류 결과를 담은 딕셔너리
-    """
-    ...
-```
-
-**로깅은 `loguru.logger`를 사용한다.** `print()` 함수는 사용하지 않는다.
+`print()` 대신 `loguru.logger`를 사용한다.
 
 ```python
 # 올바른 사용
 from loguru import logger
 
-logger.info("서버 기동 완료: port={}", port)
+logger.info("서버 시작: 포트 {}", port)
+logger.warning("GPU 메모리 사용률 {}% 초과", usage)
 logger.error("모델 로딩 실패: {}", str(e))
-
-# 잘못된 사용
-print("서버 기동 완료")  # 금지
+logger.debug("검색 결과 {} 건", len(results))
 ```
-
-**API 에러는 내부 정보를 노출하지 않는다.** 스택 트레이스를 클라이언트에 반환하지 않는다.
 
 ```python
-# 올바른 사용
-from fastapi import HTTPException
-
-try:
-    result = await engine.generate(prompt)
-except Exception as e:
-    logger.error("생성 실패: {}", str(e))
-    raise HTTPException(status_code=500, detail="요청 처리 중 오류가 발생했습니다.")
-
-# 잘못된 사용 - 내부 정보 노출
-except Exception as e:
-    raise HTTPException(status_code=500, detail=str(e))  # 금지
+# 잘못된 사용 (금지)
+print("서버 시작")
+print(f"에러: {e}")
 ```
 
-### 파일 구조
+!!! danger "API 에러 응답 규칙"
+    API 에러 응답에 내부 시스템 정보를 노출하지 않는다. 스택 트레이스, 파일 경로, 환경변수 값을 클라이언트에 반환하지 않는다.
 
-모듈별로 디렉토리를 분리한다.
+    ```python
+    # 올바른 에러 응답
+    raise HTTPException(status_code=500, detail="내부 서버 오류가 발생했습니다.")
 
-```
-src/
-├── data_collection_preprocessing/   # 데이터 수집 및 전처리
-├── training/                        # QLoRA 파인튜닝
-├── quantization/                    # AWQ 양자화
-├── inference/                       # FastAPI 추론 서버
-│   ├── api_server.py               # 엔드포인트, 보안 미들웨어
-│   ├── retriever.py                # FAISS 벡터 검색
-│   ├── index_manager.py            # 멀티 인덱스 관리
-│   ├── schemas.py                  # Pydantic 요청/응답 모델
-│   ├── vllm_stabilizer.py          # EXAONE 런타임 패치
-│   └── db/                         # SQLAlchemy ORM, Alembic 마이그레이션
-└── evaluation/                     # 모델 평가
-```
+    # 잘못된 에러 응답 (금지)
+    raise HTTPException(status_code=500, detail=str(traceback.format_exc()))
+    ```
 
-설정 파일은 `configs/` 디렉토리에, 노트북은 `notebooks/` 디렉토리에 관리한다.
+### 타입 힌트
 
----
+모든 public 함수와 메서드에 타입 힌트를 작성한다.
 
-## 데이터 파이프라인
+```python
+from typing import Dict, List, Optional
 
-`src/data_collection_preprocessing/` 모듈은 다음 단계를 순차적으로 처리한다.
+def search_complaints(
+    query: str,
+    top_k: int = 5,
+    doc_type: Optional[str] = None,
+) -> List[Dict[str, str]]:
+    """유사 민원을 검색한다.
 
-1. AI Hub 원본 데이터 수집
-2. PII(개인정보) 마스킹
-3. EXAONE 채팅 템플릿 형식으로 변환
-4. AWQ 캘리브레이션 데이터 생성
+    Args:
+        query: 검색 쿼리 텍스트.
+        top_k: 반환할 최대 결과 수.
+        doc_type: 문서 유형 필터 (case, law, manual, notice).
 
-### 전체 파이프라인 실행
-
-```bash
-python -m src.data_collection_preprocessing.pipeline --mode full
-```
-
-파이프라인이 완료되면 `data/processed/` 디렉토리에 JSONL 형식의 학습 데이터가 생성된다.
-
-### EXAONE 채팅 템플릿 형식
-
-변환된 데이터는 다음 형식을 따른다.
-
-```
-[|system|]시스템 프롬프트[|endofturn|]
-[|user|]민원 내용[|endofturn|]
-[|assistant|]답변 내용[|endofturn|]
+    Returns:
+        검색 결과 목록. 각 항목은 complaint, answer 키를 포함한다.
+    """
+    ...
 ```
 
 ---
 
-## 학습 및 양자화
+## 테스트 요구사항
 
-### QLoRA 파인튜닝
+### 테스트 실행
 
 ```bash
-python -m src.training.train_qlora \
-  --train_path data/processed/v2_train.jsonl \
-  --val_path data/processed/v2_val.jsonl \
-  --output_dir models/checkpoints/exaone-civil-qlora \
-  --epochs 3 \
-  --batch_size 4 \
-  --lr 2e-4
+# 전체 테스트 + 커버리지
+pytest tests/ -v --cov=src --cov-report=term-missing
+
+# 특정 모듈
+pytest tests/test_inference/ -v
+
+# 특정 파일
+pytest tests/test_inference/test_schemas.py -v
+
+# 특정 테스트 함수
+pytest tests/test_inference/test_schemas.py::TestGenerateRequest::test_valid_request -v
 ```
 
-주요 학습 파라미터:
+### 테스트 작성 규칙
 
-| 파라미터 | 기본값 | 설명 |
-|----------|--------|------|
-| `--model_id` | `LGAI-EXAONE/EXAONE-Deep-7.8B` | 베이스 모델 ID |
-| `--epochs` | `3` | 학습 에폭 수 |
-| `--batch_size` | `4` | 배치 크기 |
-| `--lr` | `2e-4` | 학습률 |
-| `--lora_r` | `16` | LoRA rank |
-| `--lora_alpha` | `32` | LoRA alpha |
-| `--max_seq_length` | `2048` | 최대 시퀀스 길이 |
+| 규칙 | 설명 |
+|------|------|
+| 파일 위치 | `tests/test_<모듈명>/test_<파일명>.py` |
+| 클래스 네이밍 | `Test<기능명>` (예: `TestEscapeSpecialTokens`) |
+| 함수 네이밍 | `test_<동작>` (예: `test_escapes_user_token`) |
+| 비동기 테스트 | `@pytest.mark.asyncio` 데코레이터 사용 |
+| GPU 불필요 | mock을 사용하여 GPU 없이 테스트 가능하도록 작성 |
 
-### AWQ 양자화
+### 커버리지 기준
 
-QLoRA 파인튜닝이 완료되면 LoRA 어댑터를 베이스 모델에 병합한 뒤 AWQ 양자화를 수행한다.
+- **최소 커버리지**: PR이 기존 커버리지를 낮추지 않아야 한다
+- **새 코드 커버리지**: 새로 추가하는 코드는 80% 이상 커버리지를 목표로 한다
+- **핵심 모듈**: `api_server.py`, `retriever.py`, `schemas.py`는 90% 이상 유지
 
-```bash
-# 1. LoRA 병합
-python -m src.quantization.merge_lora
+### 테스트 예시
 
-# 2. AWQ 양자화 (W4A16g128)
-python -m src.quantization.quantize_awq
-```
+```python
+import pytest
+from unittest.mock import patch, MagicMock
 
-### 모델 평가
+class TestEscapeSpecialTokens:
+    """_escape_special_tokens 메서드 테스트."""
 
-```bash
-# vLLM 기반 평가
-python -m src.evaluation.evaluate_m3_vllm
+    def setup_method(self):
+        with patch("src.inference.api_server.AsyncLLMEngine"):
+            self.mgr = vLLMEngineManager()
 
-# AWQ 양자화 모델 평가
-python -m src.evaluation.evaluate_m3_autoawq
+    def test_escapes_user_token(self):
+        """[|user|] 토큰을 이스케이프한다."""
+        result = self.mgr._escape_special_tokens("hello [|user|] world")
+        assert "[|user|]" not in result
+        assert "\\[|user|\\]" in result
+
+    def test_no_special_tokens(self):
+        """특수 토큰이 없으면 원본을 반환한다."""
+        text = "일반 텍스트입니다."
+        result = self.mgr._escape_special_tokens(text)
+        assert result == text
 ```
 
 ---
 
-## 이슈 작성 가이드
+## 코드 리뷰 가이드
 
-### 버그 리포트
+리뷰 코멘트에 다음 접두사를 사용하여 중요도를 명확히 한다.
 
-- 재현 가능한 단계를 명확히 기술한다.
-- 예상 동작과 실제 동작을 구분하여 기록한다.
-- 환경 정보를 포함한다 (OS, Python 버전, GPU 등).
+### 리뷰 접두사
 
-### 기능 요청
+| 접두사 | 의미 | 머지 차단 |
+|--------|------|-----------|
+| `[MUST]` | 반드시 수정해야 머지 가능 | 차단 |
+| `[SHOULD]` | 강력히 권장하지만 합의 가능 | 경우에 따라 |
+| `[NITS]` | 사소한 스타일 개선 제안 | 비차단 |
+| `[QUESTION]` | 이해를 위한 질문 | 비차단 |
 
-- 해결하려는 문제를 먼저 설명한다.
-- 제안하는 해결 방법을 기술한다.
-- 대안이 있다면 함께 기록한다.
+### 리뷰 코멘트 예시
 
-이슈 템플릿을 활용하여 작성한다: 기능 요청, 버그 리포트, 문서 작업.
+```
+[MUST] 이 함수에서 사용자 입력을 검증하지 않고 있다.
+_escape_special_tokens()를 호출하여 프롬프트 인젝션을 방어해야 한다.
+
+[SHOULD] 이 로직은 retriever.py에 있는 게 더 적합해 보인다.
+api_server.py의 책임 범위를 넘어서는 것 같다.
+
+[NITS] 변수명 `res`보다 `search_results`가 더 명확하다.
+
+[QUESTION] 이 타임아웃 값(30초)은 어떤 기준으로 결정한 것인가?
+```
+
+### 리뷰 체크리스트
+
+리뷰어는 다음 항목을 확인한다.
+
+- [ ] **기능 정확성**: 코드가 의도한 대로 동작하는가?
+- [ ] **테스트 충분성**: 새 코드에 대한 테스트가 있는가?
+- [ ] **보안**: 사용자 입력 검증, 인증 확인, 정보 노출 방지
+- [ ] **성능**: 불필요한 DB 쿼리, N+1 문제, 메모리 누수 가능성
+- [ ] **코드 스타일**: black, isort, flake8 규칙 준수
+- [ ] **문서화**: public API에 docstring이 있는가?
+- [ ] **에러 처리**: 예외 상황이 적절히 처리되는가?
 
 ---
 
 ## 다음 단계
 
-- [시작하기](getting-started.md) -- 로컬 환경 구축 및 서버 실행
-- [트러블슈팅](troubleshooting.md) -- 자주 발생하는 문제 해결
-- [보안 정책](security.md) -- 취약점 보고 및 보안 가이드
+- [시작하기](getting-started.md) -- 로컬 환경 설정, 서버 기동
+- [트러블슈팅](troubleshooting.md) -- 자주 발생하는 문제와 해결 방법
+- [보안 정책](security.md) -- 보안 레이어, 취약점 대응

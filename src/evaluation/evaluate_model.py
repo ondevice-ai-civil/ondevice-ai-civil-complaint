@@ -399,25 +399,28 @@ def main():
         fuse_layers=False,
         trust_remote_code=True,
     )
-    # Get the underlying model for generation
-    model = model.model
+    # Get the underlying base model for generation if using PEFT
+    if hasattr(model, "model"):
+        raw_model = model.model
+    else:
+        raw_model = model
 
     # Monkey-patch for EXAONE compatibility
     try:
-        model.get_input_embeddings()
+        raw_model.get_input_embeddings()
     except (NotImplementedError, AttributeError):
-        model.get_input_embeddings = lambda: model.transformer.wte
+        raw_model.get_input_embeddings = lambda: raw_model.transformer.wte
     try:
-        model.get_output_embeddings()
+        raw_model.get_output_embeddings()
     except (NotImplementedError, AttributeError):
-        model.get_output_embeddings = lambda: model.lm_head
+        raw_model.get_output_embeddings = lambda: raw_model.lm_head
 
-    model.eval()
-    print(f"  Model loaded. Device: {model.device}")
+    raw_model.eval()
+    print(f"  Model loaded. Device: {raw_model.device}")
 
     # 3. Perplexity
     print("\n[3/6] Evaluating Perplexity...", flush=True)
-    ppl, ppl_samples = compute_perplexity(model, tokenizer, test_data, max_samples=50)
+    ppl, ppl_samples = compute_perplexity(raw_model, tokenizer, test_data, max_samples=50)
     wandb.log({"perplexity": ppl, "perplexity_samples": ppl_samples})
     print(f"  [DONE] Perplexity evaluation complete", flush=True)
 

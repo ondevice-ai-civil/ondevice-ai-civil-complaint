@@ -92,19 +92,19 @@ def main():
 
     # Verify EXAONE embedding accessors work natively; patch only if broken
     try:
-        base_model.get_input_embeddings()
+        model.get_input_embeddings()
     except (NotImplementedError, AttributeError):
-        base_model.get_input_embeddings = lambda: base_model.transformer.wte
+        model.get_input_embeddings = lambda: model.transformer.wte
         logger.warning("Monkey-patched get_input_embeddings (model lacks native implementation)")
     try:
-        base_model.get_output_embeddings()
+        model.get_output_embeddings()
     except (NotImplementedError, AttributeError):
-        base_model.get_output_embeddings = lambda: base_model.lm_head
+        model.get_output_embeddings = lambda: model.lm_head
         logger.warning("Monkey-patched get_output_embeddings (model lacks native implementation)")
 
     mem_after_base = torch.cuda.memory_allocated() / 1024**3
 
-    base_param_count = sum(p.numel() for p in base_model.parameters())
+    base_param_count = sum(p.numel() for p in model.parameters())
     logger.info(f"  Base model parameters: {base_param_count:,}")
     logger.info(f"  GPU memory used: {mem_after_base:.2f} GB")
 

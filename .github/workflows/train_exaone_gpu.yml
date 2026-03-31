@@ -60,9 +60,9 @@ jobs:
       - name: Prepare Integrated Dataset (Civil + Public Doc)
         run: |
           mkdir -p data/final
-          uv run python scripts/collect_data/collect_public_docs.py --limit 3000 --output data/raw/public_docs.jsonl
+          uv run --no-sync python scripts/collect_data/collect_public_docs.py --limit 3000 --output data/raw/public_docs.jsonl
           TRAIN_CIVIL="data/processed/civil_complaint_train.jsonl"
-          uv run python -c "
+          uv run --no-sync python -c "
           import json, random, os
           combined = []
           try:
@@ -84,7 +84,7 @@ jobs:
 
       - name: Fine-tuning EXAONE-Deep-7.8B (QLoRA for T4)
         run: |
-          uv run python src/training/train_qlora.py \
+          uv run --no-sync python src/training/train_qlora.py \
             --model_id "LGAI-EXAONE/EXAONE-Deep-7.8B" \
             --train_path "data/final/train.jsonl" \
             --val_path "data/final/val.jsonl" \
@@ -101,5 +101,5 @@ jobs:
         if: always()
         run: |
           if command -v wandb &> /dev/null; then
-            uv run wandb sync --clean
+            uv run --no-sync wandb sync --clean
           fi

@@ -55,8 +55,8 @@ jobs:
           # 1) 제약 조건 파일(constraints.txt)을 사용하여 Torch 버전 강제 고정
           uv pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cu121 -c src/training/constraints.txt
           
-          # 2) 나머지 학습 라이브러리 설치 (rich 명시적 추가)
-          uv pip install bitsandbytes==0.43.3 accelerate==0.34.2 peft==0.12.0 trl==0.9.6 transformers==4.44.2 rich datasets wandb requests loguru -c src/training/constraints.txt
+          # 2) 나머지 학습 라이브러리 설치 (hf_transfer 및 rich 포함)
+          uv pip install bitsandbytes==0.43.3 accelerate==0.34.2 peft==0.12.0 trl==0.9.6 transformers==4.44.2 rich hf_transfer datasets wandb requests loguru -c src/training/constraints.txt
           
           # 3) 프로젝트 설치
           uv pip install -e . --no-deps

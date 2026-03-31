@@ -52,10 +52,14 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          # T4 환경에서의 라이브러리 충돌 방지를 위한 버전 고정 설치
+          # 1. 기존 설치된 충돌 패키지 제거
+          uv pip uninstall torch torchvision
+          # 2. T4 러너 환경에 맞는 PyTorch 및 핵심 라이브러리 설치
+          # torchvision::nms 에러 방지를 위해 호환되는 버전을 명시적으로 설치
           uv pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu121
-          uv pip install bitsandbytes>=0.45.0 accelerate>=1.3.0 peft>=0.14.0 trl>=0.12.0 transformers>=4.48.0 datasets wandb requests loguru
-          # 현재 프로젝트 패키지 설치
+          # 3. LLM 학습 필수 라이브러리 설치
+          uv pip install bitsandbytes accelerate peft trl transformers datasets wandb requests loguru
+          # 4. 현재 프로젝트 패키지 설치
           uv pip install -e .
 
       - name: Prepare Integrated Dataset (Civil + Public Doc)

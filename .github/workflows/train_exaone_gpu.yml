@@ -52,9 +52,11 @@ jobs:
 
       - name: Install Dependencies (High-speed with uv)
         run: |
-          # CUDA 12.1 인덱스를 사용하여 안정 버전 초고속 설치
-          uv pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cu121
+          # 1) 학습 라이브러리를 의존성 포함 설치 (rich 등 transitive dep 포함)
           uv pip install bitsandbytes==0.43.3 accelerate==0.34.2 peft==0.12.0 trl==0.9.6 transformers==4.44.2 datasets wandb requests loguru
+          # 2) CUDA 12.1 호환 torch를 마지막에 재핀 (위 단계에서 변경됐을 수 있는 버전 override)
+          uv pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cu121
+          # 3) GovOn 패키지 자체만 설치 (pyproject.toml의 torch>=2.8.0 업그레이드 방지)
           uv pip install -e . --no-deps
 
       - name: Prepare Integrated Dataset (Civil + Public Doc)

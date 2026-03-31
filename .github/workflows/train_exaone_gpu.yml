@@ -64,24 +64,39 @@ jobs:
           mkdir -p data/final
           uv run --no-sync python scripts/collect_data/collect_public_docs.py --limit 3000 --output data/raw/public_docs.jsonl
           TRAIN_CIVIL="data/processed/civil_complaint_train.jsonl"
+          
+          # 데이터 최적화: 공문서 5,000건 샘플링 및 민원 20,000건 병합
           uv run --no-sync python -c "
           import json, random, os
           combined = []
+          # 1. 공문서 데이터 샘플링
           try:
               with open('data/raw/public_docs.jsonl', 'r') as f:
-                  combined.extend([json.loads(line) for line in f])
+                  pub_data = [json.loads(line) for line in f]
+                  sampled_pub = random.sample(pub_data, min(len(pub_data), 5000))
+                  combined.extend(sampled_pub)
+                  print(f'Sampled Public Docs: {len(sampled_pub)}')
           except Exception as e:
-              print(f'Error loading public docs: {e}')
+              print(f'Error sampling public docs: {e}')
+          
+          # 2. 기존 민원 데이터 샘플링
           if os.path.exists('$TRAIN_CIVIL'):
               with open('$TRAIN_CIVIL', 'r') as f:
                   civil_data = [json.loads(line) for line in f]
-                  combined.extend(random.sample(civil_data, min(len(civil_data), 20000)))
+                  sampled_civil = random.sample(civil_data, min(len(civil_data), 20000))
+                  combined.extend(sampled_civil)
+                  print(f'Sampled Civil Docs: {len(sampled_civil)}')
+          
           random.shuffle(combined)
+          
+          # 최종 분할 저장
           split = int(len(combined) * 0.9)
           with open('data/final/train.jsonl', 'w') as f:
               for item in combined[:split]: f.write(json.dumps(item, ensure_ascii=False) + '\n')
           with open('data/final/val.jsonl', 'w') as f:
               for item in combined[split:]: f.write(json.dumps(item, ensure_ascii=False) + '\n')
+          
+          print(f'Final optimized dataset size for T4: {len(combined)}')
           "
 
       - name: Fine-tuning EXAONE-Deep-7.8B (QLoRA for T4)

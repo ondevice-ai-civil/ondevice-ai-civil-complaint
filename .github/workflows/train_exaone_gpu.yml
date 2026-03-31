@@ -55,7 +55,7 @@ jobs:
           # CUDA 12.1 인덱스를 사용하여 안정 버전 초고속 설치
           uv pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cu121
           uv pip install bitsandbytes==0.43.3 accelerate==0.34.2 peft==0.12.0 trl==0.9.6 transformers==4.44.2 datasets wandb requests loguru
-          uv pip install -e .
+          uv pip install -e . --no-deps
 
       - name: Prepare Integrated Dataset (Civil + Public Doc)
         run: |

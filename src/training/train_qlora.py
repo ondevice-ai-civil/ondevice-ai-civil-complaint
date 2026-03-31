@@ -155,7 +155,7 @@ def main():
     training_args = TrainingArguments(
         output_dir=args.output_dir,
         per_device_train_batch_size=args.batch_size,
-        per_device_eval_batch_size=4,  # A100(40GB) 환경에 최적화 (L4 대비 상향)
+        per_device_eval_batch_size=1,  # T4(16GB) 환경 최적화
         gradient_accumulation_steps=args.grad_accum,
         eval_accumulation_steps=10,  # 평가 결과 누적으로 인한 OOM 방지
         learning_rate=args.lr,
@@ -211,6 +211,18 @@ def main():
                 repo_id=args.hub_model_id,
                 token=args.hf_token,
                 commit_message=f"Fine-tuned EXAONE-Deep-7.8B at {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            )
+            tokenizer.push_to_hub(
+                repo_id=args.hub_model_id,
+                token=args.hf_token
+            )
+    
+    print("Training Complete!")
+
+
+if __name__ == "__main__":
+    main()
+tuned EXAONE-Deep-7.8B at {datetime.now().strftime('%Y-%m-%d %H:%M')}"
             )
             tokenizer.push_to_hub(
                 repo_id=args.hub_model_id,

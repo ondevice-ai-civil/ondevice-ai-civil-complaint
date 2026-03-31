@@ -47,6 +47,9 @@ def parse_args():
     parser.add_argument("--lora_alpha", type=int, default=32)
     parser.add_argument("--max_seq_length", type=int, default=1024)
     parser.add_argument("--wandb_project", type=str, default="exaone-civil-complaint")
+    parser.add_argument("--push_to_hub", action="store_true", help="Push model to Hugging Face Hub")
+    parser.add_argument("--hub_model_id", type=str, help="Hugging Face Hub model ID")
+    parser.add_argument("--hf_token", type=str, help="Hugging Face API token")
     return parser.parse_args()
 
 

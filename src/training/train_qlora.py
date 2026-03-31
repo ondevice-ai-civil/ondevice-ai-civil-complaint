@@ -212,17 +212,22 @@ def main():
                 token=args.hf_token,
                 commit_message=f"Fine-tuned EXAONE-Deep-7.8B at {datetime.now().strftime('%Y-%m-%d %H:%M')}"
             )
-            tokenizer.push_to_hub(
-                repo_id=args.hub_model_id,
-                token=args.hf_token
-            )
+    # 8. 최종 저장
+    final_output_dir = os.path.join(args.output_dir, "final")
+    print(f"Saving model to {final_output_dir}")
+    trainer.save_model(final_output_dir)
+    tokenizer.save_pretrained(final_output_dir)
     
-    print("Training Complete!")
-
-
-if __name__ == "__main__":
-    main()
-tuned EXAONE-Deep-7.8B at {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    # 9. Hugging Face Hub 업로드
+    if args.push_to_hub:
+        if not args.hub_model_id:
+            print("Error: --hub_model_id is required for push_to_hub")
+        else:
+            print(f"Pushing model to Hugging Face Hub: {args.hub_model_id}")
+            trainer.push_to_hub(
+                repo_id=args.hub_model_id,
+                token=args.hf_token,
+                commit_message=f"Fine-tuned EXAONE-Deep-7.8B at {datetime.now().strftime('%Y-%m-%d %H:%M')}"
             )
             tokenizer.push_to_hub(
                 repo_id=args.hub_model_id,

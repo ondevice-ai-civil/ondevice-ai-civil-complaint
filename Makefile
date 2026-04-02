@@ -39,7 +39,7 @@ docker-build:
 	docker build -t govon-backend .
 
 docker-run:
-	docker-compose up -d
+	docker compose up -d
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +

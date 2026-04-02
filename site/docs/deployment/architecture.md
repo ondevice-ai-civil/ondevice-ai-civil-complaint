@@ -110,8 +110,9 @@ graph LR
 | Compose 파일 | 용도 | 환경 |
 |--------------|------|------|
 | `docker-compose.yml` | 기본 배포 | 개발, 스테이징 |
-| `docker-compose.prod.yml` | 프로덕션 배포 (Blue/Green) | 프로��션 |
+| `docker-compose.prod.yml` | 프로덕션 배포 (Blue/Green) | 프로덕션 |
 | `docker-compose.offline.yml` | 오프라인 폐쇄망 배포 | 행정 내부망 |
+| `docker-compose.ci.yml` | CPU-safe 스모크 검증 | GitHub Actions |
 
 ### 볼륨 마운트 구조
 
@@ -121,6 +122,8 @@ graph LR
 | `./data/` | `/app/data/` | 학습 데이터 (JSONL), 검색용 데이터 |
 | `./agents/` | `/app/agents/` | 에이전트 설정 파일 (YAML) |
 | `./configs/` | `/app/configs/` | 시스템 설정 파일 |
+| `./logs/` | `/var/log/govon/` | 런타임 로그 |
+| `./.cache/` | `/app/.cache/` | 캐시 및 임시 파일 |
 
 ### 컨테이너 설정
 
@@ -128,16 +131,17 @@ graph LR
 # docker-compose.yml 핵심 설정
 services:
   govon-backend:
-    image: ghcr.io/govon-org/govon:latest
+    image: ${GOVON_IMAGE:-govon-backend:latest}
+    container_name: ${GOVON_CONTAINER_NAME:-govon-backend}
     ports:
-      - "8000:8000"
-    env_file:
-      - .env
+      - "${HOST_PORT:-8000}:8000"
     volumes:
       - ./models:/app/models
       - ./data:/app/data
       - ./agents:/app/agents
       - ./configs:/app/configs
+      - ./logs:/var/log/govon
+      - ./.cache:/app/.cache
     deploy:
       resources:
         reservations:
@@ -146,16 +150,28 @@ services:
               count: all
               capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test:
+        [
+          "CMD",
+          "python3.10",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()",
+        ]
       interval: 30s
       timeout: 10s
-      retries: 5
-      start_period: 120s  # 모델 로딩에 시간이 걸림
+      retries: 3
+      start_period: 60s
     restart: unless-stopped
 ```
 
 !!! info "start_period 설정"
-    EXAONE 모델 로딩에 1~2분이 소요될 수 있다. `start_period`를 충분히 설정하여 기동 중 헬스체크 실패로 컨테이너가 재시작되는 것을 방지한다.
+    기본 Compose 설정은 `start_period=60s`를 사용한다. 모델 로딩이 더 오래 걸리는 환경에서는 이 값을 늘려 기동 중 헬스체크 실패로 컨테이너가 재시작되지 않게 조정한다.
+
+### CI 검증용 Compose
+
+GitHub Actions에서는 `docker-compose.ci.yml`을 사용해 CPU-safe 스모크 테스트를 수행한다. 이 파일은 GPU 예약을 제거하고 `SKIP_MODEL_LOAD=true`로 설정해 `ubuntu-latest`에서도 `/health`와 기본 smoke test를 검증할 수 있게 한다.
+
+실제 NVIDIA GPU 런타임 검증은 별도의 Linux + NVIDIA 호스트가 필요하다.
 
 ---
 

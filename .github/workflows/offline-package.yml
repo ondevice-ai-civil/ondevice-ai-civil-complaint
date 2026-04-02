@@ -40,6 +40,7 @@ jobs:
         run: |
           tar czf govon-offline-package.tar.gz \
             govon-image.tar.gz \
+            .env.airgap.example \
             scripts/offline-deploy.sh \
             scripts/smoke-test.sh \
             docker-compose.offline.yml

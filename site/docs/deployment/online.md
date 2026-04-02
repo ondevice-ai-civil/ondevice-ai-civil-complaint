@@ -81,17 +81,14 @@ docker pull ghcr.io/govon-org/govon:v1.0.0
 
 ### 2단계: 환경변수 설정
 
-프로젝트 루트 디렉토리에 `.env` 파일을 생성한다.
+프로젝트 루트 디렉토리에 `.env` 파일을 생성한다. 기본 컨테이너 프로필은 `.env.example`, 단일 서버 운영값은 `.env.prod.example`을 기준으로 시작하는 것을 권장한다.
 
 ```bash
-# .env 파일 생성
-cat > .env << 'EOF'
-API_KEY=your-secure-api-key-here
-MODEL_PATH=umyunsang/GovOn-EXAONE-LoRA-v2
-GPU_UTILIZATION=0.8
-MAX_MODEL_LEN=8192
-CORS_ORIGINS=http://localhost:3000
-EOF
+# 기본 템플릿 복사
+cp .env.example .env
+
+# 단일 서버 운영 프로필을 바로 쓰고 싶다면
+# cp .env.prod.example .env
 ```
 
 ### 환경변수 상세
@@ -102,6 +99,8 @@ EOF
 | `MODEL_PATH` | 선택 | `umyunsang/GovOn-EXAONE-LoRA-v2` | HuggingFace 모델 ID 또는 로컬 모델 경로 |
 | `DATA_PATH` | 선택 | `/app/data/processed/v2_train.jsonl` | 학습 데이터 파일 경로 |
 | `INDEX_PATH` | 선택 | `/app/models/faiss_index/complaints.index` | FAISS 인덱스 파일 경로 |
+| `LOG_DIR` | 선택 | `/var/log/govon` | 컨테이너 내부 로그 경로 |
+| `CACHE_DIR` | 선택 | `/app/.cache` | 캐시 경로 |
 | `GPU_UTILIZATION` | 선택 | `0.8` | vLLM GPU 메모리 사용 비율 (0.0~1.0) |
 | `MAX_MODEL_LEN` | 선택 | `8192` | 최대 시퀀스 길이 (토큰 수) |
 | `CORS_ORIGINS` | 선택 | - | 허용할 CORS 오리진 (쉼표 구분) |
@@ -112,7 +111,7 @@ EOF
 ### 3단계: 볼륨 디렉토리 준비
 
 ```bash
-mkdir -p models/faiss_index data/processed agents configs
+mkdir -p models/faiss_index models/bm25_index data/processed agents configs logs .cache
 ```
 
 필요한 데이터 파일을 배치한다.
@@ -126,13 +125,29 @@ mkdir -p models/faiss_index data/processed agents configs
 ### 4단계: 컨테이너 실행
 
 ```bash
-docker compose up -d
+# 로컬 소스에서 이미지 빌드 후 실행
+docker compose up -d --build
 ```
 
-오프라인 Compose 파일을 사용하여 GHCR 이미지로 실행할 수도 있다.
+이미 빌드된 GHCR 이미지를 사용하려면 이미지 레퍼런스를 덮어쓴다.
 
 ```bash
-docker compose -f docker-compose.offline.yml up -d
+docker pull ghcr.io/govon-org/govon:latest
+GOVON_IMAGE=ghcr.io/govon-org/govon:latest docker compose up -d
+```
+
+단일 실행 예시가 필요하면 Docker 없이도 runtime을 기동할 수 있다.
+
+```bash
+cp .env.prod.example .env
+set -a && source .env && set +a
+
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+pip install -e ".[dev,inference,database]"
+
+python -m src.inference.api_server
 ```
 
 ### 5단계: 상태 확인

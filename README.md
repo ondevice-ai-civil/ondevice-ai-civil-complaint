@@ -119,19 +119,18 @@ graph TB
 ### Docker 배포 (권장)
 
 ```bash
-# GHCR에서 이미지 Pull
-docker pull ghcr.io/govon-org/govon:latest
-
-# 환경변수 설정
-export API_KEY=your-api-key
-export MODEL_PATH=umyunsang/GovOn-EXAONE-LoRA-v2
-export SERVING_PROFILE=container
+# 실행 템플릿 준비
+cp .env.example .env
 
 # 볼륨 디렉토리 생성
-mkdir -p models data agents configs
+mkdir -p models/faiss_index models/bm25_index data/processed agents configs logs .cache
 
-# 실행
-docker compose -f docker-compose.offline.yml up -d
+# 로컬 소스에서 이미지 빌드 후 실행
+docker compose up -d --build
+
+# 또는 GHCR 이미지를 직접 실행
+docker pull ghcr.io/govon-org/govon:latest
+GOVON_IMAGE=ghcr.io/govon-org/govon:latest docker compose up -d
 
 # 헬스체크
 curl http://localhost:8000/health

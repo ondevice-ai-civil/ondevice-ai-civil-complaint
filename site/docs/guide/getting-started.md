@@ -273,14 +273,20 @@ sequenceDiagram
 GPU가 장착된 환경에서 Docker로 실행할 수 있다. NVIDIA Container Toolkit이 사전 설치되어 있어야 한다.
 
 ```bash
+# 실행 템플릿 준비
+cp .env.example .env
+
+# 볼륨 디렉토리 준비
+mkdir -p models/faiss_index models/bm25_index data/processed agents configs logs .cache
+
 # 이미지 빌드 및 컨테이너 실행
-docker compose up --build
+docker compose up -d --build
 ```
 
 `docker-compose.yml`은 다음 설정을 포함한다.
 
 - **GPU 자동 할당**: NVIDIA 드라이버를 통해 모든 GPU를 컨테이너에 연결
-- **볼륨 마운트**: `./models`, `./data`, `./agents`, `./configs` 디렉토리를 컨테이너에 매핑
+- **볼륨 마운트**: `./models`, `./data`, `./agents`, `./configs`, `./logs`, `./.cache` 디렉토리를 컨테이너에 매핑
 - **헬스체크**: 30초 간격으로 `/health` 엔드포인트를 확인하여 서버 상태를 모니터링
 - **자동 재시작**: 장애 발생 시 자동으로 컨테이너를 재시작
 
@@ -288,18 +294,20 @@ docker compose up --build
 
 ```bash
 # .env 파일 생성 후 실행
-cp .env.example .env   # 예시 파일이 있다면
-docker compose up -d   # 백그라운드 실행
+cp .env.example .env
+docker compose up -d --build
 ```
 
 프로덕션 환경에서는 `docker-compose.prod.yml`을, 오프라인 환경에서는 `docker-compose.offline.yml`을 사용한다.
 
 ```bash
 # 프로덕션 환경
-docker compose -f docker-compose.prod.yml up -d
+cp .env.prod.example .env
+docker compose -f docker-compose.prod.yml --profile blue up -d
 
 # 오프라인 환경
-docker compose -f docker-compose.offline.yml up -d
+cp .env.airgap.example .env
+docker compose --env-file .env -f docker-compose.offline.yml up -d
 ```
 
 ---

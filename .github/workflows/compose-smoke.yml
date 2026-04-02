@@ -1,0 +1,76 @@
+name: Compose Smoke
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - 'docker-compose*.yml'
+      - '.env*.example'
+      - 'scripts/offline-deploy.sh'
+      - 'scripts/smoke-test.sh'
+      - '.github/workflows/compose-smoke.yml'
+      - 'README.md'
+      - 'site/docs/deployment/**'
+      - 'site/docs/guide/getting-started.md'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  compose-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v6
+
+      - name: Compose 입력 디렉토리 준비
+        run: |
+          mkdir -p \
+            models/faiss_index \
+            models/bm25_index \
+            data/processed \
+            agents \
+            configs \
+            logs \
+            .cache
+
+      - name: Compose 설정 검증
+        run: docker compose -f docker-compose.ci.yml config > /tmp/govon-compose-config.yaml
+
+      - name: Compose 런타임 스모크 실행
+        run: |
+          set -euo pipefail
+
+          status=1
+          cleanup() {
+            if [ "$status" -ne 0 ]; then
+              docker compose -f docker-compose.ci.yml logs --no-color || true
+            fi
+            docker compose -f docker-compose.ci.yml down --remove-orphans || true
+          }
+          trap cleanup EXIT
+
+          docker compose -f docker-compose.ci.yml up -d --build
+
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18000/health > /tmp/govon-health.json 2>/dev/null; then
+              break
+            fi
+            echo "Compose 런타임 시작 대기 중... ($i/30)"
+            sleep 2
+          done
+
+          curl -fsS http://127.0.0.1:18000/health > /tmp/govon-health.json
+          python3 -c "import json; d=json.load(open('/tmp/govon-health.json')); assert d['status']=='healthy'; assert d['profile']=='container'"
+
+          bash scripts/smoke-test.sh http://127.0.0.1:18000
+
+          status=0

@@ -80,6 +80,7 @@ models/*.onnx
 
 # Logs
 logs/
+.cache/
 *.log
 
 # Environment variables

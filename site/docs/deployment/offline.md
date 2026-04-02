@@ -62,6 +62,7 @@ gh release download --pattern "govon-offline-package.tar.gz"
 | 파일 | 설명 |
 |------|------|
 | `govon-image.tar.gz` | Docker 이미지 아카이브 |
+| `.env.airgap.example` | 폐쇄망용 런타임 환경변수 템플릿 |
 | `scripts/offline-deploy.sh` | 자동 배포 스크립트 |
 | `scripts/smoke-test.sh` | 배포 검증 스크립트 |
 | `docker-compose.offline.yml` | 오프라인용 Compose 설정 |
@@ -110,6 +111,7 @@ tar xzf govon-offline-package.tar.gz
 
 ```
 /opt/govon/
+├── .env.airgap.example
 ├── govon-image.tar.gz
 ├── scripts/
 │   ├── offline-deploy.sh
@@ -133,9 +135,9 @@ chmod +x scripts/offline-deploy.sh
 1. Docker 및 Docker Compose 설치 확인
 2. NVIDIA Container Toolkit 감지 (경고만 표시)
 3. Docker 이미지 파일 로드 (`docker load`)
-4. 환경변수 안내
-5. 볼륨 디렉토리 생성 (`models/`, `data/`, `agents/`, `configs/`)
-6. 컨테이너 실행 (`docker compose up -d`)
+4. `.env.airgap.example` 기준 `.env` 생성
+5. 볼륨 디렉토리 생성 (`models/`, `data/`, `agents/`, `configs/`, `logs/`, `.cache/`)
+6. 컨테이너 실행 (`docker compose --env-file .env -f docker-compose.offline.yml up -d`)
 7. 헬스체크 대기 (최대 120초)
 
 정상 완료 시 출력:
@@ -170,7 +172,7 @@ Loaded image: ghcr.io/govon-org/govon:latest
 
 ```bash
 # 볼륨 디렉토리 생성
-mkdir -p models/faiss_index data/processed agents configs
+mkdir -p models/faiss_index models/bm25_index data/processed agents configs logs .cache
 
 # 모델 파일 복사 (USB 등에서)
 cp -r /media/usb/models/GovOn-EXAONE-LoRA-v2 ./models/
@@ -179,24 +181,27 @@ cp -r /media/usb/models/faiss_index/* ./models/faiss_index/
 
 ### 환경변수 설정
 
-오프라인 환경에서는 로컬 모델 경로를 지정해야 한다.
+오프라인 환경에서는 `.env.airgap.example`을 `.env`로 복사한 뒤 필요한 값을 수정한다. 경로는 호스트가 아니라 컨테이너 내부 경로(`/app/...`) 기준이다.
 
 ```bash
-export MODEL_PATH=/app/models/GovOn-EXAONE-LoRA-v2
-export API_KEY=your-secure-api-key
+cp .env.airgap.example .env
+
+# 필요 시 수정
+# MODEL_PATH=/app/models/GovOn-EXAONE-LoRA-v2
+# API_KEY=your-secure-api-key
 ```
 
 ### 컨테이너 실행
 
 ```bash
-docker compose -f docker-compose.offline.yml up -d
+docker compose --env-file .env -f docker-compose.offline.yml up -d
 ```
 
 ### 상태 확인
 
 ```bash
 # 컨테이너 상태
-docker compose -f docker-compose.offline.yml ps
+docker compose --env-file .env -f docker-compose.offline.yml ps
 
 # 헬스체크
 curl -f http://localhost:8000/health
@@ -273,6 +278,7 @@ docker save ghcr.io/govon-org/govon:latest | gzip > govon-image.tar.gz
 # 3. 패키지 생성
 tar czf govon-offline-package.tar.gz \
   govon-image.tar.gz \
+  .env.airgap.example \
   scripts/offline-deploy.sh \
   scripts/smoke-test.sh \
   docker-compose.offline.yml
@@ -312,7 +318,7 @@ sudo systemctl restart docker
 모델 로딩에 시간이 더 필요한 경우이다. 컨테이너 로그를 확인한다.
 
 ```bash
-docker compose -f docker-compose.offline.yml logs
+docker compose --env-file .env -f docker-compose.offline.yml logs
 ```
 
 일반적인 원인:

@@ -94,8 +94,9 @@ docker build -t govon-backend:latest .
 또는 Docker Compose를 사용하여 빌드와 실행을 동시에 수행한다.
 
 ```bash
-docker compose build
-docker compose up -d
+cp .env.example .env
+mkdir -p models/faiss_index models/bm25_index data/processed agents configs logs .cache
+docker compose up -d --build
 ```
 
 ---
@@ -112,20 +113,24 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: govon-backend:latest
-    container_name: govon-backend
+    image: ${GOVON_IMAGE:-govon-backend:latest}
+    container_name: ${GOVON_CONTAINER_NAME:-govon-backend}
     ports:
-      - "8000:8000"
+      - "${HOST_PORT:-8000}:8000"
     volumes:
       - ./models:/app/models
       - ./data:/app/data
       - ./agents:/app/agents
       - ./configs:/app/configs
+      - ./logs:/var/log/govon
+      - ./.cache:/app/.cache
     environment:
-      - API_KEY=${API_KEY}
-      - MODEL_PATH=${MODEL_PATH:-umyunsang/GovOn-EXAONE-LoRA-v2}
-      - GPU_UTILIZATION=0.8
-      - MAX_MODEL_LEN=8192
+      API_KEY: ${API_KEY:-}
+      MODEL_PATH: ${MODEL_PATH:-umyunsang/GovOn-EXAONE-LoRA-v2}
+      LOG_DIR: ${LOG_DIR:-/var/log/govon}
+      CACHE_DIR: ${CACHE_DIR:-/app/.cache}
+      GPU_UTILIZATION: ${GPU_UTILIZATION:-0.8}
+      MAX_MODEL_LEN: ${MAX_MODEL_LEN:-8192}
     deploy:
       resources:
         reservations:
@@ -135,7 +140,13 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test:
+        [
+          "CMD",
+          "python3.10",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -149,20 +160,24 @@ services:
 ```yaml
 services:
   govon-backend:
-    image: ghcr.io/govon-org/govon:latest
-    container_name: govon-backend
+    image: ${GOVON_IMAGE:-ghcr.io/govon-org/govon:latest}
+    container_name: ${GOVON_CONTAINER_NAME:-govon-backend}
     ports:
-      - "8000:8000"
+      - "${HOST_PORT:-8000}:8000"
     volumes:
       - ./models:/app/models
       - ./data:/app/data
       - ./agents:/app/agents
       - ./configs:/app/configs
+      - ./logs:/var/log/govon
+      - ./.cache:/app/.cache
     environment:
-      - API_KEY=${API_KEY}
-      - MODEL_PATH=${MODEL_PATH:-umyunsang/GovOn-EXAONE-LoRA-v2}
-      - GPU_UTILIZATION=0.8
-      - MAX_MODEL_LEN=8192
+      API_KEY: ${API_KEY:-CHANGE_ME_TO_SECURE_RANDOM_KEY}
+      MODEL_PATH: ${MODEL_PATH:-/app/models/GovOn-EXAONE-LoRA-v2}
+      LOG_DIR: ${LOG_DIR:-/var/log/govon}
+      CACHE_DIR: ${CACHE_DIR:-/app/.cache}
+      GPU_UTILIZATION: ${GPU_UTILIZATION:-0.8}
+      MAX_MODEL_LEN: ${MAX_MODEL_LEN:-8192}
     deploy:
       resources:
         reservations:
@@ -172,12 +187,39 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test:
+        [
+          "CMD",
+          "python3.10",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
 ```
+
+### CI 검증 환경 (docker-compose.ci.yml)
+
+GitHub Actions의 표준 `ubuntu-latest` runner는 Docker와 Compose를 제공하지만 NVIDIA GPU 런타임은 제공하지 않는다. `docker-compose.ci.yml`은 이 제약을 반영해 GPU 예약 없이 컨테이너를 띄우고, `SKIP_MODEL_LOAD=true`로 `/health`와 기본 smoke test만 검증하도록 구성한다.
+
+```yaml
+services:
+  govon-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: govon-backend:ci
+    ports:
+      - "18000:8000"
+    environment:
+      SERVING_PROFILE: container
+      SKIP_MODEL_LOAD: "true"
+      RATE_LIMIT_ENABLED: "false"
+```
+
+이 경로는 배포 자산의 재현성과 헬스체크 검증에 적합하다. 실제 GPU/NVIDIA runtime 경로 검증은 별도의 Linux + NVIDIA 호스트에서 수행해야 한다.
 
 ### 볼륨 마운트
 
@@ -187,6 +229,8 @@ services:
 | `./data` | `/app/data` | 학습/테스트 데이터 |
 | `./agents` | `/app/agents` | 에이전트 설정 파일 |
 | `./configs` | `/app/configs` | 시스템 설정 파일 |
+| `./logs` | `/var/log/govon` | 런타임 로그 |
+| `./.cache` | `/app/.cache` | 캐시 및 임시 파일 |
 
 ### GPU 설정
 
@@ -224,4 +268,22 @@ curl http://localhost:8000/health
 
 ```json
 {"status": "healthy"}
+```
+
+---
+
+## 단일 실행 예시
+
+Docker 없이도 단일 프로세스로 runtime을 기동할 수 있다.
+
+```bash
+cp .env.prod.example .env
+set -a && source .env && set +a
+
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+pip install -e ".[dev,inference,database]"
+
+python -m src.inference.api_server
 ```

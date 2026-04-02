@@ -23,7 +23,44 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  compose-config:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v6
+
+      - name: Compose 입력 디렉토리 및 env 준비
+        run: |
+          mkdir -p \
+            models/faiss_index \
+            models/bm25_index \
+            data/processed \
+            agents \
+            configs \
+            logs \
+            .cache
+
+          cat > /tmp/govon-offline.env <<'EOF'
+          API_KEY=offline-ci-key
+          BM25_INDEX_HMAC_KEY=offline-ci-hmac-key
+          CORS_ORIGINS=http://127.0.0.1:3000
+          EOF
+
+          cat > /tmp/govon-prod.env <<'EOF'
+          API_KEY=prod-ci-key
+          EOF
+
+      - name: Compose 설정 검증
+        run: |
+          docker compose -f docker-compose.ci.yml config > /tmp/govon-compose-ci.yaml
+          docker compose -f docker-compose.yml config > /tmp/govon-compose-online.yaml
+          docker compose --env-file /tmp/govon-offline.env -f docker-compose.offline.yml config > /tmp/govon-compose-offline.yaml
+          docker compose --env-file /tmp/govon-prod.env -f docker-compose.prod.yml --profile blue --profile router config > /tmp/govon-compose-prod.yaml
+
   compose-smoke:
+    needs: compose-config
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -41,9 +78,6 @@ jobs:
             configs \
             logs \
             .cache
-
-      - name: Compose 설정 검증
-        run: docker compose -f docker-compose.ci.yml config > /tmp/govon-compose-config.yaml
 
       - name: Compose 런타임 스모크 실행
         run: |
@@ -72,5 +106,77 @@ jobs:
           python3 -c "import json; d=json.load(open('/tmp/govon-health.json')); assert d['status']=='healthy'; assert d['profile']=='container'"
 
           bash scripts/smoke-test.sh http://127.0.0.1:18000
+
+          status=0
+
+  compose-gpu-smoke:
+    needs: compose-config
+    runs-on: ubuntu-22.04-gpu-t4
+    timeout-minutes: 45
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v6
+
+      - name: GPU Compose 입력 디렉토리 및 env 준비
+        run: |
+          mkdir -p \
+            models/faiss_index \
+            models/bm25_index \
+            data/processed \
+            agents \
+            configs \
+            logs \
+            .cache
+
+          cat > /tmp/govon-gpu.env <<'EOF'
+          API_KEY=gpu-smoke-key
+          BM25_INDEX_HMAC_KEY=gpu-smoke-hmac-key
+          CORS_ORIGINS=http://127.0.0.1:3000
+          HOST_PORT=18001
+          USE_RAG_PIPELINE=false
+          SKIP_MODEL_LOAD=false
+          GPU_UTILIZATION=0.5
+          MAX_MODEL_LEN=2048
+          MODEL_PATH=umyunsang/GovOn-EXAONE-LoRA-v2
+          EOF
+
+          touch data/processed/v2_train.jsonl
+
+      - name: 호스트 GPU 인식 확인
+        run: nvidia-smi
+
+      - name: Docker GPU runtime 인식 확인
+        run: docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu22.04 nvidia-smi
+
+      - name: GPU Compose 런타임 스모크 실행
+        run: |
+          set -euo pipefail
+
+          status=1
+          cleanup() {
+            if [ "$status" -ne 0 ]; then
+              docker compose --env-file /tmp/govon-gpu.env -f docker-compose.yml logs --no-color || true
+            fi
+            docker compose --env-file /tmp/govon-gpu.env -f docker-compose.yml down --remove-orphans || true
+          }
+          trap cleanup EXIT
+
+          docker compose --env-file /tmp/govon-gpu.env -f docker-compose.yml up -d --build
+
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:18001/health > /tmp/govon-gpu-health.json 2>/dev/null; then
+              break
+            fi
+            echo "GPU Compose 런타임 시작 대기 중... ($i/60)"
+            sleep 10
+          done
+
+          curl -fsS http://127.0.0.1:18001/health > /tmp/govon-gpu-health.json
+          python3 -c "import json; d=json.load(open('/tmp/govon-gpu-health.json')); assert d['status']=='healthy'; assert d['profile']=='container'"
+
+          docker exec govon-backend python3.10 -c "import torch; assert torch.cuda.is_available(); print(torch.cuda.get_device_name(0))"
+
+          bash scripts/smoke-test.sh http://127.0.0.1:18001
 
           status=0

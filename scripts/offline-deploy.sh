@@ -6,6 +6,34 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 IMAGE_FILE="${PROJECT_DIR}/govon-image.tar.gz"
 ENV_TEMPLATE="${PROJECT_DIR}/.env.airgap.example"
 ENV_FILE="${PROJECT_DIR}/.env"
+API_KEY_PLACEHOLDER="CHANGE_ME_TO_SECURE_RANDOM_KEY"
+BM25_INDEX_HMAC_KEY_PLACEHOLDER="CHANGE_ME_TO_SECURE_HMAC_KEY"
+
+extract_env_value() {
+    local key="$1"
+    local file="$2"
+
+    awk -F= -v key="$key" '
+        $0 ~ "^[[:space:]]*" key "=" {
+            sub(/^[^=]*=/, "", $0)
+            print $0
+            exit
+        }
+    ' "$file"
+}
+
+require_secure_env_value() {
+    local key="$1"
+    local placeholder="$2"
+    local value
+
+    value="$(extract_env_value "$key" "$ENV_FILE")"
+    if [ -z "$value" ] || [ "$value" = "$placeholder" ]; then
+        echo "[ERROR] ${key} 값이 비어 있거나 예시 placeholder 그대로입니다."
+        echo "        ${ENV_FILE}에서 ${key}를 안전한 임의 문자열로 수정한 뒤 다시 실행하세요."
+        exit 1
+    fi
+}
 
 echo "=== GovOn 오프라인 배포 스크립트 ==="
 
@@ -45,7 +73,7 @@ echo "[OK] 이미지 로드 완료"
 if [ ! -f "$ENV_FILE" ] && [ -f "$ENV_TEMPLATE" ]; then
     cp "$ENV_TEMPLATE" "$ENV_FILE"
     echo "[OK] .env 파일을 .env.airgap.example 기준으로 생성했습니다."
-    echo "     필요 시 API_KEY, CORS_ORIGINS 등을 수정한 뒤 재실행하세요."
+    echo "     API_KEY, BM25_INDEX_HMAC_KEY, CORS_ORIGINS 등을 수정한 뒤 재실행하세요."
 fi
 
 if [ -z "${MODEL_PATH:-}" ] && [ ! -f "$ENV_FILE" ]; then
@@ -53,6 +81,14 @@ if [ -z "${MODEL_PATH:-}" ] && [ ! -f "$ENV_FILE" ]; then
     echo "  오프라인 환경에서는 컨테이너 내부 경로를 지정하세요:"
     echo "  export MODEL_PATH=/app/models/GovOn-EXAONE-LoRA-v2"
 fi
+
+if [ ! -f "$ENV_FILE" ]; then
+    echo "[ERROR] 환경변수 파일을 찾을 수 없습니다: $ENV_FILE"
+    exit 1
+fi
+
+require_secure_env_value "API_KEY" "$API_KEY_PLACEHOLDER"
+require_secure_env_value "BM25_INDEX_HMAC_KEY" "$BM25_INDEX_HMAC_KEY_PLACEHOLDER"
 
 # 6. 볼륨 디렉토리 생성
 echo "볼륨 디렉토리 생성 중..."

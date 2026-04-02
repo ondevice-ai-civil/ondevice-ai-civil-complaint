@@ -21,7 +21,7 @@ services:
       PORT: 8000
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       RELOAD: "false"
-      API_KEY: ${API_KEY:-CHANGE_ME_TO_SECURE_RANDOM_KEY}
+      API_KEY: ${API_KEY:?Set API_KEY in .env before starting offline runtime}
       MODEL_PATH: ${MODEL_PATH:-/app/models/GovOn-EXAONE-LoRA-v2}
       TRUST_REMOTE_CODE: ${TRUST_REMOTE_CODE:-true}
       MODEL_DTYPE: ${MODEL_DTYPE:-half}
@@ -39,7 +39,7 @@ services:
       RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
       REQUEST_TIMEOUT_SEC: ${REQUEST_TIMEOUT_SEC:-90}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://10.0.0.100:3000}
-      BM25_INDEX_HMAC_KEY: ${BM25_INDEX_HMAC_KEY:-CHANGE_ME_TO_SECURE_HMAC_KEY}
+      BM25_INDEX_HMAC_KEY: ${BM25_INDEX_HMAC_KEY:?Set BM25_INDEX_HMAC_KEY in .env before starting offline runtime}
       DATA_GO_KR_API_KEY: ${DATA_GO_KR_API_KEY:-}
       USE_RAG_PIPELINE: ${USE_RAG_PIPELINE:-true}
       MODEL_VERSION: ${MODEL_VERSION:-v2_lora}

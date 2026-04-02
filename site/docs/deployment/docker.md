@@ -219,7 +219,7 @@ services:
       RATE_LIMIT_ENABLED: "false"
 ```
 
-이 경로는 배포 자산의 재현성과 헬스체크 검증에 적합하다. 실제 GPU/NVIDIA runtime 경로 검증은 별도의 Linux + NVIDIA 호스트에서 수행해야 한다.
+이 경로는 배포 자산의 재현성과 헬스체크 검증에 적합하다. 실제 GPU/NVIDIA runtime 경로는 별도의 Linux + NVIDIA 호스트가 필요하며, 조직 GPU runner(`ubuntu-22.04-gpu-t4`)가 있다면 GitHub Actions에서도 같은 목적의 검증을 자동화할 수 있다.
 
 ### 볼륨 마운트
 

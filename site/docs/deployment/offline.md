@@ -136,9 +136,14 @@ chmod +x scripts/offline-deploy.sh
 2. NVIDIA Container Toolkit 감지 (경고만 표시)
 3. Docker 이미지 파일 로드 (`docker load`)
 4. `.env.airgap.example` 기준 `.env` 생성
-5. 볼륨 디렉토리 생성 (`models/`, `data/`, `agents/`, `configs/`, `logs/`, `.cache/`)
-6. 컨테이너 실행 (`docker compose --env-file .env -f docker-compose.offline.yml up -d`)
-7. 헬스체크 대기 (최대 120초)
+5. `API_KEY`, `BM25_INDEX_HMAC_KEY`가 placeholder인지 검사하고, 그대로면 fail-fast
+6. 볼륨 디렉토리 생성 (`models/`, `data/`, `agents/`, `configs/`, `logs/`, `.cache/`)
+7. 컨테이너 실행 (`docker compose --env-file .env -f docker-compose.offline.yml up -d`)
+8. 헬스체크 대기 (최대 120초)
+
+!!! warning "첫 실행 전 필수 수정"
+    `offline-deploy.sh`는 `.env.airgap.example`을 복사한 직후 바로 기동하지 않는다.
+    `API_KEY`, `BM25_INDEX_HMAC_KEY`가 예시 placeholder 그대로면 중단되므로, `.env`에서 안전한 임의 문자열로 교체한 뒤 다시 실행해야 한다.
 
 정상 완료 시 출력:
 
@@ -189,6 +194,7 @@ cp .env.airgap.example .env
 # 필요 시 수정
 # MODEL_PATH=/app/models/GovOn-EXAONE-LoRA-v2
 # API_KEY=your-secure-api-key
+# BM25_INDEX_HMAC_KEY=your-secure-hmac-key
 ```
 
 ### 컨테이너 실행

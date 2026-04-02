@@ -171,7 +171,7 @@ services:
 
 GitHub Actions에서는 `docker-compose.ci.yml`을 사용해 CPU-safe 스모크 테스트를 수행한다. 이 파일은 GPU 예약을 제거하고 `SKIP_MODEL_LOAD=true`로 설정해 `ubuntu-latest`에서도 `/health`와 기본 smoke test를 검증할 수 있게 한다.
 
-실제 NVIDIA GPU 런타임 검증은 별도의 Linux + NVIDIA 호스트가 필요하다.
+실제 NVIDIA GPU 런타임 검증은 별도의 Linux + NVIDIA 호스트가 필요하며, 조직 GPU runner가 있다면 같은 검증을 GitHub Actions job으로 포함할 수 있다.
 
 ---
 

@@ -45,6 +45,7 @@ from .schemas import (
 )
 from .feature_flags import FeatureFlags
 from .tools.base import ToolRegistry
+from .tools.complaint_analysis import ComplaintAnalysisInput, ComplaintAnalysisTool
 from .tools.rag_search import RAGSearchInput, RAGSearchTool
 
 if not SKIP_MODEL_LOAD:
@@ -231,9 +232,12 @@ class vLLMEngineManager:
                 pii_masker=self.pii_masker,
             )
             self.tool_registry.register(rag_tool)
-            logger.info(f"Tool 등록 완료: {self.tool_registry.list_tools()}")
         else:
             logger.warning("검색 엔진 미초기화 — rag_search tool 미등록")
+
+        # 외부 API tool은 검색 엔진 유무와 무관하게 등록
+        self.tool_registry.register(ComplaintAnalysisTool())
+        logger.info(f"Tool 등록 완료: {self.tool_registry.list_tools()}")
 
     def _escape_special_tokens(self, text: str) -> str:
         """Escape EXAONE chat template tokens to prevent prompt injection."""
@@ -722,9 +726,14 @@ async def execute_tool(
         )
 
     # tool별 입력 스키마로 변환
-    if request.tool_name == "rag_search":
+    input_schemas = {
+        "rag_search": RAGSearchInput,
+        "complaint_analysis": ComplaintAnalysisInput,
+    }
+    schema_cls = input_schemas.get(request.tool_name)
+    if schema_cls is not None:
         try:
-            tool_input = RAGSearchInput(**request.parameters)
+            tool_input = schema_cls(**request.parameters)
         except Exception as e:
             raise HTTPException(status_code=422, detail=f"입력 검증 실패: {e}")
     else:

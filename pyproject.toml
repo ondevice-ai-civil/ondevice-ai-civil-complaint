@@ -100,6 +100,8 @@ inference = [
     "sentence-transformers>=3.0.0",
     "faiss-cpu>=1.7.4",
     "httpx>=0.27.0",
+    "langgraph>=0.2.0",
+    "langchain-openai>=0.3.0",
 ]
 
 database = [

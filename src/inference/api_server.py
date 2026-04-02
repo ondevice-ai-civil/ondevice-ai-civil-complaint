@@ -5,7 +5,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncGenerator, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Security
 from fastapi.middleware.cors import CORSMiddleware
@@ -127,6 +127,7 @@ class vLLMEngineManager:
         self.pii_masker = None
         self.session_store: SessionStore = SessionStore()
         self.agent_loop: Optional[AgentLoop] = None
+        self.langgraph_runtime: Optional[Any] = None
 
     async def initialize(self):
         if SKIP_MODEL_LOAD:
@@ -513,6 +514,43 @@ class vLLMEngineManager:
             ToolType.API_LOOKUP: minwon_action,
         }
         self.agent_loop = AgentLoop(tool_registry=tool_registry)
+        self._init_langgraph_runtime(
+            tool_registry=tool_registry,
+            action_registry={"minwon_analysis": minwon_action},
+        )
+
+    def _init_langgraph_runtime(
+        self,
+        tool_registry: Dict[ToolType, Any],
+        action_registry: Dict[str, Any],
+    ) -> None:
+        """LangGraph foundation runtime을 초기화한다.
+
+        #415 범위에서는 graph runtime의 접합층만 준비한다.
+        기존 /v1/agent/* 경로는 유지하고, 이후 #409/#410/#418에서 본격적으로 연결한다.
+        """
+
+        try:
+            from src.inference.langgraph_runtime import (
+                LangGraphDependencyError,
+                build_langgraph_runtime,
+            )
+
+            self.langgraph_runtime = build_langgraph_runtime(
+                runtime_config=runtime_config,
+                tool_registry=tool_registry,
+                action_registry=action_registry,
+            )
+            logger.info(
+                "LangGraph runtime foundation 초기화 완료: tools={}",
+                list(self.langgraph_runtime.tools.keys()),
+            )
+        except LangGraphDependencyError as exc:
+            logger.warning(f"LangGraph runtime foundation 초기화 건너뜀: {exc}")
+            self.langgraph_runtime = None
+        except Exception as exc:
+            logger.warning(f"LangGraph runtime foundation 초기화 실패: {exc}")
+            self.langgraph_runtime = None
 
     async def generate_stream(
         self, request: GenerateRequest, request_id: str, flags: "FeatureFlags | None" = None

@@ -502,10 +502,15 @@ class vLLMEngineManager:
                 "completion_tokens": len(final_output.outputs[0].token_ids),
             }
 
+        from src.inference.actions.data_go_kr import MinwonAnalysisAction
+
+        minwon_action = MinwonAnalysisAction()
+
         tool_registry = {
             ToolType.CLASSIFY: _classify_tool,
             ToolType.SEARCH: _search_tool,
             ToolType.GENERATE: _generate_tool,
+            ToolType.API_LOOKUP: minwon_action,
         }
         self.agent_loop = AgentLoop(tool_registry=tool_registry)
 

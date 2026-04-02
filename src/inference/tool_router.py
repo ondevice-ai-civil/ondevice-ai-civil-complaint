@@ -20,6 +20,7 @@ class ToolType(str, Enum):
     CLASSIFY = "classify"
     SEARCH = "search"
     GENERATE = "generate"
+    API_LOOKUP = "api_lookup"
 
 
 @dataclass
@@ -87,6 +88,19 @@ _GENERATE_PATTERNS = [
     r"안내문",
 ]
 
+# 외부 API 조회 관련 키워드 패턴 (data.go.kr 민원 분석 API)
+_API_LOOKUP_PATTERNS = [
+    r"민원.*분석",
+    r"유사.*사례.*조회",
+    r"공공.*데이터",
+    r"data\.go\.kr",
+    r"민원.*통계",
+    r"민원.*현황",
+    r"타\s*기관",
+    r"국민신문고",
+    r"트렌드",
+]
+
 
 class ToolRouter:
     """사용자 요청을 분석하여 실행 계획을 수립한다.
@@ -100,6 +114,7 @@ class ToolRouter:
         self._classify_patterns = [re.compile(p) for p in _CLASSIFY_PATTERNS]
         self._search_patterns = [re.compile(p) for p in _SEARCH_PATTERNS]
         self._generate_patterns = [re.compile(p) for p in _GENERATE_PATTERNS]
+        self._api_lookup_patterns = [re.compile(p) for p in _API_LOOKUP_PATTERNS]
 
     def plan(
         self,
@@ -133,12 +148,13 @@ class ToolRouter:
         needs_classify = self._match_patterns(query, self._classify_patterns)
         needs_search = self._match_patterns(query, self._search_patterns)
         needs_generate = self._match_patterns(query, self._generate_patterns)
+        needs_api_lookup = self._match_patterns(query, self._api_lookup_patterns)
 
         steps: List[ToolStep] = []
         reasons: List[str] = []
 
         # 아무 패턴도 매칭되지 않으면 전체 파이프라인 실행 (민원 텍스트로 간주)
-        if not needs_classify and not needs_search and not needs_generate:
+        if not needs_classify and not needs_search and not needs_generate and not needs_api_lookup:
             steps = [
                 ToolStep(tool=ToolType.CLASSIFY),
                 ToolStep(tool=ToolType.SEARCH, depends_on="classify"),
@@ -159,9 +175,22 @@ class ToolRouter:
             steps.append(ToolStep(tool=ToolType.SEARCH, depends_on=dep))
             reasons.append("검색 키워드 감지")
 
+        if needs_api_lookup:
+            # classify 이후에 배치 (classify가 있으면 depends_on "classify")
+            dep = "classify" if needs_classify else None
+            steps.append(ToolStep(tool=ToolType.API_LOOKUP, depends_on=dep))
+            reasons.append("API 조회 키워드 감지")
+
         if needs_generate:
-            dep = "search" if needs_search else ("classify" if needs_classify else None)
-            steps.append(ToolStep(tool=ToolType.GENERATE, depends_on=dep))
+            # generate는 마지막 단계에 의존
+            last_dep: Optional[str] = None
+            if needs_api_lookup:
+                last_dep = "api_lookup"
+            elif needs_search:
+                last_dep = "search"
+            elif needs_classify:
+                last_dep = "classify"
+            steps.append(ToolStep(tool=ToolType.GENERATE, depends_on=last_dep))
             reasons.append("생성 키워드 감지")
 
         # 검색만 요청된 경우에도 generate는 추가하지 않음

@@ -364,7 +364,7 @@ class AgentLoop:
         """누적된 결과에서 최종 응답 텍스트를 추출한다.
 
         generate 결과가 있으면 그것을 사용하고,
-        없으면 classify/search 결과를 요약한다.
+        없으면 classify/search/api_lookup 결과를 요약한다.
         """
         # generate 결과 우선
         gen_data = accumulated.get(ToolType.GENERATE.value, {})
@@ -393,5 +393,23 @@ class AgentLoop:
                 content = r.get("content", "")[:100]
                 search_lines.append(f"{i}. {title}: {content}")
             parts.append("\n".join(search_lines))
+
+        # API 조회 결과 처리
+        api_data = accumulated.get(ToolType.API_LOOKUP.value, {})
+        if api_data:
+            # context_text가 있으면 그대로 추가
+            ctx_text = api_data.get("context_text", "")
+            if ctx_text:
+                parts.append(ctx_text)
+            else:
+                # context_text 없으면 data.results에서 직접 구성
+                api_results = api_data.get("data", {}).get("results", [])
+                if api_results:
+                    api_lines = ["[공공데이터 유사 민원 사례]"]
+                    for i, r in enumerate(api_results[:3], 1):
+                        title = r.get("title", r.get("qnaTitle", ""))
+                        content = r.get("content", r.get("qnaContent", ""))[:100]
+                        api_lines.append(f"{i}. {title}: {content}")
+                    parts.append("\n".join(api_lines))
 
         return "\n\n".join(parts) if parts else "요청을 처리할 수 없습니다."

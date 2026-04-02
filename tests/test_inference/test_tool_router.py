@@ -78,6 +78,48 @@ class TestToolRouter:
         assert "classify" in repr(plan)
 
 
+class TestToolRouterApiLookup:
+    """API_LOOKUP 관련 ToolRouter 테스트."""
+
+    def setup_method(self):
+        self.router = ToolRouter()
+
+    def test_api_lookup_minwon_analysis(self):
+        """'민원 분석' 키워드 → api_lookup 포함."""
+        plan = self.router.plan("민원 분석해줘")
+        assert ToolType.API_LOOKUP.value in plan.tool_names
+
+    def test_api_lookup_national_sinmungo(self):
+        """'국민신문고' 키워드 → api_lookup 포함."""
+        plan = self.router.plan("국민신문고 유사 사례 보여줘")
+        assert ToolType.API_LOOKUP.value in plan.tool_names
+
+    def test_api_lookup_statistics(self):
+        """'민원 통계' 키워드 → api_lookup 포함."""
+        plan = self.router.plan("민원 통계 조회해줘")
+        assert ToolType.API_LOOKUP.value in plan.tool_names
+
+    def test_api_lookup_does_not_break_full_pipeline(self):
+        """일반 민원 텍스트는 여전히 전체 파이프라인(classify/search/generate)으로 실행."""
+        plan = self.router.plan("보도블록이 파손되어 위험합니다")
+        assert plan.tool_names == ["classify", "search", "generate"]
+        assert ToolType.API_LOOKUP.value not in plan.tool_names
+
+    def test_api_lookup_with_classify_ordering(self):
+        """classify + api_lookup 동시 매칭 시 classify가 먼저 배치."""
+        plan = self.router.plan("이 민원을 분류하고 민원 현황도 조회해줘")
+        names = plan.tool_names
+        assert "classify" in names
+        assert "api_lookup" in names
+        assert names.index("classify") < names.index("api_lookup")
+
+    def test_api_lookup_depends_on_classify(self):
+        """classify + api_lookup 동시 매칭 시 api_lookup의 depends_on이 'classify'."""
+        plan = self.router.plan("이 민원을 분류하고 민원 통계 조회해줘")
+        api_step = next(s for s in plan.steps if s.tool == ToolType.API_LOOKUP)
+        assert api_step.depends_on == "classify"
+
+
 class TestToolStep:
     """ToolStep 단위 테스트."""
 
@@ -88,3 +130,8 @@ class TestToolStep:
     def test_step_with_depends(self):
         step = ToolStep(tool=ToolType.SEARCH, depends_on="classify")
         assert step.depends_on == "classify"
+
+    def test_api_lookup_step_id(self):
+        """API_LOOKUP step_id 확인."""
+        step = ToolStep(tool=ToolType.API_LOOKUP)
+        assert step.step_id == "api_lookup"

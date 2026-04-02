@@ -67,26 +67,34 @@ Roadmap는 **Initiative 계층만** 표시한다. 세부 task는 각 initiative 
 
 ```mermaid
 graph TB
-    subgraph Frontend
-        A[Next.js 웹앱]
+    subgraph Shell
+        A[govon Interactive Shell]
+        B[Session Commands<br/>sources / retry / resume]
     end
 
-    subgraph Backend
-        B[FastAPI + vLLM]
-        C[EXAONE-Deep-7.8B<br/>AWQ 양자화]
-        D[FAISS + BM25<br/>하이브리드 검색]
+    subgraph Runtime
+        C[FastAPI Runtime Adapter]
+        D[LangGraph Decision Runtime]
+        E[vLLM Model Adapter]
+        F[Tool Registry]
+        G[Checkpoint + Audit Log]
     end
 
     subgraph Data
-        E[multilingual-e5-large<br/>임베딩]
-        F[4종 인덱스<br/>CASE/LAW/MANUAL/NOTICE]
+        H[FAISS + BM25<br/>하이브리드 검색]
+        I[민원분석 외부 API]
+        J[Session Store]
     end
 
-    A -->|SSE 스트리밍| B
-    B --> C
-    B --> D
+    A --> C
+    B --> A
+    C --> D
     D --> E
     D --> F
+    F --> H
+    F --> I
+    D --> G
+    G --> J
 ```
 
 ## 기술 스택
@@ -97,10 +105,11 @@ graph TB
 | **파인튜닝** | QLoRA (PEFT, SFTTrainer, WandB) |
 | **양자화** | AWQ INT4 (AutoAWQ) |
 | **LLM 서빙** | vLLM (PagedAttention) |
+| **오케스트레이션** | LangGraph 기반 decision runtime |
 | **임베딩** | multilingual-e5-large (1024차원) |
 | **벡터 검색** | FAISS (IndexFlatIP) + BM25 하이브리드 |
 | **백엔드** | FastAPI + Pydantic + SQLAlchemy |
-| **프론트엔드** | React / Next.js + TypeScript |
+| **클라이언트** | Python package entrypoint + interactive shell |
 | **컨테이너** | Docker Compose + NVIDIA Container Toolkit |
 | **CI/CD** | GitHub Actions (CI, Docker Publish, Offline Package) |
 | **모니터링** | DORA Metrics + Grafana Cloud |

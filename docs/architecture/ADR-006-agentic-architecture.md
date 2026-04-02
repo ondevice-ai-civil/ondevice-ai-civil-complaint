@@ -1,143 +1,146 @@
-# ADR-006: 3-Tier Agentic Architecture & Multi-LoRA Serving for GovOn
+# ADR-006: GovOn Shell-First Agentic Architecture for First Release
 
 ## Status
 Accepted
 
+## Date
+2026-04-02
+
 ## Context
-GovOn은 기존에 단일 방향의 정적 파이프라인(민원 입력 -> LLM 추론 -> 답변 반환)으로 구축되었습니다. 하지만, 사용자의 요구사항이 복잡해지고(유사 사례 검색, 외부 API를 통한 통계 확인, 공문서 자동 초안 작성 등), 다양한 도구(Tools)의 연동이 필수적이게 되었습니다. 기존 구조로는 이러한 도구들을 유연하게 조합하여 자율적으로 목표를 달성하는 "에이전트(Agent)"로서의 기능을 수행하기 어렵습니다. 따라서 전체 아키텍처를 유연하고 확장 가능한 에이전트 기반 구조로 재설계해야 합니다.
 
-또한, 뇌(Brain) 역할을 하는 모델은 "도구 호출(Tool Calling)"에 최적화되어야 하고, 손과 발(Tools) 역할을 하는 문서 생성 모델은 "민원 답변"이나 "공문서 포맷팅"에 최적화되어야 합니다. 이 이질적인 능력들을 하나의 모델에 모두 파인튜닝(Mixed Training)할 경우 파국적 망각(Catastrophic Forgetting)이 발생할 확률이 높습니다. 하지만 보급형 GPU(RTX 3060급) 환경의 온프레미스 제약상 여러 개의 무거운 독립 모델을 동시에 띄우는 것은 VRAM(OOM 리스크) 및 지연 시간 측면에서 불가능합니다.
+GovOn은 현재 FastAPI 기반 추론 API, vLLM 서빙, RAG 검색, 패키징 자산을 이미 보유하고 있다. 그러나 기존 문서는 첫 릴리즈의 사용자 표면을 `웹 UI/사이드바`로 설명하고, 에이전트 프레임워크도 `Smolagents Phase 1 -> LangGraph Phase 2`로 분리해 설명하고 있었다.
 
-### 참고: 에이전트 프레임워크 선택 (Discussion #403)
+이 구조는 현재 팀의 릴리즈 결정과 충돌한다.
 
-[Discussion #403: 에이전틱 AI 시스템 기술 검토](../../discussions/403)에서 EXAONE-Deep-7.8B의 네이티브 tool calling 미지원 제약을 분석한 결과, 다음과 같은 기술 선택이 이루어졌습니다:
+- 첫 릴리즈의 제품 표면은 `govon` 명령으로 진입하는 대화형 셸이다.
+- 첫 릴리즈 안에 graph-based decision framework를 포함한다.
+- LLM이 무작정 tool을 호출하지 않도록 state, guardrail, checkpoint, recovery를 런타임 기본 기능으로 둔다.
+- 웹/앱 UI는 같은 런타임 위에 추가되는 후속 표면이며, R1의 주제품이 아니다.
 
-- **Phase 1**: Smolagents 우선 도입 (코드 에이전트 방식, 네이티브 tool calling 불필요)
-- **Phase 2**: EXAONE 4.0 도입 시 LangGraph 전환 (네이티브 tool calling 활용)
-
-이 ADR은 위 의사결정을 Architecture 레벨에서 구체화합니다.
+따라서 첫 릴리즈 기준의 아키텍처를 `GovOn Agentic Shell + LangGraph-based decision framework`로 재정의해야 한다.
 
 ## Decision
-시스템을 **3-Tier Agentic Architecture (3계층 에이전틱 아키텍처)**와 **Multi-LoRA 서빙 아키텍처**를 결합하여 전면 개편합니다.
-이 아키텍처는 사람의 역할과 AI의 인지/행동 역할을 명확히 분리하며, 다음과 같은 3가지 핵심 구성요소로 이루어집니다.
 
-### 1. 3계층 역할 분리
-1. **Human (UI 계층 - 인간)**
-   - **역할**: 사용자가 지시(명령)를 내리고 결과를 확인하며 상호작용하는 창구입니다.
-   - **구현**: React/Next.js 기반의 에이전트 사이드바 및 메인 화면. 멀티턴 대화를 통해 의도를 명확히 전달하고, 스트리밍된 응답을 받습니다.
+### 1. 첫 릴리즈 제품 표면은 Shell-First로 고정한다
 
-2. **Brain (Query Engine / Orchestrator 계층 - 뇌)**
-   - **역할**: 사용자의 의도를 분석하고, 목표 달성을 위해 어떤 도구를 사용할지 결정(Planning & Routing)하는 제어 센터입니다.
-   - **구현**: FastAPI 백엔드가 사용자의 메시지를 받아 사용 가능한 도구 목록(JSON Schema)과 함께 프롬프트를 구성하고, 도구 호출 여부(Tool Calling)를 판단합니다. 도구 실행 결과를 취합하여 최종적인 자연어 응답을 합성(Synthesis)합니다.
+R1의 사용자 진입점은 웹 사이드바가 아니라 터미널에서 실행하는 `govon` 셸이다.
 
-3. **Hands and Feet (Tools 계층 - 손과 발)**
-   - **역할**: 뇌(Query Engine)의 지시에 따라 실제로 물리적/논리적 작업을 수행하는 실행 장치들입니다.
-   - **구현**:
-     - **민원답변 생성 기능**: 자체 파인튜닝된 지식을 바탕으로 문서 초안 생성.
-     - **공문서 생성 기능**: 보도자료, 연설문 등 공공 문서 초안을 생성하는 내부 로직.
-     - **유사 사례 검색 (RAG)**: FAISS 벡터 DB를 활용한 내부 매뉴얼 및 과거 민원 이력 검색.
-     - **외부 API 연동**: 공공데이터포털 등의 실시간 외부 민원 통계/사례 조회.
+- 사용자는 설치 후 shell/bash에서 `govon` 명령으로 세션을 시작한다.
+- 공무원은 기존 행정 시스템을 유지한 채 GovOn 셸을 독립형 업무 어시스턴트로 병행 사용한다.
+- 웹/앱 UI는 동일한 런타임을 재사용하는 후속 표면으로 취급한다.
 
-### 2. Multi-LoRA 동적 서빙 (vLLM)
-보급형 GPU 제약을 극복하고 전문성을 유지하기 위해 물리적인 다중 모델 배포 대신 **논리적인 어댑터 교체 방식**을 채택합니다.
-- **Base Model (메모리 상주)**: `EXAONE-Deep-7.8B-AWQ` (GPU VRAM에 1번만 로드, 약 5GB)
-- **Adapter 1 (Brain 용)**: Tool-Calling 최적화 LoRA
-- **Adapter 2 (Tool 용)**: 민원 답변 생성 최적화 LoRA
-- **Adapter 3 (Tool 용)**: 공문서 생성(보도자료 등) 최적화 LoRA
+### 2. 런타임의 핵심은 LangGraph 기반 상태 그래프다
 
-**작동 흐름 (Orchestrator Loop)**:
-FastAPI 백엔드(Orchestrator)가 추론 단계(Intent 파악 vs 문서 생성)에 맞춰 vLLM 서버에 `lora_request` 파라미터를 동적으로 스위칭하며 API를 호출합니다. 베이스 모델은 고정된 상태에서 수십 MB 크기의 어댑터 연산만 교체되므로 속도 저하(스와핑) 없이 고품질의 결과물을 얻을 수 있습니다.
+R1 런타임은 LangGraph 또는 동급의 graph runtime을 사용해 다음을 명시적으로 관리한다.
 
-### 3. 에이전트 프레임워크 (Phase별 전략)
+- 세션 상태
+- 사용자 의도와 route 결정
+- tool eligibility와 입력 검증
+- tool 실행 결과와 citations
+- draft 생성과 합성
+- checkpoint, retry, recovery
+- audit trace
 
-**Problem**: EXAONE-Deep-7.8B은 추론 특화 모델로 네이티브 function calling / tool calling을 지원하지 않습니다. 기존 프롬프트 엔지니어링 + JSON 파싱 방식은 구조화된 도구 호출의 안정성과 확장성에 한계가 있습니다.
+이 decision layer는 단순한 `LLM -> tool -> LLM` 루프가 아니라, 상태 전이와 중단 지점을 가진 agentic runtime이어야 한다.
 
-**Decision**:
+### 3. R1 아키텍처는 5개 계층으로 구성한다
 
-#### Phase 1: Smolagents 기반 코드 에이전트 (현재 → M3)
-- **프레임워크**: `smolagents[vllm] >= 1.11.0` (HuggingFace 공식, ~1,000줄 경량 코어)
-- **모델 연결**: EXAONE-Deep-7.8B를 vLLM OpenAI-compatible 엔드포인트(`/v1/chat/completions`)를 통해 Smolagents `OpenAIServerModel`로 래핑
-- **의도 파악**: Smolagents `ToolCallingAgent` 또는 `CodeAgent`가 User query → Tool 의도 결정 (JSON 함수 호출 불필요)
-- **Architecture 매핑**:
-  - **Brain (Query Engine)**: Smolagents Agent (Planning → Tool Selection → Execution → Synthesis)
-  - **Hands and Feet (Tools)**: 4개 `@tool` 데코레이터 (search_similar_cases, search_civil_complaints, generate_civil_reply, draft_public_document)
-  - **FastAPI Backend**: I/O Adapter + 세션 영속성 + 컨텍스트 윈도우 관리
-- **Milestone**: M3 (완료 대상)
+#### 3.1 User Surface
+- `govon` interactive shell
+- 자유 입력, 멀티라인 붙여넣기, slash commands
+- 스트리밍 응답, sources 확인, 세션 재개
 
-#### Phase 2: LangGraph 기반 상태 머신 (선택적, EXAONE 4.0 이후)
-- **트리거 조건**: EXAONE 4.0 라우터 모델 도입 + 네이티브 tool calling 검증 완료
-- **프레임워크**: `langgraph` + `langchain-openai`
-- **모델 연결**: EXAONE 4.0을 ChatOpenAI-compatible 엔드포인트로 연결
-- **의도 파악**: 네이티브 `tool_choice="auto"` 기반 (Smolagents 코드 에이전트 불필요)
-- **이점**:
-  - 체크포인팅 (실행 중단 후 재개)
-  - Human-in-the-loop (승인 필요 작업 지원)
-  - 더 정교한 상태 관리
-- **마이그레이션**: `docs/architecture/MIGRATION-smolagents-to-langgraph.md` 참고
-- **Milestone**: TBD (미정)
+#### 3.2 Runtime Adapter
+- FastAPI 기반 API 계층
+- shell client와 decision graph 사이의 I/O 어댑터
+- 스트리밍, 요청 검증, 환경 상태, 세션 식별자 처리
 
-**책임 경계**:
-| 계층 | 기술 | 책임 | 소유자 |
-|------|------|------|-------|
-| **I/O Adapter** | FastAPI 미들웨어 | HTTP 요청/응답 | backend/api_server.py |
-| **Reasoning Engine** | Smolagents Agent | 의도 파악 → Tool 선택 | backend/agent/orchestrator.py |
-| **Tools** | @tool 데코레이터 | 개별 Tool 구현 | backend/inference/tools/ |
-| **Session Management** | SQLAlchemy ORM | 대화 이력 영속성, Context Window 관리 | backend/db/ |
-| **Serving** | vLLM Multi-LoRA | 모델 추론 + LoRA 동적 스위칭 | vllm_server (별도 프로세스) |
+#### 3.3 Decision Graph
+- LangGraph state machine
+- route 결정: `no-tool`, `search-first`, `search-then-draft`, `ask-back`, `retry`, `fallback`
+- guardrail: 불필요한 tool 호출 억제, 입력 부족 시 재질문, 실패 시 복구 규칙 적용
+
+#### 3.4 Tooling and Model Execution
+- 표준 tool interface로 래핑된 검색/외부 API/초안 생성 action
+- vLLM OpenAI-compatible endpoint에 연결되는 model adapter
+- 필요 시 문서 유형 또는 태스크별 모델 프로필/LoRA 프로필 선택
+
+#### 3.5 Persistence
+- session transcript
+- graph checkpoint store
+- audit log / execution trace
+- recovery metadata
+
+### 4. Graph state를 R1의 공통 계약으로 사용한다
+
+다음 정보는 graph state 또는 연결된 persistence 계층에서 일관되게 유지한다.
+
+- `session_id`
+- `messages`
+- `user_intent`
+- `selected_route`
+- `eligible_tools`
+- `tool_inputs`
+- `tool_results`
+- `citations`
+- `draft_candidates`
+- `final_response`
+- `checkpoint_id`
+- `audit_trace`
+- `error_state`
+
+이 state schema는 shell, runtime, testing, recovery 문서가 공유하는 공통 용어 집합이다.
+
+### 5. Tool 호출은 "의사결정 이후"에만 허용한다
+
+모든 요청은 먼저 decision node를 통과해야 한다.
+
+- 단순 안내/설명 요청이면 `no-tool`
+- 사실 근거가 필요하면 `search-first`
+- 검색 근거를 바탕으로 답변 초안이 필요하면 `search-then-draft`
+- 입력이 부족하거나 모호하면 `ask-back`
+- 실패 시 `retry` 또는 `fallback`
+
+즉, tool 호출은 LLM의 자유 행동이 아니라 policy와 state에 의해 제약되는 실행 단계다.
+
+### 6. Checkpoint와 recovery를 R1 기본 기능으로 포함한다
+
+각 주요 graph node 실행 후 checkpoint를 저장한다.
+
+- 세션 재개
+- 특정 node부터 재시도
+- tool failure 이후 fallback
+- human-in-the-loop 승인 또는 확인
+
+이 기능은 R2가 아니라 R1 agentic runtime의 일부로 정의한다.
+
+### 7. 웹/앱 UI는 동일한 런타임 위에 올린다
+
+향후 웹 사이드 패널 또는 데스크톱 앱을 도입하더라도 orchestration은 별도로 만들지 않는다.
+
+- shell과 웹은 동일한 decision graph와 tool layer를 공유한다.
+- 표면만 달라지고, 세션/도구/정책/감사 로그는 같은 런타임 계약을 사용한다.
 
 ## Consequences
-**장점 (What becomes easier)**:
-- **전문성 유지 (No Catastrophic Forgetting)**: Tool-Calling 능력과 도메인 지식(공문서 양식)이 섞이지 않아 양쪽 모두의 품질이 보장됩니다.
-- **인프라 제약 극복**: RTX 3060 등 VRAM이 제한적인 보급형 GPU 환경에서도 '에이전틱 구조 + 다중 전문가 모델' 효과를 완벽하게 낼 수 있습니다.
-- **확장성 및 유지보수성**: 새로운 문서 양식(예: 회의록)이 추가되어도 베이스 모델 재학습 없이 작은 LoRA 어댑터 1개만 추가 학습하여 서빙에 끼워넣으면 됩니다.
-- **Smolagents 경량성**: 코어 로직이 ~1,000줄의 미니말한 코드로 구성되어, 디버깅과 커스터마이제이션이 용이
-- **프레임워크 독립성**: Tool 인터페이스가 Smolagents-specific하지 않아, LangGraph로의 마이그레이션이 명확함
-- **폐쇄망 호환성**: 네이티브 API 호출 없이 로컬 vLLM 엔드포인트만으로 작동
 
-**단점 (What becomes harder)**:
-- **복잡한 MLOps 파이프라인**: 거대한 1개의 데이터셋이 아닌, 목적에 맞게 정제된 3개의 데이터셋을 유지 관리하고 3번의 파인튜닝 스크립트를 관리해야 합니다.
-- **백엔드 로직 고도화**: FastAPI 백엔드가 단순 프롬프트 전달을 넘어, 현재 컨텍스트에 맞는 적절한 `lora_name`을 동적으로 라우팅하는 로직을 완벽하게 처리해야 합니다.
-- **vLLM 설정 관리**: vLLM 서버 실행 시 `--enable-lora` 설정과 여러 LoRA 어댑터 경로를 명시하는 인프라 구성이 추가됩니다.
-- **Smolagents 제약사항**: 체크포인팅과 Human-in-the-loop을 직접 구현해야 함 (LangGraph의 네이티브 기능 부재)
-- **프레임워크 전환 비용**: Phase 1(Smolagents)에서 Phase 2(LangGraph)로 전환 시, `@tool` → `BaseTool` 마이그레이션 + Agent 아키텍처 재설계 필요
-- **모델 버전 의존성**: EXAONE 4.0 도입을 Phase 2 전환의 선행 조건으로 명확히 해야 함
+### 장점
 
-#### LoRA 어댑터 레지스트리
+- 첫 릴리즈 정의와 아키텍처 문서가 일치한다.
+- agentic runtime의 핵심 가치인 guardrail, checkpoint, recovery를 초기에 확보할 수 있다.
+- shell, 테스트, 후속 UI가 동일한 orchestration spine을 공유한다.
+- tool layer와 model adapter가 분리되어 유지보수와 교체가 쉬워진다.
+- 세션/감사 로그/재시도 흐름을 운영 요구사항으로 명확히 다룰 수 있다.
 
-3개의 LoRA 어댑터 메타데이터와 경로를 관리하기 위해 `config/lora_adapters.yaml` 파일을 정의합니다.
+### 단점
 
-**파일 포맷** (`config/lora_adapters.yaml`):
-```yaml
-adapters:
-  - name: "adapter_brain"
-    path: "/path/to/model_brain_lora_weights"
-    target_module: "q_proj,v_proj"  # QLoRA 대상 모듈
-    task: "intent_classification"
-    eval_metric: "json_accuracy"
-    eval_score: 0.92
-    created_at: "2026-03-15T10:30:00Z"
-    
-  - name: "adapter_civil"
-    path: "/path/to/model_civil_lora_weights"
-    target_module: "q_proj,v_proj"
-    task: "civil_complaint_reply"
-    eval_metric: "rouge_l"
-    eval_score: 0.47
-    created_at: "2026-03-20T14:45:00Z"
-    
-  - name: "adapter_public_doc"
-    path: "/path/to/model_public_doc_lora_weights"
-    target_module: "q_proj,v_proj"
-    task: "public_document_drafting"
-    eval_metric: "format_accuracy"
-    eval_score: 0.88
-    created_at: "2026-03-25T09:15:00Z"
-```
+- 단순 API 래핑보다 런타임 구조가 복잡해진다.
+- state schema, checkpoint 저장소, tool policy를 함께 설계해야 한다.
+- shell-first 제품이라 초기 사용자층이 웹 UI보다 제한적일 수 있다.
+- 문서, 테스트, 런타임 구현이 같은 계약을 따라야 하므로 정합성 비용이 높다.
 
-**사용처**:
-- vLLM 시작 시: `--lora-modules` 파라미터 자동 생성 (Task 2.1)
-- Smolagents Agent 초기화: 사용 가능한 어댑터 목록 로드 (Task 2.3)
-- Tool 구현: 특정 LoRA 어댑터 동적 선택 (Task 3.4, 9.2)
-- 모니터링: WandB/Prometheus 메트릭 스크래핑
+## Implementation Notes
 
-**책임**: I-1 Task 1.3에서 생성, I-2 Task 2.1에서 참조
+- 모델 실행은 vLLM OpenAI-compatible endpoint와 adapter 계층을 통해 연결한다.
+- 검색, 민원분석, 초안 생성 기능은 framework-specific decorator가 아니라 표준 tool interface로 노출한다.
+- shell client는 runtime API를 직접 호출하되, 내부 orchestration 세부 구현에 결합되지 않는다.
+- 문서 기준 canonical workstream은 `#406`, `#407`, `#409`, `#410`, `#415`, `#416`, `#417`, `#418`이다.

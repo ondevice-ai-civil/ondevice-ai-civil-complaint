@@ -1,168 +1,250 @@
-# WORKFLOW: Agent Orchestrator & Tool Calling
-**Version**: 2.0
-**Date**: 2026-04-01
-**Author**: Workflow Architect
-**Status**: Active (Smolagents Phase 1 기반)
-**Implements**: GovOn Orchestrator Upgrade with Smolagents Agent (vs v1.1의 Custom Orchestrator)
+# WORKFLOW: GovOn Agentic Shell Runtime
+
+**Version**: 3.0
+**Date**: 2026-04-02
+**Status**: Active Target for R1
+**Implements**: GovOn Agentic Shell + graph-based decision framework
 
 ## Overview
-This workflow defines the end-to-end execution path for the newly upgraded GovOn conversational AI system. When a public official sends a message, the system uses an LLM Orchestrator to determine the user's intent. If external data is needed, it calls the appropriate tool (Local RAG or Civil Complaint Analysis API). If the intent is to draft a public document (e.g., press release, speech), the LLM utilizes its fine-tuned knowledge (trained on the Ministry of the Interior and Safety Public Doc dataset) to generate the draft natively without an external API call at runtime.
 
-최종 자연어 응답을 합성(Synthesis)합니다.
+이 워크플로우는 첫 릴리즈에서 공무원이 `govon` 셸을 통해 민원성 질의, 유사 사례 검색, 답변 초안 생성을 수행하는 기본 실행 경로를 정의한다.
 
-### Phase 기술 선택
+핵심 원칙은 다음과 같다.
 
-이 워크플로우는 **Smolagents Phase 1** 기반으로 설계되었습니다.
-- EXAONE-Deep-7.8B의 네이티브 tool calling 미지원 제약을 극복하기 위해 Smolagents의 코드 에이전트 방식 채택
-- 향후 EXAONE 4.0 도입 시 LangGraph로 전환할 수 있도록 설계 (상세: `docs/architecture/ADR-006-agentic-architecture.md` 참고)
+- 모든 요청은 먼저 decision graph를 통과한다.
+- tool 호출은 필요성이 확인된 뒤에만 실행한다.
+- 세션, checkpoint, audit trace를 turn 단위로 유지한다.
+- 실패 시 바로 중단하지 않고 retry, fallback, ask-back 중 하나로 복구한다.
 
 ## Actors
-| Actor | Role in this workflow |
+
+| Actor | Role |
 |---|---|
-| Public Official (Customer) | Initiates the action via the Web UI Chat Sidebar |
-| FastAPI Backend | Validates requests, manages conversation state, and orchestrates the LLM/Tools |
-| LLM Engine (vLLM + Smolagents) | Smolagents ToolCallingAgent는 vLLM의 OpenAI-compatible 엔드포인트를 활용하여 의도 분류, 도구 호출 결정, 응답 생성. Brain LoRA (`adapter_brain`)을 사용해 Tool-Calling 최적화. |
-| Smolagents Agent | ToolCallingAgent 또는 CodeAgent로서, 사용자 쿼리를 분석하고 사용 가능한 Tool 목록(JSON Schema)을 참고해 실행할 Tool을 선택. 재시도 로직과 에러 핸들링 포함. |
-| Tool: Local RAG (FAISS) | Retrieves internal civil complaint histories and manuals |
-| Tool: Civil Complaint API | External API (`apis.data.go.kr/1140100/minAnalsInfoView5`) for real-time similar cases and statistics |
+| Public Official | 기존 행정 시스템과 병행하여 GovOn 셸에 질의를 입력 |
+| GovOn Shell Client | 입력 수집, 스트리밍 표시, slash command, 세션 재개 |
+| FastAPI Runtime Adapter | 요청 검증, stream 처리, graph runtime 호출 |
+| LangGraph Decision Runtime | state 기반 route 결정, tool orchestration, synthesis |
+| Tool Nodes | RAG 검색, 민원분석 API, 초안 생성 action |
+| Persistence Layer | transcript, checkpoint, audit log 저장 |
 
 ## Prerequisites
-- vLLM serving the EXAONE-Deep-7.8B model with Multi-LoRA enabled is healthy.
-- Smolagents `smolagents[vllm] >= 1.11.0` 설치 필수
-- EXAONE-Deep-7.8B를 vLLM의 `/v1/chat/completions` 엔드포인트로 서빙 중
-- 4개 Tool (@tool 데코레이터)이 `src/inference/tools/` 디렉토리에 등록되어 있음
-- FastAPI 애플리케이션이 Smolagents Agent를 초기화한 상태
-- Conversation history database (SQLAlchemy ORM) operational
-- External API Keys (Data.go.kr) configured in `.env`
+
+- `govon` shell client가 설치되어 있다.
+- FastAPI runtime이 실행 중이다.
+- vLLM 또는 호환 모델 endpoint가 응답 가능하다.
+- 표준 tool registry에 검색/민원분석/초안 생성 action이 등록되어 있다.
+- session store와 checkpoint store가 사용 가능하다.
+- 외부 API가 필요한 경우 기관 환경변수가 설정되어 있다.
 
 ## Trigger
-User submits a message through the chat input in the `PG-001` Main Screen.
-**Entry point**: `POST /api/v1/chat/message` (or WebSocket equivalent).
 
----
+사용자가 shell/bash에서 `govon`을 실행하고 질의를 제출한다.
 
-## Workflow Tree
+예시 입력:
 
-### STEP 1: Message Validation & Context Assembly
-**Actor**: FastAPI Backend
-**Action**: Receives user message, retrieves conversation history, and formats the system prompt with available tool schemas (JSON Schema).
-**Timeout**: 2s
-**Input**: `{ "session_id": "uuid", "message": "국토부 도로 공사 보도자료 초안 써줘" }`
-**Output on SUCCESS**: `{ "context": [...history, new_msg], "tools": [...] }` -> GO TO STEP 2
-**Output on FAILURE**:
-  - `FAILURE(validation_error)`: Invalid session or empty message -> return 400.
-
-**Observable states during this step**:
-  - Customer sees: `TypingIndicator` (Loading spinner)
-
-### STEP 2: Intent & Tool Selection (Smolagents Agent 의도 파악)
-
-**Actor**: Smolagents ToolCallingAgent
-
-**Action**: FastAPI 백엔드가 사용자 메시지와 대화 이력을 Smolagents Agent에 전달합니다. Agent는 다음을 수행합니다:
-1. `agent.run(user_input)` 호출 -> 내부적으로 vLLM의 OpenAI-compatible API를 사용하여 Brain LoRA (`lora_request="adapter_brain"`)로 추론
-2. Tool 목록(4개 @tool의 JSON Schema)을 분석해 실행할 Tool 결정
-3. Tool 의도가 감지되면 Tool 이름과 파라미터를 JSON 형식으로 결정
-4. Tool 의도가 없으면 (일반 대화) 직접 텍스트 응답 생성 후 반환
-
-**Timeout**: 5s (vLLM 추론 + Agent 의사결정)
-
-**Output on SUCCESS**:
-  - IF `Tool Call`: `{ "tool_name": "search_civil_complaints", "args": {...} }` -> GO TO STEP 3
-  - IF `Drafting Document Task`: `{ "tool_name": "draft_public_doc", "args": {"type": "press_release"} }` -> GO TO STEP 4
-  - IF `Direct Response`: `{ "type": "text", "content": "안녕하세요! ..." }` -> GO TO STEP 5
-
-**Output on FAILURE**:
-  - `FAILURE(generation_error)`: Agent가 유효한 Tool 호출이나 텍스트를 생성하지 못함 -> GO TO ABORT_CLEANUP
-  - `FAILURE(timeout)`: vLLM 추론 5초 초과 -> GO TO ABORT_CLEANUP
-
-**Observable states during this step**:
-  - Customer sees: `TypingIndicator` (기존과 동일)
-  - Backend logs: Agent의 Tool 선택 로직 (debug mode)
-
-### STEP 3: Non-Drafting Tool Execution (Data Fetching)
-**Actor**: FastAPI Backend
-**Action**: Routes the execution to the specific data-fetching tool handler based on STEP 2 output.
-
-더 구체적으로, Smolagents Agent가 Tool 호출을 결정하면, FastAPI는 다음을 수행합니다:
-1. Agent의 Tool 호출 결과를 파싱
-2. 실제 Tool 함수(`src/inference/tools/` 디렉토리)를 동기/비동기로 실행
-3. Tool 반환값(str 또는 dict)을 정규화해서 Agent에 피드백 -> Agent가 다음 Step으로 진행
-
-**Timeout**: 10s
-**Branches**:
-  - **Branch 3A: Local RAG (FAISS)**
-    - Queries the local vector DB for internal manuals.
-  - **Branch 3B: Civil Complaint Analysis API**
-    - Calls `apis.data.go.kr/1140100/minAnalsInfoView5` API for similar cases, trending keywords.
-**Output on SUCCESS**: `{ "tool_result": "Raw data or summarized JSON" }` -> GO TO STEP 4
-**Output on FAILURE**:
-  - `FAILURE(api_timeout)`: External API times out -> [recovery: Return graceful error context to LLM: "Tool API timed out"] -> GO TO STEP 4
-
-**Observable states during this step**:
-  - Customer sees: UI updates to show `Tool execution in progress... (e.g., "민원분석 API 조회 중...")`
-
-### STEP 4: Final Synthesis & Drafting (LLM 응답 생성)
-
-**Actor**: Smolagents Agent (또는 FastAPI 백엔드)
-
-**Action**: STEP 3의 Tool 결과를 포함해서 최종 응답을 생성합니다:
-- Tool 결과가 있다면: Agent는 Tool 결과를 컨텍스트에 추가하고, 적절한 LoRA 어댑터를 선택해서 최종 응답 생성
-  - 민원 답변 Task: `lora_request="adapter_civil"` 사용
-  - 공문서 생성 Task: `lora_request="adapter_public_doc"` 사용
-- Tool 결과가 없다면 (STEP 2에서 직접 응답): Agent가 이미 텍스트를 생성했으므로 이 Step 스킵
-
-**Timeout**: 10s (LoRA 스위칭 + vLLM 추론)
-
-**Output on SUCCESS**: Streaming text chunks `"...final response..."` -> GO TO STEP 5
-
-### STEP 5: Response Delivery & State Persistence
-**Actor**: FastAPI Backend
-**Action**: Streams the final response to the Frontend and saves the updated conversation history to the database.
-**Output on SUCCESS**: HTTP 200 OK (Stream closed), DB updated.
-**What customer sees**: Full text response or official document draft (with HTML tables/images) is rendered in the chat UI.
-
-### ABORT_CLEANUP: Error Handling
-**Triggered by**: LLM failure, Smolagents Agent failure, unrecoverable system error.
-**Actions**:
-  1. Save error state to conversation log.
-  2. Send standard error message to Frontend.
-**What customer sees**: Error message bubble in UI with a "Retry" button.
-
----
-
-## State Transitions
 ```text
-[idle]
-  -> (User sends message)
-  -> [agent_reasoning] (Smolagents Agent 실행)
-    -> (Tool 의도 감지) -> [executing_tool]
-    -> (직접 응답) -> [streaming_response]
-  [executing_tool]
-    -> (Tool 완료)
-    -> [agent_synthesis] (Agent가 최종 응답 생성)
-    -> [streaming_response]
-  [streaming_response]
-    -> (Done)
-    -> [idle]
+민원 내용 붙여넣기:
+"아파트 단지 앞 도로 포트홀 보수 지연에 대한 민원이 반복 접수되고 있습니다..."
 ```
 
-## Handoff Contracts
+## State Graph
 
-### [Backend] -> [Civil Complaint API]
-**Endpoint**: `GET apis.data.go.kr/1140100/minAnalsInfoView5`
-**Payload**: `serviceKey`, `searchKeyword`, `target` (similar cases)
-**Success response**: JSON containing similar complaint cases, keywords.
-**Timeout**: 10s
-**On Failure**: Do not crash user request. Pass `{"error": "API failed"}` to Step 4 so LLM can apologize.
+기본 실행 상태는 다음과 같다.
+
+```text
+[session_bootstrap]
+  -> [input_normalize]
+  -> [decision]
+    -> [no_tool_response]
+    -> [search]
+    -> [search_then_draft]
+    -> [ask_back]
+    -> [fallback]
+  -> [synthesis]
+  -> [stream_response]
+  -> [persist]
+  -> [idle]
+```
+
+각 주요 node 이후에는 checkpoint를 저장한다.
+
+## Workflow Steps
+
+### STEP 0: Session Bootstrap
+
+**Actor**: GovOn Shell Client + Persistence Layer
+
+**Action**:
+- 새 세션을 만들거나 기존 세션을 재개한다.
+- 최근 transcript, draft 후보, checkpoint 메타데이터를 로드한다.
+
+**Output**:
+- `session_id`
+- `session_context`
+- `last_checkpoint` (있다면)
+
+### STEP 1: Input Normalize and Policy Precheck
+
+**Actor**: FastAPI Runtime Adapter
+
+**Action**:
+- 빈 입력, 과도한 길이, 기본 금지 패턴을 검증한다.
+- slash command 여부를 해석한다.
+- 일반 질의인 경우 graph runtime에 넘길 `normalized_input`을 만든다.
+
+**Failure / Recovery**:
+- validation error면 shell에 구조화된 오류를 반환한다.
+- slash command면 해당 제어 흐름으로 바로 전환한다.
+
+### STEP 2: Decision Node
+
+**Actor**: LangGraph Decision Runtime
+
+**Action**:
+- 현재 세션 상태와 사용자 입력을 바탕으로 다음 route 중 하나를 선택한다.
+
+**Available routes**:
+- `no-tool`: 일반 설명, 정책 안내, 간단한 재작성
+- `search-first`: 사실 근거 또는 유사 사례가 먼저 필요한 요청
+- `search-then-draft`: 검색 근거를 바탕으로 민원 답변/공문 초안까지 필요한 요청
+- `ask-back`: 입력이 부족하거나 범위가 불명확한 요청
+- `fallback`: tool 또는 모델 실패 이후 최소 안전 응답
+
+**Guardrails**:
+- 입력이 불충분하면 tool을 부르지 않고 `ask-back`
+- 동일 turn에서 중복 tool 반복 호출 금지
+- 빈 검색 결과에서는 근거 없는 draft 생성 금지
+- 외부 API 입력 스키마가 불완전하면 실행 차단
+
+### STEP 3A: No-Tool Response
+
+**Actor**: LangGraph Decision Runtime + Model Adapter
+
+**Action**:
+- tool 없이 직접 응답을 생성한다.
+- 정책 설명, 요약, 문체 수정, 간단한 후속 질문에 사용한다.
+
+**Output**:
+- `final_response`
+- `route = no-tool`
+
+### STEP 3B: Search-First
+
+**Actor**: Tool Nodes
+
+**Action**:
+- RAG 검색 또는 민원분석 API를 실행한다.
+- 결과를 `tool_results`, `citations` 필드에 정규화한다.
+
+**Failure / Recovery**:
+- 타임아웃이면 1회 재시도 후 실패 정보를 state에 저장한다.
+- 외부 API 실패 시 검색 가능한 내부 근거가 있으면 내부 근거만으로 계속 진행한다.
+- 둘 다 실패하면 `fallback`으로 전환한다.
+
+### STEP 3C: Search-Then-Draft
+
+**Actor**: Tool Nodes + Model Adapter
+
+**Action**:
+- 먼저 검색/분석 tool을 실행한다.
+- 검색 결과와 citations를 바탕으로 답변 초안 또는 공문 초안을 생성한다.
+- draft 결과를 `draft_candidates`에 저장한다.
+
+**Policy**:
+- draft는 검색 근거가 없으면 생성하지 않는다.
+- 근거 부족 시 `ask-back` 또는 `fallback`으로 내린다.
+
+### STEP 4: Synthesis
+
+**Actor**: LangGraph Decision Runtime
+
+**Action**:
+- tool 결과, citations, draft 후보를 하나의 사용자 응답으로 합성한다.
+- shell에서 바로 복사 가능한 최종본과 참고 근거를 분리한다.
+
+**Output shape**:
+- `final_response`
+- `sources`
+- `next_actions` (예: `/sources`, `/retry`, `/session resume`)
+
+### STEP 5: Stream Response
+
+**Actor**: FastAPI Runtime Adapter + GovOn Shell Client
+
+**Action**:
+- 응답을 스트리밍하거나 블록 단위로 출력한다.
+- shell은 최소한 다음 상태를 사용자에게 보여준다.
+  - `thinking`
+  - `searching`
+  - `drafting`
+  - `recovering`
+  - `done`
+
+### STEP 6: Persist and Checkpoint
+
+**Actor**: Persistence Layer
+
+**Action**:
+- transcript 저장
+- audit trace 저장
+- 현재 node 실행 결과 checkpoint 저장
+
+**Saved fields**:
+- `session_id`
+- `messages`
+- `selected_route`
+- `tool_results`
+- `citations`
+- `draft_candidates`
+- `final_response`
+- `checkpoint_id`
+- `error_state`
+
+### STEP 7: Recovery and Human-in-the-loop
+
+**Actor**: GovOn Shell Client + LangGraph Decision Runtime
+
+**Action**:
+- 실패한 node부터 재시도할 수 있다.
+- 사용자는 `/retry`, `/sources`, `/session resume` 같은 제어 명령을 사용할 수 있다.
+- 필요 시 사용자의 확인을 받아 다음 단계로 진행한다.
+
+**Typical cases**:
+- 외부 API 타임아웃 후 재시도
+- 검색 결과 부족으로 질문 보강 요청
+- 이전 checkpoint에서 세션 재개
+
+## Decision Table
+
+| User request pattern | Route | Notes |
+|---|---|---|
+| 간단한 설명, 요약, 문체 수정 | `no-tool` | 직접 응답 |
+| 근거가 필요한 사실성 질문 | `search-first` | citations 우선 |
+| 민원 답변/공문 초안 요청 | `search-then-draft` | 검색 후 초안 생성 |
+| 입력이 짧거나 모호함 | `ask-back` | 재질문 후 진행 |
+| tool 실패 또는 근거 부족 | `fallback` | 안전 응답 + 재시도 경로 제시 |
+
+## Shell Control Surface
+
+R1 셸은 최소한 다음 제어 흐름을 제공한다.
+
+- `/help`
+- `/sources`
+- `/retry`
+- `/session resume`
+- `/copy`
+- `/exit`
+
+이 명령은 별도의 제품 기능이 아니라 graph runtime의 상태 전이와 연결된 제어면이다.
 
 ## Test Cases
-| Test | Trigger | Expected behavior |
+
+| TC | Trigger | Expected behavior |
 |---|---|---|
-| TC-01: Direct Chat | "안녕" | Step 2 chooses No Tool. Step 5 returns greeting. |
-| TC-02: Public Doc Generation | "국토부 도로 공사 보도자료 초안 써줘" | Step 2 chooses No Tool. LLM drafts the document natively using its fine-tuned knowledge. Step 5 streams the draft. |
-| TC-03: Similar Case Search | "소음 민원 유사 사례 찾아봐" | Step 2 chooses `search_civil_complaints`. Step 3B calls API. Step 4 summarizes cases. |
-| TC-04: API Timeout Fallback | Step 3 external API takes >10s | LLM receives error context and tells user "현재 민원분석 API 연동 지연으로 조회할 수 없습니다." |
-| TC-05: Multi-tool 연쇄 호출 | "RAG로 유사 사례 찾은 후 민원분석 API로 통계 확인" | STEP 2에서 다중 Tool 의도 인식, STEP 3에서 순차 또는 병렬 실행, STEP 4에서 결과 통합 후 응답 |
-| TC-06: Tool 실패 후 Agent 대체 | STEP 3에서 Tool 타임아웃 (예: API 응답 10초 초과) | Smolagents가 Tool 실패 컨텍스트를 수신 -> STEP 4에서 "현재 조회 불가" 메시지 생성 (graceful degradation) |
-| TC-07: LoRA 스위칭 성능 | adapter_brain -> adapter_civil 전환 시 레이턴시 측정 | vLLM Multi-LoRA 동적 스위칭 < 1초 (GPU 벤치마크 기준) |
+| TC-01 | `govon` 실행 | 새 세션 또는 재개 가능한 세션 선택 |
+| TC-02 | 일반 설명 요청 | `no-tool` route로 직접 응답 |
+| TC-03 | 유사 민원 검색 요청 | `search-first` route로 citations 포함 응답 |
+| TC-04 | 답변 초안 요청 | `search-then-draft` route로 근거 + 초안 제공 |
+| TC-05 | 입력 부족 | `ask-back` route로 보강 질문 |
+| TC-06 | 외부 API 타임아웃 | retry 또는 fallback 후 세션 유지 |
+| TC-07 | 세션 재개 | checkpoint와 transcript를 불러와 후속 대화 가능 |

@@ -10,14 +10,18 @@ inputs:
     required: false
     default: 'true'
   extras:
-    description: 'Extra dependencies to install (e.g., --all-extras or --extra dev)'
+    description: 'Extra dependencies to install (e.g., --extra dev --extra inference)'
     required: false
-    default: '--all-extras'
+    default: ''
+  sync-flags:
+    description: 'Additional uv sync flags (e.g., --frozen)'
+    required: false
+    default: '--frozen'
 runs:
   using: 'composite'
   steps:
     - name: Install uv
-      uses: astral-sh/setup-uv@v5
+      uses: astral-sh/setup-uv@v7
       with:
         enable-cache: ${{ inputs.uv-cache }}
         cache-dependency-glob: "uv.lock"
@@ -26,4 +30,4 @@ runs:
       run: uv python install ${{ inputs.python-version }}
     - name: Install dependencies
       shell: bash
-      run: uv sync ${{ inputs.extras }}
+      run: uv sync ${{ inputs.sync-flags }} ${{ inputs.extras }}

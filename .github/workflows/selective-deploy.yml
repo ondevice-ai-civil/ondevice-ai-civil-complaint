@@ -27,7 +27,9 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       src: ${{ steps.filter.outputs.src }}
+      python_deps: ${{ steps.filter.outputs.python_deps }}
       docker: ${{ steps.filter.outputs.docker }}
+      docker_ci: ${{ steps.filter.outputs.docker_ci }}
       workflows: ${{ steps.filter.outputs.workflows }}
       tests: ${{ steps.filter.outputs.tests }}
       docs: ${{ steps.filter.outputs.docs }}
@@ -40,14 +42,24 @@ jobs:
           filters: |
             src:
               - 'src/**'
+              - 'agents/**'
+            python_deps:
               - 'pyproject.toml'
               - 'uv.lock'
             docker:
               - 'Dockerfile'
               - 'docker-compose*.yml'
               - '.dockerignore'
+              - 'requirements.txt'
+            docker_ci:
+              - '.github/workflows/selective-deploy.yml'
+              - '.github/workflows/docker-publish.yml'
+              - '.github/scripts/smoke_test_container.sh'
+              - '.github/scripts/free_runner_disk_space.sh'
             workflows:
-              - '.github/**'
+              - '.github/workflows/**'
+              - '.github/actions/**'
+              - '.github/scripts/run_inference_ci.sh'
             tests:
               - 'tests/**'
             docs:
@@ -61,7 +73,9 @@ jobs:
           echo "| Category | Changed |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|---------|" >> $GITHUB_STEP_SUMMARY
           echo "| src | \`${{ steps.filter.outputs.src }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| python_deps | \`${{ steps.filter.outputs.python_deps }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| docker | \`${{ steps.filter.outputs.docker }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| docker_ci | \`${{ steps.filter.outputs.docker_ci }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| workflows | \`${{ steps.filter.outputs.workflows }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| tests | \`${{ steps.filter.outputs.tests }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| docs | \`${{ steps.filter.outputs.docs }}\` |" >> $GITHUB_STEP_SUMMARY
@@ -73,6 +87,7 @@ jobs:
     needs: detect-changes
     if: >-
       needs.detect-changes.outputs.src == 'true' ||
+      needs.detect-changes.outputs.python_deps == 'true' ||
       needs.detect-changes.outputs.tests == 'true' ||
       needs.detect-changes.outputs.workflows == 'true'
     runs-on: ubuntu-latest
@@ -87,6 +102,7 @@ jobs:
         uses: ./.github/actions/setup-python-uv
         with:
           python-version: ${{ matrix.python-version }}
+          extras: '--extra dev --extra inference --extra database'
 
       - name: Report trigger reason
         run: |
@@ -95,6 +111,9 @@ jobs:
           echo "**Triggered by:**" >> $GITHUB_STEP_SUMMARY
           if [ "${{ needs.detect-changes.outputs.src }}" = "true" ]; then
             echo "- \`src/\` changes" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "${{ needs.detect-changes.outputs.python_deps }}" = "true" ]; then
+            echo "- Python dependency manifest changes (\`pyproject.toml\`, \`uv.lock\`)" >> $GITHUB_STEP_SUMMARY
           fi
           if [ "${{ needs.detect-changes.outputs.tests }}" = "true" ]; then
             echo "- \`tests/\` changes" >> $GITHUB_STEP_SUMMARY
@@ -135,7 +154,8 @@ jobs:
   deploy-app:
     needs: [detect-changes, test-and-build]
     if: >-
-      needs.detect-changes.outputs.src == 'true' &&
+      (needs.detect-changes.outputs.src == 'true' ||
+       needs.detect-changes.outputs.python_deps == 'true') &&
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -152,7 +172,7 @@ jobs:
         run: |
           echo "### deploy-app" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Triggered by:** \`src/\` changes on push to main" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** application or Python dependency changes on push to main" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
 
@@ -181,7 +201,7 @@ jobs:
     if: >-
       (needs.detect-changes.outputs.docker == 'true' ||
        needs.detect-changes.outputs.src == 'true' ||
-       needs.detect-changes.outputs.workflows == 'true')
+       needs.detect-changes.outputs.docker_ci == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -192,14 +212,17 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Triggered by:**" >> $GITHUB_STEP_SUMMARY
           if [ "${{ needs.detect-changes.outputs.docker }}" = "true" ]; then
-            echo "- Docker file changes (Dockerfile, docker-compose, .dockerignore)" >> $GITHUB_STEP_SUMMARY
+            echo "- Docker input changes (Dockerfile, docker-compose, .dockerignore, requirements.txt)" >> $GITHUB_STEP_SUMMARY
           fi
           if [ "${{ needs.detect-changes.outputs.src }}" = "true" ]; then
             echo "- \`src/\` changes" >> $GITHUB_STEP_SUMMARY
           fi
-          if [ "${{ needs.detect-changes.outputs.workflows }}" = "true" ]; then
-            echo "- \`.github/\` workflow or release gate changes" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.detect-changes.outputs.docker_ci }}" = "true" ]; then
+            echo "- Docker CI helper changes" >> $GITHUB_STEP_SUMMARY
           fi
+
+      - name: Reclaim runner disk space
+        run: bash .github/scripts/free_runner_disk_space.sh
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -228,6 +251,7 @@ jobs:
     needs: detect-changes
     if: >-
       needs.detect-changes.outputs.src == 'true' ||
+      needs.detect-changes.outputs.python_deps == 'true' ||
       needs.detect-changes.outputs.workflows == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -240,6 +264,9 @@ jobs:
           echo "**Triggered by:**" >> $GITHUB_STEP_SUMMARY
           if [ "${{ needs.detect-changes.outputs.src }}" = "true" ]; then
             echo "- \`src/\` changes" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "${{ needs.detect-changes.outputs.python_deps }}" = "true" ]; then
+            echo "- Python dependency manifest changes" >> $GITHUB_STEP_SUMMARY
           fi
           if [ "${{ needs.detect-changes.outputs.workflows }}" = "true" ]; then
             echo "- \`.github/\` workflow changes" >> $GITHUB_STEP_SUMMARY
@@ -257,17 +284,17 @@ jobs:
         run: bandit -r src -lll -x tests
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
 
       - name: Run Dependency Audit
         continue-on-error: true
         run: |
           uv pip compile pyproject.toml -o /tmp/requirements-lock.txt 2>/dev/null || true
           if [ -f /tmp/requirements-lock.txt ]; then
-            pip install pip-audit
+            python -m pip install pip-audit
             pip-audit -r /tmp/requirements-lock.txt
           elif [ -f requirements.txt ]; then
-            pip install pip-audit
+            python -m pip install pip-audit
             pip-audit -r requirements.txt
           else
             echo "No dependency file found, skipping audit."
@@ -281,7 +308,11 @@ jobs:
     if: >-
       needs.detect-changes.outputs.docs == 'true' &&
       needs.detect-changes.outputs.src == 'false' &&
-      needs.detect-changes.outputs.tests == 'false'
+      needs.detect-changes.outputs.python_deps == 'false' &&
+      needs.detect-changes.outputs.docker == 'false' &&
+      needs.detect-changes.outputs.docker_ci == 'false' &&
+      needs.detect-changes.outputs.tests == 'false' &&
+      needs.detect-changes.outputs.workflows == 'false'
     runs-on: ubuntu-latest
     steps:
       - name: Documentation-only summary

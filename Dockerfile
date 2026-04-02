@@ -9,6 +9,7 @@ LABEL org.opencontainers.image.description="GovOn AI Civil Complaint Analysis Sy
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
     DEBIAN_FRONTEND=noninteractive \
     SERVING_PROFILE="container" \
     MODEL_PATH="umyunsang/GovOn-EXAONE-LoRA-v2" \
@@ -27,16 +28,13 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip
-RUN python3.10 -m pip install --upgrade pip
-
 # Copy project files
-COPY pyproject.toml .
 COPY requirements.txt .
 
-# Install dependencies
-RUN python3.10 -m pip install --no-cache-dir -r requirements.txt
-RUN python3.10 -m pip install --no-cache-dir ".[all]"
+# Install runtime dependencies once. The source tree is copied below and does
+# not require installing the project package or dev extras inside the image.
+RUN python3.10 -m pip install --no-cache-dir --upgrade pip \
+    && python3.10 -m pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
 COPY src/ ./src/

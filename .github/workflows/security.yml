@@ -42,25 +42,33 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup Python with uv
-        uses: ./.github/actions/setup-python-uv
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
 
       - name: Install security tools
-        run: uv run pip install bandit pip-audit
+        run: python -m pip install bandit pip-audit
 
       - name: Run Bandit (Static Analysis)
         # 초기 단계이므로 High 수준의 보안 이슈만 체크하여 안정성 확보
         run: |
-          uv run bandit -r src -lll -x tests
+          bandit -r src -lll -x tests
 
       - name: Run Dependency Audit
         continue-on-error: true
         run: |
           uv pip compile pyproject.toml -o /tmp/requirements-lock.txt 2>/dev/null || true
           if [ -f /tmp/requirements-lock.txt ]; then
-            uv run pip-audit -r /tmp/requirements-lock.txt
+            pip-audit -r /tmp/requirements-lock.txt
           elif [ -f requirements.txt ]; then
-            uv run pip-audit -r requirements.txt
+            pip-audit -r requirements.txt
           else
             echo "No dependency file found, skipping audit."
           fi
@@ -68,7 +76,7 @@ jobs:
       - name: Run Bandit with SARIF output
         continue-on-error: true
         run: |
-          uv run bandit -r src -lll -x tests -f sarif -o bandit-results.sarif 2>/dev/null || true
+          bandit -r src -lll -x tests -f sarif -o bandit-results.sarif 2>/dev/null || true
 
       - name: Upload Bandit SARIF to Code Scanning
         if: always() && hashFiles('bandit-results.sarif') != ''
@@ -84,9 +92,9 @@ jobs:
           uv pip compile pyproject.toml -o /tmp/requirements-lock.txt 2>/dev/null || true
           AUDIT_EXIT=0
           if [ -f /tmp/requirements-lock.txt ]; then
-            uv run pip-audit -r /tmp/requirements-lock.txt -f json -o audit-results.json 2>/dev/null || AUDIT_EXIT=$?
+            pip-audit -r /tmp/requirements-lock.txt -f json -o audit-results.json 2>/dev/null || AUDIT_EXIT=$?
           elif [ -f requirements.txt ]; then
-            uv run pip-audit -r requirements.txt -f json -o audit-results.json 2>/dev/null || AUDIT_EXIT=$?
+            pip-audit -r requirements.txt -f json -o audit-results.json 2>/dev/null || AUDIT_EXIT=$?
           fi
           echo "exit_code=$AUDIT_EXIT" >> "$GITHUB_OUTPUT"
 

@@ -22,8 +22,16 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup Python with uv
-        uses: ./.github/actions/setup-python-uv
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
 
       - name: Extract version from tag
         id: version

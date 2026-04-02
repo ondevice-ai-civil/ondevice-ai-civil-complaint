@@ -50,6 +50,7 @@ jobs:
         uses: ./.github/actions/setup-python-uv
         with:
           python-version: ${{ matrix.python-version }}
+          extras: '--extra dev --extra inference --extra database'
 
       - name: Record setup end time
         id: setup-end

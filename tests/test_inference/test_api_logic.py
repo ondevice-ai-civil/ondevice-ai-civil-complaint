@@ -39,7 +39,11 @@ client = TestClient(app)
 def mock_manager():
     with patch("src.inference.api_server.manager") as mock:
         # 가짜 응답 데이터 설정
-        mock.agent_manager.list_agents.return_value = ["classifier", "generator"]
+        mock.agent_manager.list_agents.return_value = [
+            "classifier",
+            "generator_public_doc",
+            "generator_civil_response",
+        ]
         mock.agent_manager.get_agent.return_value = MagicMock()
         mock.index_manager = MagicMock()
         mock.pii_masker = MagicMock()

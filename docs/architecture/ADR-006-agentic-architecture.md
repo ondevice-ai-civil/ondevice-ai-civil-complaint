@@ -64,6 +64,8 @@ R1 런타임은 LangGraph 또는 동급의 graph runtime을 사용해 다음을 
 - 표준 tool interface로 래핑된 검색/외부 API/초안 생성 action
 - vLLM OpenAI-compatible endpoint에 연결되는 model adapter
 - 필요 시 문서 유형 또는 태스크별 모델 프로필/LoRA 프로필 선택
+- 현재 기본 내장 tool catalog는 `classify`, `search_similar`, `generate_public_doc`, `generate_civil_response`, `api_lookup`를 포함한다
+- 단, tool registry 자체는 고정 5개로 닫지 않고 후속 요구사항에 맞게 tool을 추가할 수 있어야 한다
 
 #### 3.5 Persistence
 - session transcript

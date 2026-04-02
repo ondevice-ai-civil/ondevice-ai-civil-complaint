@@ -25,7 +25,9 @@
   - `src/quantization/`
 - FastAPI 기반 추론 API
   - `/v1/classify`
-  - `/v1/generate`
+  - `/v1/generate-public-doc`
+  - `/v1/generate-civil-response`
+  - `/v1/generate` (legacy compatibility)
   - `/v1/stream`
   - `/v1/search`
 - FAISS + BM25 기반 하이브리드 검색
@@ -135,7 +137,8 @@
 
 #### A.1 API contract 고정
 
-- 분류, 생성, 스트리밍, 검색 응답을 shell client가 쓰기 쉬운 형태로 고정
+- 분류, 공문서 생성, 민원답변 생성, 스트리밍, 검색 응답을 shell client가 쓰기 쉬운 형태로 정리
+- 현재 built-in tool catalog는 존재하지만, runtime의 tool registry는 후속 요구사항에 맞게 확장 가능해야 한다
 - retrieved cases / search results / 에러 메시지 포맷 명확화
 - health output을 shell `doctor` 명령에서 그대로 재사용 가능하게 정리
 
@@ -153,7 +156,7 @@
 
 **Acceptance Criteria**:
 
-- shell client가 `/v1/classify`, `/v1/generate`, `/v1/stream`, `/v1/search`만으로 1차 업무 플로우를 수행
+- shell client가 `/v1/classify`, `/v1/generate-public-doc`, `/v1/generate-civil-response`, `/v1/stream`, `/v1/search`와 extensible tool registry만으로 1차 업무 플로우를 수행
 - session id 기준으로 최소 1회 이상 대화 이어쓰기 가능
 - 검색/생성 실패 시 shell에 구조화된 에러를 출력
 

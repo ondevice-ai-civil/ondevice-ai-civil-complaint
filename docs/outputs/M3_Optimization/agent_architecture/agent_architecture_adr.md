@@ -1,5 +1,7 @@
 # ADR: Agent 시스템 아키텍처 설계
 
+> Superseded by `docs/architecture/ADR-006-agentic-architecture.md`
+
 **문서 ID**: ADR-003
 **작성일**: 2026-03-21
 **상태**: Proposed

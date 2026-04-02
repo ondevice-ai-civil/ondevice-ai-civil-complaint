@@ -1,11 +1,14 @@
+import asyncio
+import html
 import json
 import os
 import re
 import time
 import uuid
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncGenerator, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Security
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,6 +45,10 @@ from .schemas import (
     ClassificationResult,
     ClassifyRequest,
     ClassifyResponse,
+    GenerateCivilResponseRequest,
+    GenerateCivilResponseResponse,
+    GeneratePublicDocRequest,
+    GeneratePublicDocResponse,
     GenerateRequest,
     GenerateResponse,
     RetrievedCase,
@@ -52,7 +59,7 @@ from .schemas import (
     ToolResultSchema,
 )
 from .session_context import SessionStore
-from .tool_router import ToolType
+from .tool_router import ToolType, tool_name
 
 if not SKIP_MODEL_LOAD:
     try:
@@ -107,6 +114,16 @@ TRUST_REMOTE_CODE = runtime_config.model.trust_remote_code
 _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 AGENTS_DIR = runtime_config.paths.agents_dir
 
+
+@dataclass
+class PreparedGeneration:
+    """생성 실행 전 프롬프트, 검색 컨텍스트, 샘플링 설정을 묶는다."""
+
+    prompt: str
+    sampling_params: SamplingParams
+    retrieved_cases: List[dict]
+    search_results: List[SearchResult]
+
 # Apply EXAONE-specific runtime patches (모델 로드 시에만)
 if not SKIP_MODEL_LOAD:
     apply_transformers_patch()
@@ -127,6 +144,7 @@ class vLLMEngineManager:
         self.pii_masker = None
         self.session_store: SessionStore = SessionStore()
         self.agent_loop: Optional[AgentLoop] = None
+        self.langgraph_runtime: Optional[Any] = None
 
     async def initialize(self):
         if SKIP_MODEL_LOAD:
@@ -260,7 +278,7 @@ class vLLMEngineManager:
         return re.sub(r"<thought>.*?</thought>\s*", "", text, flags=re.DOTALL).strip()
 
     def _build_rag_context(self, retrieved_cases: List[dict]) -> str:
-        """RAG 참고 사례 컨텍스트 문자열을 생성한다."""
+        """민원 사례 기반 RAG 컨텍스트 문자열을 생성한다."""
         if not retrieved_cases:
             return ""
         rag_context = "### 참고 사례 (유사 민원 및 답변):\n"
@@ -271,17 +289,51 @@ class vLLMEngineManager:
         return rag_context
 
     def _augment_prompt(self, prompt: str, retrieved_cases: List[dict]) -> str:
-        """Augment the prompt with retrieved similar cases (RAG). (레거시 폴백용)"""
-        if not retrieved_cases:
+        """기존 민원 답변 프롬프트 증강 규약을 유지하는 호환 메서드."""
+        rag_context = self._build_rag_context(retrieved_cases)
+        if not rag_context:
             return prompt
 
-        rag_context = "\n\n" + self._build_rag_context(retrieved_cases)
+        user_tag = "[|user|]"
+        if user_tag in prompt:
+            return prompt.replace(user_tag, f"{user_tag}{rag_context}\n", 1)
+        return f"{rag_context}\n{prompt}"
 
-        # Structure the prompt for EXAONE Chat Template
-        if "[|user|]" in prompt:
-            parts = prompt.split("[|user|]")
-            return f"{parts[0]}[|user|]{rag_context}위 참고 사례를 바탕으로 다음 민원에 대해 답변해 주세요.\n\n{parts[1]}"
-        return f"{rag_context}\n\n{prompt}"
+    def _build_search_result_context(
+        self,
+        search_results: List[SearchResult],
+        heading: str,
+    ) -> str:
+        """SearchResult 목록을 프롬프트용 컨텍스트 문자열로 변환한다."""
+        if not search_results:
+            return ""
+
+        lines = [heading]
+        for index, result in enumerate(search_results, start=1):
+            safe_title = self._escape_special_tokens(result.title)
+            safe_content = self._escape_special_tokens(result.content[:300])
+            lines.append(f"{index}. [{result.source_type.value}] {safe_title}")
+            lines.append(f"   근거: {safe_content}")
+        return "\n".join(lines)
+
+    def _build_persona_prompt(
+        self,
+        primary_agent: str,
+        user_message: str,
+        fallback_agent: Optional[str] = "generator",
+    ) -> str:
+        """지정된 페르소나 또는 호환용 fallback 페르소나로 프롬프트를 구성한다."""
+        if self.agent_manager:
+            for agent_name in (primary_agent, fallback_agent):
+                if agent_name and self.agent_manager.get_agent(agent_name):
+                    return self.agent_manager.build_prompt(agent_name, user_message)
+        return user_message
+
+    @staticmethod
+    def _render_public_doc_html(text: str) -> str:
+        """공문서 본문을 단순 HTML 단락으로 변환한다."""
+        paragraphs = [line.strip() for line in text.splitlines() if line.strip()]
+        return "\n".join(f"<p>{html.escape(paragraph)}</p>" for paragraph in paragraphs)
 
     def _extract_query(self, prompt: str) -> str:
         """m-5: 정규식 기반 쿼리 추출."""
@@ -294,35 +346,130 @@ class vLLMEngineManager:
             return user_block.strip()
         return prompt
 
-    def _prepare_generation(
-        self, request: GenerateRequest, request_id: str, flags: "FeatureFlags | None" = None
-    ) -> tuple:
-        """RAG 검색 및 프롬프트 구성을 수행하고 (augmented_prompt, sampling_params, retrieved_cases)를 반환한다."""
-        # 1. RAG: Retrieve similar cases if enabled
-        effective_flags = flags or self.feature_flags
-        retrieved_cases = []
+    def _search_results_to_cases(self, search_results: List[SearchResult]) -> List[dict]:
+        """CASE 검색 결과를 RetrievedCase 호환 dict 목록으로 변환한다."""
+        retrieved_cases: List[dict] = []
+        for result in search_results:
+            if result.source_type != IndexType.CASE:
+                continue
 
-        if request.use_rag and effective_flags.use_rag_pipeline and self.retriever:
-            query = self._escape_special_tokens(self._extract_query(request.prompt))
-            retrieved_cases = self.retriever.search(query, top_k=3)
+            metadata = result.metadata or {}
+            complaint = metadata.get("complaint_text") or metadata.get("complaint") or result.content
+            answer = metadata.get("answer_text") or metadata.get("answer") or result.content
+            retrieved_cases.append(
+                {
+                    "id": result.doc_id,
+                    "category": metadata.get("category", ""),
+                    "complaint": complaint,
+                    "answer": answer,
+                    "score": result.score,
+                }
+            )
+        return retrieved_cases
 
-        # 2. Build prompt: generator 페르소나가 있으면 사용, 없으면 레거시 폴백
-        if self.agent_manager and self.agent_manager.get_agent("generator"):
-            safe_message = self._escape_special_tokens(request.prompt)
-            if retrieved_cases:
-                rag_context = self._build_rag_context(retrieved_cases)
-                safe_message = (
-                    f"{rag_context}"
-                    f"위 참고 사례를 바탕으로 다음 민원에 대해 답변해 주세요.\n\n"
-                    f"{safe_message}"
+    async def _retrieve_search_results(
+        self,
+        query: str,
+        index_types: List[IndexType],
+        top_k_per_type: int = 2,
+    ) -> List[SearchResult]:
+        """생성 도구용 로컬 RAG 검색 결과를 수집한다."""
+        if not query.strip():
+            return []
+
+        collected: List[SearchResult] = []
+
+        if self.hybrid_engine:
+            async def _search_index(index_type: IndexType) -> List[SearchResult]:
+                results_raw, _ = await self.hybrid_engine.search(
+                    query=query,
+                    index_type=index_type,
+                    top_k=top_k_per_type,
+                    mode=SearchMode.HYBRID,
                 )
-            augmented_prompt = self.agent_manager.build_prompt("generator", safe_message)
-        else:
-            augmented_prompt = request.prompt
-            if retrieved_cases:
-                augmented_prompt = self._augment_prompt(request.prompt, retrieved_cases)
+                return [
+                    SearchResult(
+                        doc_id=item.get("doc_id", ""),
+                        source_type=IndexType(item.get("doc_type", index_type.value)),
+                        title=item.get("title", ""),
+                        content=_extract_content_by_type(item, index_type),
+                        score=item.get("score", 0.0),
+                        reliability_score=item.get("reliability_score", 1.0),
+                        metadata=item.get("extras", {}),
+                        chunk_index=item.get("chunk_index", 0),
+                        total_chunks=item.get("chunk_total", 1),
+                    )
+                    for item in results_raw
+                ]
 
-        # 3. Sampling parameters (generation defaults from RuntimeConfig)
+            grouped_results = await asyncio.gather(
+                *[_search_index(index_type) for index_type in index_types],
+                return_exceptions=True,
+            )
+
+            for result in grouped_results:
+                if isinstance(result, BaseException):
+                    logger.warning(f"생성용 로컬 검색 실패: {result}")
+                    continue
+                collected.extend(result)
+
+        elif self.retriever and IndexType.CASE in index_types:
+            for raw in self.retriever.search(query, top_k=max(3, top_k_per_type)):
+                collected.append(
+                    SearchResult(
+                        doc_id=raw.get("id", raw.get("doc_id", "")),
+                        source_type=IndexType.CASE,
+                        title=raw.get("category", "유사 민원 사례"),
+                        content=(raw.get("complaint", "") + "\n" + raw.get("answer", "")).strip(),
+                        score=raw.get("score", 0.0),
+                        reliability_score=raw.get("reliability_score", 1.0),
+                        metadata={
+                            "complaint": raw.get("complaint", ""),
+                            "answer": raw.get("answer", ""),
+                            "category": raw.get("category", ""),
+                        },
+                    )
+                )
+
+        return _mask_search_results(collected, self.pii_masker)
+
+    async def _prepare_public_doc_generation(
+        self,
+        request: GeneratePublicDocRequest,
+        flags: "FeatureFlags | None" = None,
+    ) -> PreparedGeneration:
+        """공문서 생성용 프롬프트와 RAG 컨텍스트를 구성한다."""
+        effective_flags = flags or self.feature_flags
+        query = self._escape_special_tokens(self._extract_query(request.prompt))
+        search_results: List[SearchResult] = []
+
+        if request.use_rag and effective_flags.use_rag_pipeline:
+            search_results = await self._retrieve_search_results(
+                query,
+                [IndexType.LAW, IndexType.MANUAL, IndexType.NOTICE],
+            )
+
+        safe_message = self._escape_special_tokens(request.prompt)
+        sections = []
+        if search_results:
+            sections.append(
+                self._build_search_result_context(
+                    search_results,
+                    "### 공문서 작성 참고 자료 (법률/매뉴얼/공시정보):",
+                )
+            )
+        sections.append(
+            (
+                f"요청된 문서 유형은 '{request.doc_type}' 입니다. "
+                "격식 있는 공문서체로 제목, 배경, 주요 내용, 후속 조치를 구조화하여 작성하세요."
+            )
+        )
+        sections.append(safe_message)
+        augmented_prompt = self._build_persona_prompt(
+            "generator_public_doc",
+            "\n\n".join(section for section in sections if section),
+        )
+
         gen_defaults = runtime_config.generation
         sampling_params = SamplingParams(
             temperature=request.temperature,
@@ -332,7 +479,69 @@ class vLLMEngineManager:
             repetition_penalty=gen_defaults.repetition_penalty,
         )
 
-        return augmented_prompt, sampling_params, retrieved_cases
+        return PreparedGeneration(
+            prompt=augmented_prompt,
+            sampling_params=sampling_params,
+            retrieved_cases=[],
+            search_results=search_results,
+        )
+
+    async def _prepare_civil_response_generation(
+        self,
+        request: GenerateCivilResponseRequest,
+        flags: "FeatureFlags | None" = None,
+        external_cases: Optional[List[dict]] = None,
+    ) -> PreparedGeneration:
+        """민원 답변 생성용 프롬프트와 RAG 컨텍스트를 구성한다."""
+        effective_flags = flags or self.feature_flags
+        query = self._escape_special_tokens(self._extract_query(request.prompt))
+        search_results: List[SearchResult] = []
+
+        if request.use_rag and effective_flags.use_rag_pipeline:
+            search_results = await self._retrieve_search_results(
+                query,
+                [IndexType.CASE, IndexType.LAW, IndexType.MANUAL, IndexType.NOTICE],
+            )
+
+        retrieved_cases = self._search_results_to_cases(search_results)
+        if external_cases:
+            retrieved_cases.extend(external_cases)
+
+        safe_message = self._escape_special_tokens(request.prompt)
+        sections = []
+        if search_results:
+            sections.append(
+                self._build_search_result_context(
+                    search_results,
+                    "### 민원 답변 참고 자료 (사례/법률/매뉴얼/공시정보):",
+                )
+            )
+        if retrieved_cases:
+            sections.append(self._build_rag_context(retrieved_cases[:5]))
+        sections.append(
+            "위 근거를 바탕으로 민원인의 질문에 공감 표현, 처리 절차, 담당 부서 안내를 포함해 답변하세요."
+        )
+        sections.append(safe_message)
+        augmented_prompt = self._build_persona_prompt(
+            "generator_civil_response",
+            "\n\n".join(section for section in sections if section),
+        )
+
+        gen_defaults = runtime_config.generation
+        sampling_params = SamplingParams(
+            temperature=request.temperature,
+            top_p=request.top_p,
+            max_tokens=request.max_tokens,
+            stop=request.stop or gen_defaults.stop_sequences,
+            repetition_penalty=gen_defaults.repetition_penalty,
+        )
+
+        return PreparedGeneration(
+            prompt=augmented_prompt,
+            sampling_params=sampling_params,
+            retrieved_cases=retrieved_cases[:5],
+            search_results=search_results,
+        )
 
     async def _run_engine(self, prompt: str, sampling_params: SamplingParams, request_id: str):
         """vLLM 엔진의 generate를 실행하고 최종 결과를 반환한다. (제너레이터 처리 포함)"""
@@ -349,12 +558,32 @@ class vLLMEngineManager:
     async def generate(
         self, request: GenerateRequest, request_id: str, flags: "FeatureFlags | None" = None
     ) -> tuple:
-        """Non-streaming generation. Returns (RequestOutput, retrieved_cases)."""
-        augmented_prompt, sampling_params, retrieved_cases = self._prepare_generation(
-            request, request_id, flags
-        )
-        output = await self._run_engine(augmented_prompt, sampling_params, request_id)
+        """레거시 /v1/generate 호환용 민원 답변 생성."""
+        output, retrieved_cases, _ = await self.generate_civil_response(request, request_id, flags)
         return output, retrieved_cases
+
+    async def generate_public_doc(
+        self,
+        request: GeneratePublicDocRequest,
+        request_id: str,
+        flags: "FeatureFlags | None" = None,
+    ) -> tuple:
+        """공문서 생성. Returns (RequestOutput, search_results)."""
+        prepared = await self._prepare_public_doc_generation(request, flags)
+        output = await self._run_engine(prepared.prompt, prepared.sampling_params, request_id)
+        return output, prepared.search_results
+
+    async def generate_civil_response(
+        self,
+        request: GenerateCivilResponseRequest,
+        request_id: str,
+        flags: "FeatureFlags | None" = None,
+        external_cases: Optional[List[dict]] = None,
+    ) -> tuple:
+        """민원 답변 생성. Returns (RequestOutput, retrieved_cases, search_results)."""
+        prepared = await self._prepare_civil_response_generation(request, flags, external_cases)
+        output = await self._run_engine(prepared.prompt, prepared.sampling_params, request_id)
+        return output, prepared.retrieved_cases, prepared.search_results
 
     def _init_agent_loop(self) -> None:
         """에이전트 루프에 사용할 tool 어댑터를 등록하고 AgentLoop를 생성한다."""
@@ -395,139 +624,161 @@ class vLLMEngineManager:
             except Exception as e:
                 return {"classification": None, "error": f"분류 결과 검증 실패: {e}"}
 
-        async def _search_tool(query: str, context: dict, session: Any) -> dict:
-            """search tool 어댑터."""
-            # 분류 결과가 있으면 쿼리에 카테고리 힌트를 추가
-            classify_data = context.get("classify", {})
-            search_query = query
-            if classify_data.get("classification"):
-                category = classify_data["classification"].get("category", "")
-                if category:
-                    search_query = f"[{category}] {query}"
-
-            if engine_ref.hybrid_engine:
-                results_raw, actual_mode = await engine_ref.hybrid_engine.search(
-                    query=search_query,
-                    index_type=IndexType.CASE,
-                    top_k=5,
-                    mode=SearchMode.HYBRID,
-                )
-                results = [
-                    {
-                        "doc_id": r.get("doc_id", ""),
-                        "title": r.get("title", ""),
-                        "content": _extract_content_by_type(r, IndexType.CASE),
-                        "score": r.get("score", 0.0),
-                        "metadata": r.get("extras", {}),
-                    }
-                    for r in results_raw
-                ]
-                return {"results": results, "search_mode": actual_mode.value}
-            elif engine_ref.retriever:
-                raw_results = engine_ref.retriever.search(search_query, top_k=5)
-                results = [
-                    {
-                        "doc_id": r.get("id", ""),
-                        "title": r.get("category", ""),
-                        "content": r.get("complaint", "") + "\n" + r.get("answer", ""),
-                        "score": r.get("score", 0.0),
-                        "complaint": r.get("complaint", ""),
-                        "answer": r.get("answer", ""),
-                    }
-                    for r in raw_results
-                ]
-                return {"results": results, "search_mode": "dense"}
-            return {"results": [], "error": "검색 엔진 미초기화"}
-
-        async def _generate_tool(query: str, context: dict, session: Any) -> dict:
-            """generate tool 어댑터."""
-            # 검색 결과에서 RAG 케이스 추출
-            search_data = context.get("search", {})
-            retrieved_cases = []
-            if search_data.get("results"):
-                for r in search_data["results"][:3]:
-                    retrieved_cases.append(
-                        {
-                            "complaint": r.get("content", r.get("complaint", "")),
-                            "answer": r.get("answer", r.get("content", "")),
-                        }
-                    )
-
-            # 세션 컨텍스트 포함
-            session_summary = context.get("session_context", "")
-            augmented_query = query
-            if session_summary:
-                augmented_query = f"{session_summary}\n\n현재 요청: {query}"
-
-            gen_request = GenerateRequest(
-                prompt=augmented_query,
-                max_tokens=512,
-                temperature=0.7,
-                use_rag=False,  # 이미 검색 결과를 직접 주입
-            )
-
-            request_id = str(uuid.uuid4())
-
-            # RAG 컨텍스트를 직접 구성
-            if engine_ref.agent_manager and engine_ref.agent_manager.get_agent("generator"):
-                safe_message = engine_ref._escape_special_tokens(augmented_query)
-                if retrieved_cases:
-                    rag_context = engine_ref._build_rag_context(retrieved_cases)
-                    safe_message = (
-                        f"{rag_context}"
-                        f"위 참고 사례를 바탕으로 다음 민원에 대해 답변해 주세요.\n\n"
-                        f"{safe_message}"
-                    )
-                prompt = engine_ref.agent_manager.build_prompt("generator", safe_message)
-            else:
-                prompt = augmented_query
-                if retrieved_cases:
-                    prompt = engine_ref._augment_prompt(augmented_query, retrieved_cases)
-
-            sampling_params = SamplingParams(
-                temperature=gen_request.temperature,
-                top_p=0.9,
-                max_tokens=gen_request.max_tokens,
-                repetition_penalty=1.1,
-            )
-
-            final_output = await engine_ref._run_engine(prompt, sampling_params, request_id)
-            if final_output is None:
-                return {"text": "", "error": "생성 실패"}
-
-            text = engine_ref._strip_thought_blocks(final_output.outputs[0].text)
-            return {
-                "text": text,
-                "prompt_tokens": len(final_output.prompt_token_ids),
-                "completion_tokens": len(final_output.outputs[0].token_ids),
-            }
-
         from src.inference.actions.data_go_kr import MinwonAnalysisAction
 
         minwon_action = MinwonAnalysisAction()
 
+        async def _search_similar_tool(query: str, context: dict, session: Any) -> dict:
+            """search_similar tool 어댑터."""
+            payload = await minwon_action.fetch_similar_cases(query, context)
+            results = payload["results"]
+            if results is None:
+                return {"results": [], "error": "유사 민원 사례 조회 실패"}
+
+            return {
+                "results": results,
+                "query": payload["query"],
+                "count": payload["count"],
+                "context_text": payload["context_text"],
+                "citations": [citation.to_dict() for citation in payload["citations"]],
+                "source": "data.go.kr",
+            }
+
+        async def _generate_public_doc_tool(query: str, context: dict, session: Any) -> dict:
+            """generate_public_doc tool 어댑터."""
+            session_summary = context.get("session_context", "")
+            augmented_query = f"{session_summary}\n\n현재 요청: {query}" if session_summary else query
+
+            gen_request = GeneratePublicDocRequest(
+                prompt=augmented_query,
+                doc_type="official_document",
+                max_tokens=768,
+                temperature=0.5,
+                use_rag=True,
+            )
+
+            request_id = str(uuid.uuid4())
+            final_output, search_results = await engine_ref.generate_public_doc(
+                gen_request,
+                request_id,
+            )
+            if final_output is None:
+                return {"text": "", "error": "공문서 생성 실패"}
+
+            text = engine_ref._strip_thought_blocks(final_output.outputs[0].text)
+            return {
+                "text": text,
+                "doc_type": gen_request.doc_type,
+                "formatted_html": engine_ref._render_public_doc_html(text),
+                "prompt_tokens": len(final_output.prompt_token_ids),
+                "completion_tokens": len(final_output.outputs[0].token_ids),
+                "search_results": [result.model_dump() for result in search_results],
+            }
+
+        async def _generate_civil_response_tool(query: str, context: dict, session: Any) -> dict:
+            """generate_civil_response tool 어댑터."""
+            session_summary = context.get("session_context", "")
+            augmented_query = f"{session_summary}\n\n현재 요청: {query}" if session_summary else query
+
+            search_similar_data = context.get("search_similar", {})
+            external_cases = []
+            for item in search_similar_data.get("results", [])[:3]:
+                complaint = item.get("content") or item.get("qnaContent") or item.get("question", "")
+                answer = item.get("answer") or item.get("qnaAnswer") or item.get("title", "")
+                external_cases.append(
+                    {
+                        "complaint": complaint,
+                        "answer": answer,
+                        "score": float(item.get("score", 0.0)),
+                    }
+                )
+
+            gen_request = GenerateCivilResponseRequest(
+                prompt=augmented_query,
+                max_tokens=512,
+                temperature=0.7,
+                use_rag=True,
+            )
+
+            request_id = str(uuid.uuid4())
+            final_output, retrieved_cases, search_results = await engine_ref.generate_civil_response(
+                gen_request,
+                request_id,
+                external_cases=external_cases,
+            )
+            if final_output is None:
+                return {"text": "", "error": "민원 답변 생성 실패"}
+
+            text = engine_ref._strip_thought_blocks(final_output.outputs[0].text)
+            return {
+                "text": text,
+                "retrieved_cases": retrieved_cases,
+                "search_results": [result.model_dump() for result in search_results],
+                "prompt_tokens": len(final_output.prompt_token_ids),
+                "completion_tokens": len(final_output.outputs[0].token_ids),
+            }
+
         tool_registry = {
             ToolType.CLASSIFY: _classify_tool,
-            ToolType.SEARCH: _search_tool,
-            ToolType.GENERATE: _generate_tool,
+            ToolType.SEARCH_SIMILAR: _search_similar_tool,
+            ToolType.GENERATE_PUBLIC_DOC: _generate_public_doc_tool,
+            ToolType.GENERATE_CIVIL_RESPONSE: _generate_civil_response_tool,
             ToolType.API_LOOKUP: minwon_action,
         }
         self.agent_loop = AgentLoop(tool_registry=tool_registry)
+        self._init_langgraph_runtime(
+            tool_registry=tool_registry,
+            action_registry={"minwon_analysis": minwon_action},
+        )
+
+    def _init_langgraph_runtime(
+        self,
+        tool_registry: Dict[Any, Any],
+        action_registry: Dict[str, Any],
+    ) -> None:
+        """LangGraph foundation runtime을 초기화한다.
+
+        #415 범위에서는 graph runtime의 접합층만 준비한다.
+        기존 /v1/agent/* 경로는 유지하고, 이후 #409/#410/#418에서 본격적으로 연결한다.
+        """
+
+        try:
+            from src.inference.langgraph_runtime import (
+                LangGraphDependencyError,
+                build_langgraph_runtime,
+            )
+
+            self.langgraph_runtime = build_langgraph_runtime(
+                runtime_config=runtime_config,
+                tool_registry=tool_registry,
+                action_registry=action_registry,
+            )
+            logger.info(
+                "LangGraph runtime foundation 초기화 완료: tools={}",
+                list(self.langgraph_runtime.tools.keys()),
+            )
+        except LangGraphDependencyError as exc:
+            logger.warning(f"LangGraph runtime foundation 초기화 건너뜀: {exc}")
+            self.langgraph_runtime = None
+        except Exception as exc:
+            logger.warning(f"LangGraph runtime foundation 초기화 실패: {exc}")
+            self.langgraph_runtime = None
 
     async def generate_stream(
         self, request: GenerateRequest, request_id: str, flags: "FeatureFlags | None" = None
     ) -> tuple:
-        """Streaming generation. Returns (async_generator, retrieved_cases)."""
-        augmented_prompt, sampling_params, retrieved_cases = self._prepare_generation(
-            request, request_id, flags
+        """레거시 /v1/stream 호환용 민원 답변 스트리밍 생성."""
+        prepared = await self._prepare_civil_response_generation(
+            request,
+            flags,
         )
         # vLLM V1에서는 generate() 자체가 스트림을 반환하므로 stream() 메서드 대신 generate()를 우선적으로 고려한다.
         if hasattr(self.engine, "stream"):
-            stream = self.engine.stream(augmented_prompt, sampling_params, request_id)
+            stream = self.engine.stream(prepared.prompt, prepared.sampling_params, request_id)
         else:
-            stream = self.engine.generate(augmented_prompt, sampling_params, request_id)
+            stream = self.engine.generate(prepared.prompt, prepared.sampling_params, request_id)
 
-        return stream, retrieved_cases
+        return stream, prepared.retrieved_cases
 
 
 manager = vLLMEngineManager()
@@ -672,6 +923,67 @@ async def classify(
     )
 
 
+@app.post("/v1/generate-public-doc", response_model=GeneratePublicDocResponse)
+@_rate_limit("30/minute")
+async def generate_public_doc(
+    request: GeneratePublicDocRequest,
+    _: None = Depends(verify_api_key),
+    flags: FeatureFlags = Depends(get_feature_flags),
+):
+    """공문서 초안 생성 엔드포인트."""
+    if request.stream:
+        raise HTTPException(status_code=400, detail="공문서 스트리밍은 아직 지원하지 않습니다.")
+
+    request_id = str(uuid.uuid4())
+    final_output, search_results = await manager.generate_public_doc(request, request_id, flags)
+
+    if final_output is None:
+        raise HTTPException(status_code=500, detail="공문서 생성에 실패했습니다.")
+
+    text = manager._strip_thought_blocks(final_output.outputs[0].text)
+    return GeneratePublicDocResponse(
+        request_id=request_id,
+        text=text,
+        doc_type=request.doc_type,
+        formatted_html=manager._render_public_doc_html(text),
+        prompt_tokens=len(final_output.prompt_token_ids),
+        completion_tokens=len(final_output.outputs[0].token_ids),
+        search_results=search_results,
+    )
+
+
+@app.post("/v1/generate-civil-response", response_model=GenerateCivilResponseResponse)
+@_rate_limit("30/minute")
+async def generate_civil_response(
+    request: GenerateCivilResponseRequest,
+    _: None = Depends(verify_api_key),
+    flags: FeatureFlags = Depends(get_feature_flags),
+):
+    """민원 답변 초안 생성 엔드포인트."""
+    if request.stream:
+        raise HTTPException(status_code=400, detail="민원 답변 스트리밍은 /v1/stream을 사용하세요.")
+
+    request_id = str(uuid.uuid4())
+    final_output, retrieved_cases, search_results = await manager.generate_civil_response(
+        request,
+        request_id,
+        flags,
+    )
+
+    if final_output is None:
+        raise HTTPException(status_code=500, detail="민원 답변 생성에 실패했습니다.")
+
+    return GenerateCivilResponseResponse(
+        request_id=request_id,
+        complaint_id=request.complaint_id,
+        text=manager._strip_thought_blocks(final_output.outputs[0].text),
+        prompt_tokens=len(final_output.prompt_token_ids),
+        completion_tokens=len(final_output.outputs[0].token_ids),
+        retrieved_cases=[RetrievedCase(**case) for case in retrieved_cases],
+        search_results=search_results,
+    )
+
+
 @app.post("/v1/generate", response_model=GenerateResponse)
 @_rate_limit("30/minute")
 async def generate(
@@ -691,6 +1003,7 @@ async def generate(
 
     return GenerateResponse(
         request_id=request_id,
+        complaint_id=request.complaint_id,
         text=manager._strip_thought_blocks(final_output.outputs[0].text),
         prompt_tokens=len(final_output.prompt_token_ids),
         completion_tokens=len(final_output.outputs[0].token_ids),
@@ -862,7 +1175,7 @@ def _trace_to_schema(trace: AgentTrace) -> AgentTraceSchema:
         plan_reason=trace.plan.reason if trace.plan else "",
         tool_results=[
             ToolResultSchema(
-                tool=r.tool.value,
+                tool=tool_name(r.tool),
                 success=r.success,
                 latency_ms=round(r.latency_ms, 2),
                 data=r.data,
@@ -912,9 +1225,9 @@ async def agent_run(
     classification = None
     search_results = None
     for result in trace.tool_results:
-        if result.tool == ToolType.CLASSIFY and result.success:
+        if tool_name(result.tool) == ToolType.CLASSIFY.value and result.success:
             classification = result.data.get("classification")
-        if result.tool == ToolType.SEARCH and result.success:
+        if tool_name(result.tool) == ToolType.SEARCH_SIMILAR.value and result.success:
             search_results = result.data.get("results")
 
     return AgentRunResponse(

@@ -145,12 +145,8 @@ class MinwonAnalysisAction(BaseAction):
         ActionResult
             유사 민원 사례와 LLM 컨텍스트가 포함된 결과.
         """
-        # 1. 검색어 보강
-        search_query = self._enrich_query(query, context)
-        logger.debug(f"[minwon_analysis] 보강된 검색어: {search_query!r}")
-
-        # 2. API 호출
-        items = await self._call_similar_api(search_query)
+        payload = await self.fetch_similar_cases(query, context)
+        items = payload["results"]
 
         if items is None:
             return ActionResult(
@@ -162,26 +158,44 @@ class MinwonAnalysisAction(BaseAction):
         if not items:
             return ActionResult(
                 success=True,
-                data={"results": [], "query": search_query, "count": 0},
+                data={"results": [], "query": payload["query"], "count": 0},
                 source="data.go.kr",
                 context_text="",
             )
-
-        # 3. 컨텍스트 텍스트 및 출처 생성
-        context_text = self._build_context_text(items, query)
-        citations = self._build_citations(items)
 
         return ActionResult(
             success=True,
             data={
                 "results": items,
-                "query": search_query,
+                "query": payload["query"],
                 "count": len(items),
             },
             source="data.go.kr",
-            citations=citations,
-            context_text=context_text,
+            citations=payload["citations"],
+            context_text=payload["context_text"],
         )
+
+    async def fetch_similar_cases(
+        self,
+        query: str,
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """유사 민원 사례 검색에 필요한 payload를 구성한다.
+
+        search_similar tool과 api_lookup action이 같은 minSimilarInfo5 호출 경로를
+        공유할 수 있도록 공개 helper로 제공한다.
+        """
+        search_query = self._enrich_query(query, context)
+        logger.debug(f"[minwon_analysis] 보강된 검색어: {search_query!r}")
+        items = await self._call_similar_api(search_query)
+
+        return {
+            "query": search_query,
+            "results": items,
+            "count": len(items or []),
+            "context_text": self._build_context_text(items or [], query) if items else "",
+            "citations": self._build_citations(items or []),
+        }
 
     async def _call_similar_api(self, search_query: str) -> Optional[List[Dict[str, Any]]]:
         """공공데이터포털 유사민원정보 API를 호출한다.

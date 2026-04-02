@@ -28,7 +28,7 @@ async def mock_classify(query: str, context: dict, session: Any) -> dict:
     }
 
 
-async def mock_search(query: str, context: dict, session: Any) -> dict:
+async def mock_search_similar(query: str, context: dict, session: Any) -> dict:
     return {
         "results": [
             {"doc_id": "d1", "title": "사례1", "content": "도로 포장 파손 사례", "score": 0.9},
@@ -37,7 +37,7 @@ async def mock_search(query: str, context: dict, session: Any) -> dict:
     }
 
 
-async def mock_generate(query: str, context: dict, session: Any) -> dict:
+async def mock_generate_civil_response(query: str, context: dict, session: Any) -> dict:
     return {
         "text": "도로 포장 파손에 대해 해당 부서에 보수 요청을 접수하겠습니다.",
         "prompt_tokens": 100,
@@ -65,8 +65,8 @@ class TestAgentLoop:
     def _make_loop(self, overrides: Dict[ToolType, Any] = None) -> AgentLoop:
         registry = {
             ToolType.CLASSIFY: mock_classify,
-            ToolType.SEARCH: mock_search,
-            ToolType.GENERATE: mock_generate,
+            ToolType.SEARCH_SIMILAR: mock_search_similar,
+            ToolType.GENERATE_CIVIL_RESPONSE: mock_generate_civil_response,
         }
         if overrides:
             registry.update(overrides)
@@ -74,7 +74,7 @@ class TestAgentLoop:
 
     @pytest.mark.asyncio
     async def test_full_pipeline(self):
-        """classify -> search -> generate 전체 파이프라인 정상 실행."""
+        """classify -> search_similar -> generate_civil_response 전체 파이프라인 정상 실행."""
         loop = self._make_loop()
         session = SessionContext()
 
@@ -120,17 +120,17 @@ class TestAgentLoop:
         assert trace.tool_results[0].success is False
         assert trace.tool_results[0].error
 
-        # search, generate는 여전히 실행됨
+        # search_similar, generate_civil_response는 여전히 실행됨
         assert trace.tool_results[1].success is True
         assert trace.tool_results[2].success is True
 
-        # 최종 텍스트는 generate 결과를 사용
+        # 최종 텍스트는 생성 결과를 사용
         assert trace.final_text
 
     @pytest.mark.asyncio
     async def test_tool_timeout(self):
         """tool 타임아웃 처리."""
-        loop = self._make_loop(overrides={ToolType.SEARCH: mock_timeout_tool})
+        loop = self._make_loop(overrides={ToolType.SEARCH_SIMILAR: mock_timeout_tool})
         session = SessionContext()
 
         trace = await loop.run(query="민원 처리", session=session)
@@ -148,11 +148,31 @@ class TestAgentLoop:
         trace = await loop.run(
             query="검색만",
             session=session,
-            force_tools=[ToolType.SEARCH],
+            force_tools=[ToolType.SEARCH_SIMILAR],
         )
 
         assert len(trace.tool_results) == 1
-        assert trace.tool_results[0].tool == ToolType.SEARCH
+        assert trace.tool_results[0].tool == ToolType.SEARCH_SIMILAR
+
+    @pytest.mark.asyncio
+    async def test_force_tools_with_custom_registry_tool(self):
+        """문자열 기반 custom tool도 registry에서 실행할 수 있다."""
+
+        async def custom_tool(query: str, context: dict, session: Any) -> dict:
+            return {"text": f"custom::{query}"}
+
+        loop = AgentLoop(tool_registry={"custom_lookup": custom_tool}, tool_timeout=2.0)
+        session = SessionContext()
+
+        trace = await loop.run(
+            query="테스트",
+            session=session,
+            force_tools=["custom_lookup"],
+        )
+
+        assert len(trace.tool_results) == 1
+        assert trace.tool_results[0].tool == "custom_lookup"
+        assert trace.final_text == "custom::테스트"
 
     @pytest.mark.asyncio
     async def test_trace_to_dict(self):
@@ -171,18 +191,18 @@ class TestAgentLoop:
 
     @pytest.mark.asyncio
     async def test_extract_final_text_without_generate(self):
-        """generate 없이 classify/search 결과만으로 요약."""
+        """생성 없이 classify/search_similar 결과만으로 요약."""
         loop = self._make_loop()
         session = SessionContext()
 
         trace = await loop.run(
             query="이 민원을 분류하고 사례를 검색해주세요",
             session=session,
-            force_tools=[ToolType.CLASSIFY, ToolType.SEARCH],
+            force_tools=[ToolType.CLASSIFY, ToolType.SEARCH_SIMILAR],
         )
 
         assert "분류 결과" in trace.final_text
-        assert "검색 결과" in trace.final_text
+        assert "유사 민원 사례" in trace.final_text
 
 
 class TestAgentLoopStream:
@@ -193,8 +213,8 @@ class TestAgentLoopStream:
         """스트리밍 이벤트가 올바른 순서로 전달되는지 확인."""
         registry = {
             ToolType.CLASSIFY: mock_classify,
-            ToolType.SEARCH: mock_search,
-            ToolType.GENERATE: mock_generate,
+            ToolType.SEARCH_SIMILAR: mock_search_similar,
+            ToolType.GENERATE_CIVIL_RESPONSE: mock_generate_civil_response,
         }
         loop = AgentLoop(tool_registry=registry)
         session = SessionContext()
@@ -223,8 +243,8 @@ class TestAgentLoopStream:
 
         registry = {
             ToolType.CLASSIFY: bad_classify,
-            ToolType.SEARCH: mock_search,
-            ToolType.GENERATE: mock_generate,
+            ToolType.SEARCH_SIMILAR: mock_search_similar,
+            ToolType.GENERATE_CIVIL_RESPONSE: mock_generate_civil_response,
         }
         loop = AgentLoop(tool_registry=registry)
         session = SessionContext()

@@ -288,6 +288,17 @@ class vLLMEngineManager:
             rag_context += f"{i+1}. [민원]: {safe_complaint}\n   [답변]: {safe_answer}\n\n"
         return rag_context
 
+    def _augment_prompt(self, prompt: str, retrieved_cases: List[dict]) -> str:
+        """기존 민원 답변 프롬프트 증강 규약을 유지하는 호환 메서드."""
+        rag_context = self._build_rag_context(retrieved_cases)
+        if not rag_context:
+            return prompt
+
+        user_tag = "[|user|]"
+        if user_tag in prompt:
+            return prompt.replace(user_tag, f"{user_tag}{rag_context}\n", 1)
+        return f"{rag_context}\n{prompt}"
+
     def _build_search_result_context(
         self,
         search_results: List[SearchResult],

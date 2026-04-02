@@ -694,6 +694,52 @@ class TestGenerateShiftLeft:
         assert resp.status_code == 422
 
 
+class TestSeparatedGenerateEndpointsShiftLeft:
+    """분리된 공문서/민원답변 생성 엔드포인트 계약 검증."""
+
+    def test_generate_public_doc_returns_doc_type_and_html(self, client_with_index):
+        manager.engine = MagicMock()
+        manager.engine.generate = AsyncMock(return_value=_make_vllm_output_mock("공문서 초안 본문"))
+
+        payload = {
+            "prompt": "보도자료 초안을 작성해주세요.",
+            "doc_type": "press_release",
+            "use_rag": False,
+            "stream": False,
+        }
+        resp = client_with_index.post("/v1/generate-public-doc", json=payload)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["doc_type"] == "press_release"
+        assert body["formatted_html"].startswith("<p>")
+        assert body["text"] == "공문서 초안 본문"
+
+    def test_generate_civil_response_returns_complaint_id(self, client_with_index):
+        manager.retriever = MagicMock()
+        manager.retriever.search = MagicMock(
+            return_value=[
+                {"complaint": "도로 파손 민원", "answer": "보수 예정입니다.", "score": 0.91},
+            ]
+        )
+        manager.engine = MagicMock()
+        manager.engine.generate = AsyncMock(return_value=_make_vllm_output_mock("민원 회신 초안"))
+
+        payload = {
+            "prompt": "도로 파손 민원 회신을 작성해주세요.",
+            "complaint_id": "cmp-001",
+            "use_rag": True,
+            "stream": False,
+        }
+        resp = client_with_index.post("/v1/generate-civil-response", json=payload)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["complaint_id"] == "cmp-001"
+        assert body["retrieved_cases"] is not None
+        assert len(body["retrieved_cases"]) == 1
+
+
 # ===========================================================================
 # POST /search 및 POST /v1/search - 에지 케이스 & 상세 스키마 검증
 # ===========================================================================
@@ -1112,8 +1158,11 @@ class TestAgentLoopShiftLeft:
             plan=ExecutionPlan(
                 steps=[
                     ToolStep(tool=ToolType.CLASSIFY),
-                    ToolStep(tool=ToolType.SEARCH, depends_on="classify"),
-                    ToolStep(tool=ToolType.GENERATE, depends_on="search"),
+                    ToolStep(tool=ToolType.SEARCH_SIMILAR, depends_on="classify"),
+                    ToolStep(
+                        tool=ToolType.GENERATE_CIVIL_RESPONSE,
+                        depends_on="search_similar",
+                    ),
                 ],
                 reason="민원 본문이므로 전체 파이프라인 실행",
             ),
@@ -1131,7 +1180,7 @@ class TestAgentLoopShiftLeft:
                     latency_ms=8.4,
                 ),
                 ToolResult(
-                    tool=ToolType.SEARCH,
+                    tool=ToolType.SEARCH_SIMILAR,
                     success=True,
                     data={
                         "results": [
@@ -1146,7 +1195,7 @@ class TestAgentLoopShiftLeft:
                     latency_ms=12.1,
                 ),
                 ToolResult(
-                    tool=ToolType.GENERATE,
+                    tool=ToolType.GENERATE_CIVIL_RESPONSE,
                     success=True,
                     data={"text": "도로 파손 민원에 대한 답변 초안입니다."},
                     latency_ms=18.6,
@@ -1171,8 +1220,12 @@ class TestAgentLoopShiftLeft:
         assert body["text"] == "도로 파손 민원에 대한 답변 초안입니다."
         assert body["classification"]["category"] == "traffic"
         assert body["search_results"][0]["doc_id"] == "case-0001"
-        assert body["trace"]["plan"] == ["classify", "search", "generate"]
-        assert body["trace"]["tool_results"][1]["tool"] == "search"
+        assert body["trace"]["plan"] == [
+            "classify",
+            "search_similar",
+            "generate_civil_response",
+        ]
+        assert body["trace"]["tool_results"][1]["tool"] == "search_similar"
 
     def test_agent_run_rejects_stream_flag(self, client_with_agent_loop):
         """agent/run은 stream=True 요청을 거부한다."""
@@ -1198,7 +1251,7 @@ class TestAgentLoopShiftLeft:
             yield {
                 "type": "plan",
                 "request_id": "req-agent-stream-001",
-                "plan": ["classify", "search", "generate"],
+                "plan": ["classify", "search_similar", "generate_civil_response"],
                 "reason": "전체 파이프라인 실행",
             }
             yield {
@@ -1240,6 +1293,8 @@ _KNOWN_ENDPOINTS = {
     ("POST", "/v1/agent/stream"),
     ("POST", "/v1/classify"),
     ("POST", "/v1/generate"),
+    ("POST", "/v1/generate-public-doc"),
+    ("POST", "/v1/generate-civil-response"),
     ("POST", "/v1/stream"),
     ("POST", "/v1/search"),
     ("POST", "/search"),

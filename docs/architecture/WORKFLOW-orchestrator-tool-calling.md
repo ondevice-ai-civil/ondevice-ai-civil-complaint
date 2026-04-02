@@ -24,7 +24,7 @@
 | GovOn Shell Client | 입력 수집, 스트리밍 표시, slash command, 세션 재개 |
 | FastAPI Runtime Adapter | 요청 검증, stream 처리, graph runtime 호출 |
 | LangGraph Decision Runtime | state 기반 route 결정, tool orchestration, synthesis |
-| Tool Nodes | RAG 검색, 민원분석 API, 초안 생성 action |
+| Tool Nodes | built-in tool catalog + 확장 가능한 registry 기반 action 실행 |
 | Persistence Layer | transcript, checkpoint, audit log 저장 |
 
 ## Prerequisites
@@ -32,7 +32,7 @@
 - `govon` shell client가 설치되어 있다.
 - FastAPI runtime이 실행 중이다.
 - vLLM 또는 호환 모델 endpoint가 응답 가능하다.
-- 표준 tool registry에 검색/민원분석/초안 생성 action이 등록되어 있다.
+- 표준 tool registry에 기본 built-in tool과 추가 확장 tool이 함께 등록될 수 있다.
 - session store와 checkpoint store가 사용 가능하다.
 - 외부 API가 필요한 경우 기관 환경변수가 설정되어 있다.
 
@@ -67,6 +67,16 @@
 ```
 
 각 주요 node 이후에는 checkpoint를 저장한다.
+
+현재 기본 built-in tool catalog는 다음과 같다.
+
+- `classify`
+- `search_similar`
+- `generate_public_doc`
+- `generate_civil_response`
+- `api_lookup`
+
+위 목록은 초기 제공 세트이며, 실제 runtime registry는 기관 업무 요구에 맞게 확장 가능하다.
 
 ## Workflow Steps
 

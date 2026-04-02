@@ -106,12 +106,12 @@ def test_build_graph_tool_adapters_wraps_tool_registry_and_actions():
         return {"success": True, "data": {"query": query}}
 
     adapters = build_graph_tool_adapters(
-        tool_registry={ToolType.SEARCH: fake_search},
+        tool_registry={ToolType.SEARCH_SIMILAR: fake_search},
         action_registry={"minwon_analysis": EchoAction()},
     )
 
-    assert set(adapters.keys()) == {"search", "minwon_analysis"}
-    assert isinstance(adapters["search"], LangGraphToolAdapter)
+    assert set(adapters.keys()) == {"search_similar", "minwon_analysis"}
+    assert isinstance(adapters["search_similar"], LangGraphToolAdapter)
     assert isinstance(adapters["minwon_analysis"], LangGraphToolAdapter)
 
 

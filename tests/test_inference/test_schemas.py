@@ -11,6 +11,10 @@ from pydantic import ValidationError
 from src.inference.index_manager import DocumentMetadata, IndexType
 from src.inference.schemas import (
     DocumentMetadataSchema,
+    GenerateCivilResponseRequest,
+    GenerateCivilResponseResponse,
+    GeneratePublicDocRequest,
+    GeneratePublicDocResponse,
     GenerateResponse,
     RetrievedCase,
     SearchResult,
@@ -246,6 +250,44 @@ class TestBackwardCompatibility:
         )
         assert resp.search_results is None
         assert resp.retrieved_cases is None
+
+
+class TestSeparatedGenerateSchemas:
+    """공문서/민원답변 분리 스키마 검증."""
+
+    def test_generate_public_doc_request_has_doc_type(self):
+        req = GeneratePublicDocRequest(prompt="보도자료 초안 작성", doc_type="press_release")
+        assert req.doc_type == "press_release"
+
+    def test_generate_public_doc_response_supports_html(self):
+        resp = GeneratePublicDocResponse(
+            request_id="req-pub-001",
+            text="공문서 초안",
+            doc_type="official_document",
+            formatted_html="<p>공문서 초안</p>",
+            prompt_tokens=120,
+            completion_tokens=80,
+        )
+        assert resp.formatted_html == "<p>공문서 초안</p>"
+
+    def test_generate_civil_response_models_support_complaint_id(self):
+        req = GenerateCivilResponseRequest(prompt="민원 회신 초안", complaint_id="cmp-001")
+        resp = GenerateCivilResponseResponse(
+            request_id="req-civ-001",
+            complaint_id=req.complaint_id,
+            text="민원 회신 초안",
+            prompt_tokens=90,
+            completion_tokens=60,
+            retrieved_cases=[
+                RetrievedCase(
+                    complaint="도로 파손 민원",
+                    answer="도로 보수 예정",
+                    score=0.91,
+                )
+            ],
+        )
+        assert resp.complaint_id == "cmp-001"
+        assert resp.retrieved_cases[0].complaint == "도로 파손 민원"
 
 
 # ---------------------------------------------------------------------------

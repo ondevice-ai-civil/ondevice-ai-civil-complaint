@@ -15,10 +15,16 @@ def agents_dir(tmp_path):
         "---\n\n당신은 민원 분류 전문가입니다.\n",
         encoding="utf-8",
     )
-    (tmp_path / "generator.md").write_text(
-        "---\nname: generator\nrole: Senior Administrative Officer\n"
-        "description: 답변 생성\ntemperature: 0.7\nmax_tokens: 2048\n"
-        "---\n\n당신은 행정사무관입니다.\n",
+    (tmp_path / "generator_public_doc.md").write_text(
+        "---\nname: generator_public_doc\nrole: Official Document Officer\n"
+        "description: 공문서 생성\ntemperature: 0.4\nmax_tokens: 2048\n"
+        "---\n\n당신은 공문서 작성 담당자입니다.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "generator_civil_response.md").write_text(
+        "---\nname: generator_civil_response\nrole: Civil Response Officer\n"
+        "description: 민원 답변 생성\ntemperature: 0.7\nmax_tokens: 2048\n"
+        "---\n\n당신은 민원 회신 담당자입니다.\n",
         encoding="utf-8",
     )
     return str(tmp_path)
@@ -32,7 +38,8 @@ def mgr(agents_dir):
 class TestAgentLoading:
     def test_loads_all_agents(self, mgr):
         assert "classifier" in mgr.list_agents()
-        assert "generator" in mgr.list_agents()
+        assert "generator_public_doc" in mgr.list_agents()
+        assert "generator_civil_response" in mgr.list_agents()
 
     def test_agent_attributes(self, mgr):
         c = mgr.get_agent("classifier")
@@ -80,7 +87,7 @@ class TestBuildPrompt:
             mgr.build_prompt("nope", "test")
 
     def test_prompt_order(self, mgr):
-        p = mgr.build_prompt("generator", "민원")
+        p = mgr.build_prompt("generator_civil_response", "민원")
         assert p.index("[|system|]") < p.index("[|user|]") < p.index("[|assistant|]")
 
     def test_unescaped_token_raises(self, mgr):

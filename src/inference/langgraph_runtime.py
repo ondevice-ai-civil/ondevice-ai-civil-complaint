@@ -49,14 +49,19 @@ class SupportsModelAdapter(Protocol):
 
 
 class LangGraphState(TypedDict, total=False):
-    """GovOn LangGraph runtime의 최소 상태 스키마."""
+    """GovOn LangGraph runtime의 최소 상태 스키마.
+
+    built-in tool 힌트는 `requested_tool`에 두고,
+    확장 registry tool/action 이름은 `requested_action_name`으로 전달한다.
+    """
 
     query: str
     session: SessionContext
     session_id: str
     session_summary: str
-    requested_action: Optional[str]
-    available_actions: List[str]
+    requested_tool: Optional[ToolType]
+    requested_action_name: Optional[str]
+    available_tools: List[str]
     route: str
     action_result: Dict[str, Any]
     citations: List[Dict[str, Any]]
@@ -293,10 +298,20 @@ class GovOnLangGraphRuntime:
         builder.add_edge("respond", END)
         return builder.compile()
 
+    @staticmethod
+    def _resolve_requested_name(state: LangGraphState) -> Optional[str]:
+        """상태에서 실행 대상 tool/action 이름을 정규화한다."""
+        requested_tool = state.get("requested_tool")
+        if isinstance(requested_tool, ToolType):
+            return requested_tool.value
+        if requested_tool:
+            return str(requested_tool)
+        return state.get("requested_action_name")
+
     def _decide_node(self, state: LangGraphState) -> Dict[str, Any]:
         """요청된 action이 있으면 tool route, 없으면 direct response route를 선택한다."""
 
-        requested_action = state.get("requested_action")
+        requested_action = self._resolve_requested_name(state)
         if requested_action and requested_action in self.tools:
             return {"route": "tool"}
 
@@ -318,7 +333,7 @@ class GovOnLangGraphRuntime:
         """선택된 action/tool을 실행한다."""
 
         session = state.get("session") or SessionContext(session_id=state.get("session_id", ""))
-        requested_action = state.get("requested_action")
+        requested_action = self._resolve_requested_name(state)
 
         if not requested_action or requested_action not in self.tools:
             return {"error": "실행할 action이 선택되지 않았습니다."}
@@ -326,7 +341,7 @@ class GovOnLangGraphRuntime:
         adapter = self.tools[requested_action]
         context = {
             "session_context": state.get("session_summary", ""),
-            "available_actions": state.get("available_actions", []),
+            "available_tools": state.get("available_tools", []),
             "route": state.get("route", ""),
         }
         result = await adapter.run(state["query"], context, session)
@@ -383,18 +398,31 @@ class GovOnLangGraphRuntime:
         *,
         query: str,
         session: Optional[SessionContext] = None,
+        requested_tool: Optional[ToolType | str] = None,
         requested_action: Optional[str] = None,
     ) -> LangGraphState:
         """초기 상태를 만들어 graph를 실행한다."""
 
         session_obj = session or SessionContext()
+        normalized_tool: Optional[ToolType] = None
+        action_name = requested_action
+
+        if isinstance(requested_tool, ToolType):
+            normalized_tool = requested_tool
+        elif isinstance(requested_tool, str):
+            try:
+                normalized_tool = ToolType(requested_tool)
+            except ValueError:
+                action_name = requested_tool
+
         initial_state: LangGraphState = {
             "query": query,
             "session": session_obj,
             "session_id": session_obj.session_id,
             "session_summary": session_obj.build_context_summary(),
-            "requested_action": requested_action,
-            "available_actions": sorted(self.tools.keys()),
+            "requested_tool": normalized_tool,
+            "requested_action_name": action_name,
+            "available_tools": sorted(self.tools.keys()),
         }
         return await self.graph.ainvoke(initial_state)
 

@@ -1,7 +1,7 @@
 """세션 기반 에이전트 루프 모듈.
 
 하나의 세션 안에서 요청 계획, tool 실행, 최종 응답 합성을 처리한다.
-classify -> search -> generate 흐름을 통합하며,
+classify -> search_similar -> generate_civil_response 흐름을 기본으로 통합하며,
 각 단계의 trace와 latency를 기록한다.
 
 Issue: #393
@@ -18,7 +18,7 @@ from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 from loguru import logger
 
 from .session_context import SessionContext
-from .tool_router import ExecutionPlan, ToolRouter, ToolStep, ToolType
+from .tool_router import ExecutionPlan, ToolName, ToolRouter, ToolStep, ToolType, tool_name
 
 # ---------------------------------------------------------------------------
 # Tool 실행 결과 / 트레이스
@@ -29,7 +29,7 @@ from .tool_router import ExecutionPlan, ToolRouter, ToolStep, ToolType
 class ToolResult:
     """단일 tool 실행 결과."""
 
-    tool: ToolType
+    tool: ToolName
     success: bool
     data: Dict[str, Any] = field(default_factory=dict)
     error: Optional[str] = None
@@ -37,7 +37,7 @@ class ToolResult:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "tool": self.tool.value,
+            "tool": tool_name(self.tool),
             "success": self.success,
             "data": self.data,
             "error": self.error,
@@ -97,7 +97,7 @@ class AgentLoop:
 
     Parameters
     ----------
-    tool_registry : Dict[ToolType, ToolFunction]
+        tool_registry : Dict[ToolName, ToolFunction]
         tool 타입별 실행 함수. 각 함수는 비동기여야 한다.
     router : Optional[ToolRouter]
         커스텀 라우터. None이면 기본 ToolRouter를 사용한다.
@@ -107,11 +107,11 @@ class AgentLoop:
 
     def __init__(
         self,
-        tool_registry: Dict[ToolType, ToolFunction],
+        tool_registry: Dict[ToolName, ToolFunction],
         router: Optional[ToolRouter] = None,
         tool_timeout: float = DEFAULT_TOOL_TIMEOUT,
     ) -> None:
-        self._tools = tool_registry
+        self._tools = {tool_name(name): runner for name, runner in tool_registry.items()}
         self._router = router or ToolRouter()
         self._tool_timeout = tool_timeout
 
@@ -120,7 +120,7 @@ class AgentLoop:
         query: str,
         session: SessionContext,
         request_id: Optional[str] = None,
-        force_tools: Optional[List[ToolType]] = None,
+        force_tools: Optional[List[ToolName]] = None,
     ) -> AgentTrace:
         """에이전트 루프를 실행한다 (non-streaming).
 
@@ -132,7 +132,7 @@ class AgentLoop:
             현재 세션 컨텍스트.
         request_id : Optional[str]
             요청 ID. 미지정 시 자동 생성.
-        force_tools : Optional[List[ToolType]]
+        force_tools : Optional[List[ToolName]]
             강제 실행할 tool 목록.
 
         Returns
@@ -165,19 +165,20 @@ class AgentLoop:
             for step in plan.steps:
                 result = await self._execute_tool(step, accumulated, session)
                 trace.tool_results.append(result)
+                step_name = step.step_id
 
                 if result.success:
-                    accumulated[step.tool.value] = result.data
+                    accumulated[step_name] = result.data
                     # 검색 결과를 세션에 저장
-                    if step.tool == ToolType.SEARCH and "results" in result.data:
+                    if step_name == ToolType.SEARCH_SIMILAR.value and "results" in result.data:
                         session.set_evidences(result.data["results"])
                 else:
                     # 실패 시 fallback: 다음 단계는 빈 데이터로 진행
                     logger.warning(
-                        f"[AgentLoop] tool {step.tool.value} 실패: {result.error}. "
+                        f"[AgentLoop] tool {step_name} 실패: {result.error}. "
                         f"빈 결과로 계속 진행합니다."
                     )
-                    accumulated[step.tool.value] = {}
+                    accumulated[step_name] = {}
 
             # 4. 최종 텍스트 추출
             final_text = self._extract_final_text(accumulated, plan)
@@ -207,7 +208,7 @@ class AgentLoop:
         query: str,
         session: SessionContext,
         request_id: Optional[str] = None,
-        force_tools: Optional[List[ToolType]] = None,
+        force_tools: Optional[List[ToolName]] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """에이전트 루프를 스트리밍으로 실행한다.
 
@@ -252,7 +253,7 @@ class AgentLoop:
                 yield {
                     "type": "tool_start",
                     "request_id": rid,
-                    "tool": step.tool.value,
+                    "tool": step.step_id,
                 }
 
                 result = await self._execute_tool(step, accumulated, session)
@@ -261,18 +262,18 @@ class AgentLoop:
                 yield {
                     "type": "tool_result",
                     "request_id": rid,
-                    "tool": step.tool.value,
+                    "tool": step.step_id,
                     "success": result.success,
                     "latency_ms": round(result.latency_ms, 2),
                     "error": result.error,
                 }
 
                 if result.success:
-                    accumulated[step.tool.value] = result.data
-                    if step.tool == ToolType.SEARCH and "results" in result.data:
+                    accumulated[step.step_id] = result.data
+                    if step.step_id == ToolType.SEARCH_SIMILAR.value and "results" in result.data:
                         session.set_evidences(result.data["results"])
                 else:
-                    accumulated[step.tool.value] = {}
+                    accumulated[step.step_id] = {}
 
             # 최종 텍스트
             final_text = self._extract_final_text(accumulated, plan)
@@ -309,12 +310,13 @@ class AgentLoop:
         session: SessionContext,
     ) -> ToolResult:
         """단일 tool을 타임아웃과 함께 실행한다."""
-        tool_fn = self._tools.get(step.tool)
+        step_name = step.step_id
+        tool_fn = self._tools.get(step_name)
         if tool_fn is None:
             return ToolResult(
                 tool=step.tool,
                 success=False,
-                error=f"등록되지 않은 tool: {step.tool.value}",
+                error=f"등록되지 않은 tool: {step_name}",
             )
 
         start = time.monotonic()
@@ -338,7 +340,7 @@ class AgentLoop:
 
         except asyncio.TimeoutError:
             elapsed = (time.monotonic() - start) * 1000
-            error_msg = f"tool {step.tool.value} 타임아웃 ({self._tool_timeout}초)"
+            error_msg = f"tool {step_name} 타임아웃 ({self._tool_timeout}초)"
             logger.warning(f"[AgentLoop] {error_msg}")
             return ToolResult(
                 tool=step.tool,
@@ -349,7 +351,7 @@ class AgentLoop:
         except Exception as e:
             elapsed = (time.monotonic() - start) * 1000
             logger.error(
-                f"[AgentLoop] tool {step.tool.value} 실행 오류: {e}",
+                f"[AgentLoop] tool {step_name} 실행 오류: {e}",
                 exc_info=True,
             )
             return ToolResult(
@@ -363,15 +365,23 @@ class AgentLoop:
     def _extract_final_text(accumulated: Dict[str, Any], plan: ExecutionPlan) -> str:
         """누적된 결과에서 최종 응답 텍스트를 추출한다.
 
-        generate 결과가 있으면 그것을 사용하고,
-        없으면 classify/search/api_lookup 결과를 요약한다.
+        생성 결과가 있으면 그것을 사용하고,
+        없으면 classify/search_similar/api_lookup 결과를 요약한다.
         """
-        # generate 결과 우선
-        gen_data = accumulated.get(ToolType.GENERATE.value, {})
-        if gen_data.get("text"):
-            return gen_data["text"]
+        for tool_type in (
+            ToolType.GENERATE_PUBLIC_DOC,
+            ToolType.GENERATE_CIVIL_RESPONSE,
+        ):
+            gen_data = accumulated.get(tool_type.value, {})
+            if gen_data.get("text"):
+                return gen_data["text"]
 
-        # generate가 없으면 다른 결과를 요약
+        for step in plan.steps:
+            step_data = accumulated.get(step.step_id, {})
+            if isinstance(step_data, dict) and step_data.get("text"):
+                return step_data["text"]
+
+        # 생성 결과가 없으면 다른 결과를 요약
         parts: List[str] = []
 
         classify_data = accumulated.get(ToolType.CLASSIFY.value, {})
@@ -384,13 +394,13 @@ class AgentLoop:
                 f"[분류 결과] 카테고리: {category} (신뢰도: {confidence:.0%})\n사유: {reason}"
             )
 
-        search_data = accumulated.get(ToolType.SEARCH.value, {})
+        search_data = accumulated.get(ToolType.SEARCH_SIMILAR.value, {})
         if search_data.get("results"):
             results = search_data["results"][:3]
-            search_lines = ["[검색 결과]"]
+            search_lines = ["[유사 민원 사례]"]
             for i, r in enumerate(results, 1):
-                title = r.get("title", "")
-                content = r.get("content", "")[:100]
+                title = r.get("title", r.get("qnaTitle", ""))
+                content = r.get("content", r.get("qnaContent", r.get("question", "")))[:100]
                 search_lines.append(f"{i}. {title}: {content}")
             parts.append("\n".join(search_lines))
 

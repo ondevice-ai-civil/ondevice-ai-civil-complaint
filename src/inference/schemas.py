@@ -5,7 +5,6 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from src.inference.hybrid_search import SearchMode
 from src.inference.index_manager import DocumentMetadata, IndexType
-from src.inference.tool_router import ToolType
 
 
 class RetrievedCase(BaseModel):
@@ -16,7 +15,7 @@ class RetrievedCase(BaseModel):
     score: float
 
 
-class GenerateRequest(BaseModel):
+class BaseGenerateRequest(BaseModel):
     prompt: str = Field(
         ..., min_length=1, max_length=10000, description="The input prompt for generation."
     )
@@ -32,13 +31,49 @@ class GenerateRequest(BaseModel):
     )
 
 
-class GenerateResponse(BaseModel):
+class BaseGenerateResponse(BaseModel):
     request_id: str
     text: str
     prompt_tokens: int
     completion_tokens: int
-    retrieved_cases: Optional[List[RetrievedCase]] = None
     search_results: Optional[List["SearchResult"]] = None
+
+
+class GeneratePublicDocRequest(BaseGenerateRequest):
+    doc_type: str = Field(
+        default="official_document",
+        min_length=1,
+        max_length=100,
+        description="생성할 공문서 유형",
+    )
+
+
+class GeneratePublicDocResponse(BaseGenerateResponse):
+    doc_type: str
+    formatted_html: Optional[str] = Field(
+        default=None,
+        description="공문서 렌더링용 HTML 문자열",
+    )
+
+
+class GenerateCivilResponseRequest(BaseGenerateRequest):
+    complaint_id: Optional[str] = Field(
+        default=None,
+        description="민원 식별자. 없으면 자유 텍스트 요청으로 처리한다.",
+    )
+
+
+class GenerateCivilResponseResponse(BaseGenerateResponse):
+    complaint_id: Optional[str] = None
+    retrieved_cases: Optional[List[RetrievedCase]] = None
+
+
+class GenerateRequest(GenerateCivilResponseRequest):
+    """레거시 /v1/generate 호환용 민원 답변 생성 요청 모델."""
+
+
+class GenerateResponse(GenerateCivilResponseResponse):
+    """레거시 /v1/generate 호환용 민원 답변 생성 응답 모델."""
 
 
 class StreamResponse(BaseModel):
@@ -219,9 +254,9 @@ class AgentRunRequest(BaseModel):
         description="세션 ID. 미지정 시 새 세션을 생성한다.",
     )
     stream: bool = Field(default=False, description="스트리밍 응답 여부")
-    force_tools: Optional[List[ToolType]] = Field(
+    force_tools: Optional[List[str]] = Field(
         default=None,
-        description="강제 실행할 tool 목록. 미지정 시 자동 판단한다.",
+        description="강제 실행할 tool 이름 목록. built-in 외 custom registry tool도 허용한다.",
     )
     max_tokens: int = Field(default=512, gt=0, le=4096, description="생성 단계 최대 토큰 수")
     temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="생성 단계 샘플링 온도")
@@ -262,6 +297,8 @@ class AgentRunResponse(BaseModel):
 
 
 # forward-ref 해소
+GeneratePublicDocResponse.model_rebuild()
+GenerateCivilResponseResponse.model_rebuild()
 GenerateResponse.model_rebuild()
 StreamResponse.model_rebuild()
 SearchResponse.model_rebuild()

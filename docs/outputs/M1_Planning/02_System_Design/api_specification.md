@@ -39,13 +39,40 @@
   }
   ```
 
-#### [POST] 표준 답변 초안 생성 (Reasoning 포함)
-EXAONE-Deep-7.8B 모델을 사용하여 민원 분석 결과와 RAG 검색 결과를 통합한 답변 초안을 생성합니다.
-- **Endpoint**: `/complaints/analyze/generate-answer`
+#### [POST] 공문서 초안 생성
+EXAONE-Deep-7.8B 모델을 사용하여 법률, 매뉴얼, 공시정보를 참고한 공문서 초안을 생성합니다.
+- **Endpoint**: `/complaints/analyze/generate-public-doc`
 - **Request Body**:
   ```json
   {
     "content": "string (민원 본문)",
+    "doc_type": "string (예: official_document, press_release)",
+    "options": {
+      "temperature": 0.6,
+      "max_tokens": 1024
+    }
+  }
+  ```
+- **Response**:
+  ```json
+  {
+    "document_draft": "제목: ...",
+    "formatted_html": "<p>제목: ...</p>",
+    "inference_stats": {
+      "time_seconds": 2.1,
+      "tokens_per_sec": 120.5
+    }
+  }
+  ```
+
+#### [POST] 민원 답변 초안 생성 (Reasoning 포함)
+EXAONE-Deep-7.8B 모델을 사용하여 민원 분석 결과와 RAG 검색 결과를 통합한 답변 초안을 생성합니다.
+- **Endpoint**: `/complaints/analyze/generate-civil-response`
+- **Request Body**:
+  ```json
+  {
+    "content": "string (민원 본문)",
+    "complaint_id": "string (선택 사항)",
     "category": "string (선택 사항)",
     "context_ids": ["integer (RAG 검색된 사례 ID 목록)"],
     "options": {

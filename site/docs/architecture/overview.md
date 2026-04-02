@@ -252,7 +252,7 @@ EXAONE-Deep-7.8B는 고유한 채팅 템플릿을 사용합니다.
 
 | 변수명 | 기본값 | 설명 |
 |--------|--------|------|
-| `MODEL_PATH` | `umyunsang/GovOn-EXAONE-LoRA-v2` | HuggingFace 모델 경로 또는 로컬 경로 |
+| `MODEL_PATH` | `umyunsang/GovOn-EXAONE-AWQ-v2` | HuggingFace 모델 경로 또는 로컬 경로 |
 | `DATA_PATH` | `data/processed/v2_train.jsonl` | 학습 데이터 경로 (인덱스 빌드용) |
 | `INDEX_PATH` | `models/faiss_index/complaints.index` | FAISS 인덱스 파일 경로 |
 | `FAISS_INDEX_DIR` | `models/faiss_index` | MultiIndexManager 인덱스 디렉토리 |

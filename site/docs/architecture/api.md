@@ -406,7 +406,7 @@ X-Feature-Flag: use_rag_pipeline=false
 
 | 변수명 | 기본값 | 설명 |
 |--------|--------|------|
-| `MODEL_PATH` | `umyunsang/GovOn-EXAONE-LoRA-v2` | HuggingFace 모델 ID 또는 로컬 경로 |
+| `MODEL_PATH` | `umyunsang/GovOn-EXAONE-AWQ-v2` | HuggingFace 모델 ID 또는 로컬 경로 |
 | `DATA_PATH` | `data/processed/v2_train.jsonl` | RAG용 학습 데이터 경로 |
 | `INDEX_PATH` | `models/faiss_index/complaints.index` | FAISS 인덱스 파일 경로 |
 | `GPU_UTILIZATION` | `0.8` | GPU 메모리 활용률 (0.0~1.0) |
@@ -443,6 +443,6 @@ uvicorn src.inference.api_server:app --host 0.0.0.0 --port 8000 --reload
 # 프로덕션 환경
 API_KEY=your-secret-key \
 CORS_ORIGINS=https://govon.example.com \
-MODEL_PATH=umyunsang/GovOn-EXAONE-LoRA-v2 \
+MODEL_PATH=umyunsang/GovOn-EXAONE-AWQ-v2 \
 uvicorn src.inference.api_server:app --host 0.0.0.0 --port 8000
 ```

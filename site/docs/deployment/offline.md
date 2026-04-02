@@ -74,7 +74,7 @@ LLM 모델 파일은 별도로 다운로드해야 한다.
 ```bash
 # HuggingFace에서 모델 다운로드
 pip install huggingface_hub
-huggingface-cli download umyunsang/GovOn-EXAONE-LoRA-v2 --local-dir ./models/GovOn-EXAONE-LoRA-v2
+huggingface-cli download umyunsang/GovOn-EXAONE-AWQ-v2 --local-dir ./models/GovOn-EXAONE-AWQ-v2
 ```
 
 !!! tip "모델 파일 크기"
@@ -180,7 +180,7 @@ Loaded image: ghcr.io/govon-org/govon:latest
 mkdir -p models/faiss_index models/bm25_index data/processed agents configs logs .cache
 
 # 모델 파일 복사 (USB 등에서)
-cp -r /media/usb/models/GovOn-EXAONE-LoRA-v2 ./models/
+cp -r /media/usb/models/GovOn-EXAONE-AWQ-v2 ./models/
 cp -r /media/usb/models/faiss_index/* ./models/faiss_index/
 ```
 
@@ -192,7 +192,7 @@ cp -r /media/usb/models/faiss_index/* ./models/faiss_index/
 cp .env.airgap.example .env
 
 # 필요 시 수정
-# MODEL_PATH=/app/models/GovOn-EXAONE-LoRA-v2
+# MODEL_PATH=/app/models/GovOn-EXAONE-AWQ-v2
 # API_KEY=your-secure-api-key
 # BM25_INDEX_HMAC_KEY=your-secure-hmac-key
 ```

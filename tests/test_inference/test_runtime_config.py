@@ -119,7 +119,7 @@ class TestModelConfig:
     def test_defaults(self):
         with patch.dict(os.environ, {}, clear=True):
             mc = ModelConfig.from_env()
-        assert mc.model_path == "umyunsang/GovOn-EXAONE-LoRA-v2"
+        assert mc.model_path == "umyunsang/GovOn-EXAONE-AWQ-v2"
         assert mc.trust_remote_code is True
         assert mc.dtype == "half"
         assert mc.enforce_eager is True

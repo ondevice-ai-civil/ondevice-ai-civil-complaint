@@ -143,7 +143,7 @@ class GenerationDefaults:
 class ModelConfig:
     """모델 및 어댑터 설정."""
 
-    model_path: str = "umyunsang/GovOn-EXAONE-LoRA-v2"
+    model_path: str = "umyunsang/GovOn-EXAONE-AWQ-v2"
     trust_remote_code: bool = True
     dtype: str = "half"
     enforce_eager: bool = True
@@ -153,7 +153,7 @@ class ModelConfig:
     @classmethod
     def from_env(cls) -> "ModelConfig":
         return cls(
-            model_path=os.getenv("MODEL_PATH", "umyunsang/GovOn-EXAONE-LoRA-v2"),
+            model_path=os.getenv("MODEL_PATH", "umyunsang/GovOn-EXAONE-AWQ-v2"),
             trust_remote_code=os.getenv("TRUST_REMOTE_CODE", "true").lower()
             in ("true", "1", "yes"),
             dtype=os.getenv("MODEL_DTYPE", "half"),

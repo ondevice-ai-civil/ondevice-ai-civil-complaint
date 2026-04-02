@@ -28,7 +28,7 @@ Dockerfile에 다음 기본값이 설정되어 있다. 실행 시 `docker-compos
 
 | 환경변수 | 기본값 | 설명 |
 |---------|--------|------|
-| `MODEL_PATH` | `umyunsang/GovOn-EXAONE-LoRA-v2` | HuggingFace 모델 경로 또는 로컬 경로 |
+| `MODEL_PATH` | `umyunsang/GovOn-EXAONE-AWQ-v2` | HuggingFace 모델 경로 또는 로컬 경로 |
 | `DATA_PATH` | `/app/data/processed/v2_train.jsonl` | 학습 데이터 경로 |
 | `INDEX_PATH` | `/app/models/faiss_index/complaints.index` | FAISS 인덱스 파일 경로 |
 
@@ -126,7 +126,7 @@ services:
       - ./.cache:/app/.cache
     environment:
       API_KEY: ${API_KEY:-}
-      MODEL_PATH: ${MODEL_PATH:-umyunsang/GovOn-EXAONE-LoRA-v2}
+      MODEL_PATH: ${MODEL_PATH:-umyunsang/GovOn-EXAONE-AWQ-v2}
       LOG_DIR: ${LOG_DIR:-/var/log/govon}
       CACHE_DIR: ${CACHE_DIR:-/app/.cache}
       GPU_UTILIZATION: ${GPU_UTILIZATION:-0.8}
@@ -173,7 +173,7 @@ services:
       - ./.cache:/app/.cache
     environment:
       API_KEY: ${API_KEY:-CHANGE_ME_TO_SECURE_RANDOM_KEY}
-      MODEL_PATH: ${MODEL_PATH:-/app/models/GovOn-EXAONE-LoRA-v2}
+      MODEL_PATH: ${MODEL_PATH:-/app/models/GovOn-EXAONE-AWQ-v2}
       LOG_DIR: ${LOG_DIR:-/var/log/govon}
       CACHE_DIR: ${CACHE_DIR:-/app/.cache}
       GPU_UTILIZATION: ${GPU_UTILIZATION:-0.8}

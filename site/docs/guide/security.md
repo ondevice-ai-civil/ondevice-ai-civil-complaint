@@ -313,7 +313,7 @@ data/processed/
 
     ```bash
     export API_KEY=your-secret-api-key
-    export MODEL_PATH=umyunsang/GovOn-EXAONE-LoRA-v2
+    export MODEL_PATH=umyunsang/GovOn-EXAONE-AWQ-v2
     ```
 
 === ".env 파일"
@@ -321,7 +321,7 @@ data/processed/
     ```bash
     # .env
     API_KEY=your-secret-api-key
-    MODEL_PATH=umyunsang/GovOn-EXAONE-LoRA-v2
+    MODEL_PATH=umyunsang/GovOn-EXAONE-AWQ-v2
     ```
 
 === "Docker Compose"

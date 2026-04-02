@@ -96,7 +96,7 @@ cp .env.example .env
 | 환경변수 | 필수 | 기본값 | 설명 |
 |---------|------|--------|------|
 | `API_KEY` | 권장 | - | API 인증 키 (`X-API-Key` 헤더로 전달) |
-| `MODEL_PATH` | 선택 | `umyunsang/GovOn-EXAONE-LoRA-v2` | HuggingFace 모델 ID 또는 로컬 모델 경로 |
+| `MODEL_PATH` | 선택 | `umyunsang/GovOn-EXAONE-AWQ-v2` | HuggingFace 모델 ID 또는 로컬 모델 경로 |
 | `DATA_PATH` | 선택 | `/app/data/processed/v2_train.jsonl` | 학습 데이터 파일 경로 |
 | `INDEX_PATH` | 선택 | `/app/models/faiss_index/complaints.index` | FAISS 인덱스 파일 경로 |
 | `LOG_DIR` | 선택 | `/var/log/govon` | 컨테이너 내부 로그 경로 |

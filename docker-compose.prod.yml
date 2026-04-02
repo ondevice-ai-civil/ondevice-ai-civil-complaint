@@ -25,7 +25,7 @@ services:
       - ./configs:/app/configs
     environment:
       - API_KEY=${API_KEY}
-      - MODEL_PATH=${MODEL_PATH:-umyunsang/GovOn-EXAONE-LoRA-v2}
+      - MODEL_PATH=${MODEL_PATH:-umyunsang/GovOn-EXAONE-AWQ-v2}
       - GPU_UTILIZATION=${GPU_UTILIZATION:-0.8}
       - MAX_MODEL_LEN=${MAX_MODEL_LEN:-8192}
       - DEPLOYMENT_SLOT=blue
@@ -71,7 +71,7 @@ services:
       - ./configs:/app/configs
     environment:
       - API_KEY=${API_KEY}
-      - MODEL_PATH=${MODEL_PATH:-umyunsang/GovOn-EXAONE-LoRA-v2}
+      - MODEL_PATH=${MODEL_PATH:-umyunsang/GovOn-EXAONE-AWQ-v2}
       - GPU_UTILIZATION=${GPU_UTILIZATION:-0.8}
       - MAX_MODEL_LEN=${MAX_MODEL_LEN:-8192}
       - DEPLOYMENT_SLOT=green

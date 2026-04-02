@@ -22,7 +22,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       RELOAD: "false"
       API_KEY: ${API_KEY:?Set API_KEY in .env before starting offline runtime}
-      MODEL_PATH: ${MODEL_PATH:-/app/models/GovOn-EXAONE-LoRA-v2}
+      MODEL_PATH: ${MODEL_PATH:-/app/models/GovOn-EXAONE-AWQ-v2}
       TRUST_REMOTE_CODE: ${TRUST_REMOTE_CODE:-true}
       MODEL_DTYPE: ${MODEL_DTYPE:-half}
       ENFORCE_EAGER: ${ENFORCE_EAGER:-true}

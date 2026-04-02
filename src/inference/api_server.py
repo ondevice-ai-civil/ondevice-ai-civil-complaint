@@ -5,13 +5,14 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncGenerator, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.security import APIKeyHeader
 from loguru import logger
+from pydantic import BaseModel, Field
 try:
     from vllm import AsyncLLM, SamplingParams
 except ImportError:
@@ -43,6 +44,8 @@ from .schemas import (
     StreamResponse,
 )
 from .feature_flags import FeatureFlags
+from .tools.base import ToolRegistry
+from .tools.rag_search import RAGSearchInput, RAGSearchTool
 
 if not SKIP_MODEL_LOAD:
     try:
@@ -112,6 +115,7 @@ class vLLMEngineManager:
         self.embed_model = None
         self.feature_flags: FeatureFlags = FeatureFlags.from_env()
         self.pii_masker = None
+        self.tool_registry: ToolRegistry = ToolRegistry()
 
     async def initialize(self):
         if SKIP_MODEL_LOAD:
@@ -214,6 +218,22 @@ class vLLMEngineManager:
         except Exception as e:
             logger.warning(f"PIIMasker 초기화 실패 — 검색 결과 PII 마스킹이 비활성화됩니다: {e}")
             self.pii_masker = None
+
+        # 7. Tool Registry 초기화
+        self._register_tools()
+
+    def _register_tools(self) -> None:
+        """사용 가능한 tool을 ToolRegistry에 등록한다."""
+        if self.hybrid_engine or self.retriever:
+            rag_tool = RAGSearchTool(
+                hybrid_engine=self.hybrid_engine,
+                retriever=self.retriever,
+                pii_masker=self.pii_masker,
+            )
+            self.tool_registry.register(rag_tool)
+            logger.info(f"Tool 등록 완료: {self.tool_registry.list_tools()}")
+        else:
+            logger.warning("검색 엔진 미초기화 — rag_search tool 미등록")
 
     def _escape_special_tokens(self, text: str) -> str:
         """Escape EXAONE chat template tokens to prevent prompt injection."""
@@ -668,6 +688,50 @@ async def search(request: SearchRequest, req: Request, _: None = Depends(verify_
         # C-3: 내부 예외 정보 노출 방지
         logger.error(f"검색 중 오류 발생: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="검색 처리 중 내부 오류가 발생했습니다.")
+
+
+# --- T-1: Tool 엔드포인트 (#395) ---
+
+
+class ToolExecuteRequest(BaseModel):
+    """tool 실행 요청 모델."""
+
+    tool_name: str = Field(..., description="실행할 tool 이름")
+    parameters: Dict[str, Any] = Field(default_factory=dict, description="tool 입력 파라미터")
+
+
+@app.get("/v1/tools")
+async def list_tools(_: None = Depends(verify_api_key)):
+    """등록된 tool 목록을 반환한다."""
+    return {"tools": manager.tool_registry.list_tools()}
+
+
+@app.post("/v1/tools/execute")
+@_rate_limit("60/minute")
+async def execute_tool(
+    request: ToolExecuteRequest,
+    req: Request,
+    _: None = Depends(verify_api_key),
+):
+    """이름으로 tool을 실행한다."""
+    tool = manager.tool_registry.get(request.tool_name)
+    if tool is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"등록되지 않은 tool입니다: {request.tool_name}",
+        )
+
+    # tool별 입력 스키마로 변환
+    if request.tool_name == "rag_search":
+        try:
+            tool_input = RAGSearchInput(**request.parameters)
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"입력 검증 실패: {e}")
+    else:
+        raise HTTPException(status_code=400, detail=f"지원되지 않는 tool입니다: {request.tool_name}")
+
+    output = await tool.run(tool_input)
+    return output.model_dump()
 
 
 if __name__ == "__main__":

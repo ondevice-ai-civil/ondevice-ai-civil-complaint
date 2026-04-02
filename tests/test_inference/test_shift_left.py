@@ -1088,6 +1088,8 @@ _KNOWN_ENDPOINTS = {
     ("POST", "/v1/stream"),
     ("POST", "/v1/search"),
     ("POST", "/search"),
+    ("GET", "/v1/tools"),
+    ("POST", "/v1/tools/execute"),
 }
 
 

@@ -90,6 +90,18 @@ class TestAgentLoop:
         assert session.conversations[0].role == "user"
         assert session.conversations[1].role == "assistant"
         assert len(session.tool_runs) == 3
+        assert len(session.graph_runs) == 1
+        assert all(
+            tool_run.graph_run_request_id == session.graph_runs[0].request_id
+            for tool_run in session.tool_runs
+        )
+        assert session.graph_runs[0].approval_status == "not_requested"
+        assert session.graph_runs[0].executed_capabilities == [
+            "rag_search",
+            "api_lookup",
+            "draft_civil_response",
+        ]
+        assert session.graph_runs[0].status == "completed"
 
     @pytest.mark.asyncio
     async def test_tool_failure_does_not_abort_remaining_tools(self):
@@ -102,6 +114,8 @@ class TestAgentLoop:
         assert trace.tool_results[1].success is True
         assert trace.tool_results[2].success is True
         assert "최종 초안" in trace.final_text
+        assert session.graph_runs[0].status == "completed_with_errors"
+        assert all(tool_run.graph_run_request_id == trace.request_id for tool_run in session.tool_runs)
 
     @pytest.mark.asyncio
     async def test_tool_timeout_is_recorded(self):
@@ -113,6 +127,7 @@ class TestAgentLoop:
         api_result = trace.tool_results[1]
         assert api_result.success is False
         assert "타임아웃" in api_result.error
+        assert session.tool_runs[1].graph_run_request_id == trace.request_id
 
     @pytest.mark.asyncio
     async def test_force_tools_runs_single_tool(self):

@@ -81,6 +81,7 @@ class AgentLoop:
         rid = request_id or str(uuid.uuid4())
         trace = AgentTrace(request_id=rid, session_id=session.session_id)
         loop_start = time.monotonic()
+        started_at = time.time()
 
         try:
             session.add_turn("user", query)
@@ -104,6 +105,7 @@ class AgentLoop:
                 accumulated[step.step_id] = result.data if result.success else {}
                 session.add_tool_run(
                     tool=step.step_id,
+                    graph_run_request_id=rid,
                     success=result.success,
                     latency_ms=result.latency_ms,
                     error=result.error,
@@ -118,6 +120,12 @@ class AgentLoop:
             logger.error(f"[AgentLoop] request_id={rid} 오류: {exc}", exc_info=True)
         finally:
             trace.total_latency_ms = (time.monotonic() - loop_start) * 1000
+            self._record_graph_run(
+                session=session,
+                trace=trace,
+                started_at=started_at,
+                completed_at=time.time(),
+            )
 
         return trace
 
@@ -130,6 +138,7 @@ class AgentLoop:
     ) -> AsyncGenerator[Dict[str, Any], None]:
         rid = request_id or str(uuid.uuid4())
         loop_start = time.monotonic()
+        started_at = time.time()
         trace = AgentTrace(request_id=rid, session_id=session.session_id)
 
         try:
@@ -157,6 +166,7 @@ class AgentLoop:
                 accumulated[step.step_id] = result.data if result.success else {}
                 session.add_tool_run(
                     tool=step.step_id,
+                    graph_run_request_id=rid,
                     success=result.success,
                     latency_ms=result.latency_ms,
                     error=result.error,
@@ -192,6 +202,15 @@ class AgentLoop:
                 "error": "에이전트 처리 중 내부 오류가 발생했습니다.",
                 "finished": True,
             }
+        finally:
+            if trace.total_latency_ms == 0.0:
+                trace.total_latency_ms = (time.monotonic() - loop_start) * 1000
+            self._record_graph_run(
+                session=session,
+                trace=trace,
+                started_at=started_at,
+                completed_at=time.time(),
+            )
 
     async def _execute_tool(
         self,
@@ -251,6 +270,53 @@ class AgentLoop:
         if "text" in data:
             metadata["text_preview"] = str(data["text"])[:200]
         return metadata
+
+    @staticmethod
+    def _build_plan_summary(plan: Optional[ExecutionPlan]) -> str:
+        if not plan:
+            return ""
+
+        tools = " -> ".join(step.step_id for step in plan.steps)
+        if plan.reason:
+            return f"{plan.reason} | tools: {tools}"
+        return tools
+
+    @staticmethod
+    def _graph_run_status(trace: AgentTrace) -> str:
+        if trace.error:
+            return "failed"
+        if any(not result.success for result in trace.tool_results):
+            return "completed_with_errors"
+        return "completed"
+
+    @classmethod
+    def _record_graph_run(
+        cls,
+        session: SessionContext,
+        trace: AgentTrace,
+        started_at: float,
+        completed_at: float,
+    ) -> None:
+        success_count = sum(1 for result in trace.tool_results if result.success)
+        failure_count = len(trace.tool_results) - success_count
+        session.add_graph_run(
+            request_id=trace.request_id,
+            plan_summary=cls._build_plan_summary(trace.plan),
+            approval_status="not_requested",
+            executed_capabilities=[tool_name(result.tool) for result in trace.tool_results],
+            status=cls._graph_run_status(trace),
+            error=trace.error,
+            total_latency_ms=trace.total_latency_ms,
+            metadata={
+                "plan_reason": trace.plan.reason if trace.plan else "",
+                "tool_result_count": len(trace.tool_results),
+                "success_count": success_count,
+                "failure_count": failure_count,
+                "final_text_preview": trace.final_text[:200],
+            },
+            started_at=started_at,
+            completed_at=completed_at,
+        )
 
     @staticmethod
     def _extract_final_text(accumulated: Dict[str, Any], plan: ExecutionPlan) -> str:

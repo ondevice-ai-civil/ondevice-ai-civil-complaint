@@ -43,7 +43,8 @@ GovOn MVP는 이 문제를 다음 방식으로 해결한다.
 - 민원 분류 기능
 - 웹 UI 기반 업무 수행
 - 승인 없는 완전 자율 에이전트
-- 복잡한 graph checkpoint 시스템
+- 정규식/패턴 기반 business tool router 유지
+- 분산형 복잡한 graph checkpoint 시스템
 
 ---
 
@@ -74,7 +75,8 @@ GovOn MVP는 다음 구조를 가진다.
    - 모델, tool, 세션, RAG를 단일 ownership으로 관리
 
 3. **Approval-Gated Task Loop**
-   - 요청을 한 작업으로 정리
+   - LangGraph state graph 위에서 요청을 한 작업으로 정리
+   - planner LLM이 tool 선택과 실행 순서를 구조화
    - 실행 전 승인 요청
    - 승인된 경우에만 tool 실행
 
@@ -89,6 +91,8 @@ GovOn MVP는 다음 구조를 가진다.
 
 ## 6. Technical Considerations (기술적 고려사항)
 - **FastAPI Local Daemon**: CLI와 모델/도구 실행을 분리해 데몬 재사용과 세션 지속성을 확보한다.
+- **LangGraph Agent Runtime**: planner, approval interrupt, tool executor, synthesis를 bounded state graph로 고정한다.
+- **Model-Driven Tool Selection**: 업무 요청의 도구 선택은 LLM이 session context와 tool metadata를 읽고 결정하며, 정규식 라우터는 shell control 외 정본이 아니다.
 - **Approval-Gated Orchestration**: 자동 tool 연쇄 실행보다 사용자 신뢰와 예측 가능성을 우선한다.
 - **Single Task Adapter Use**: 민원 답변 작성 단계에서만 adapter를 attach한다.
 - **SQLite Session Store**: transcript와 tool log를 단순하고 재개 가능한 형태로 보관한다.
@@ -96,7 +100,7 @@ GovOn MVP는 다음 구조를 가진다.
 ---
 
 ## 7. Launch Plan (출시 계획)
-- **Phase 1 (MVP)**: CLI + daemon + 승인 기반 민원 답변 루프 검증
+- **Phase 1 (MVP)**: CLI + daemon + LangGraph 기반 승인 루프 검증
 - **Phase 2**: evidence augmentation, RAG corpus 확장, daemon 운영 고도화
 - **Phase 3**: web surface, public-doc adapter, 분류 기능 등 확장
 

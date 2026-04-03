@@ -1,6 +1,6 @@
 # ADR 인덱스
 
-GovOn은 CLI 셸 중심의 제품 구조를 기준으로 기술 결정을 유지한다. 현재 가장 중요한 결정은 `셸 우선`, `로컬 daemon`, `approval-gated task loop`, `civil-response adapter`, `FAISS 기반 RAG`다.
+GovOn은 CLI 셸 중심의 제품 구조를 기준으로 기술 결정을 유지한다. 현재 가장 중요한 결정은 `셸 우선`, `로컬 daemon`, `LangGraph approval-gated task loop`, `civil-response adapter`, `FAISS 기반 RAG`다.
 
 ## ADR 목록
 
@@ -8,7 +8,7 @@ GovOn은 CLI 셸 중심의 제품 구조를 기준으로 기술 결정을 유지
 |-----|------|------|
 | ADR-003 | Accepted | vLLM을 로컬 FastAPI daemon의 추론 엔진으로 유지 |
 | ADR-004 | Accepted | FAISS + BM25를 로컬 RAG 검색 계층으로 유지 |
-| ADR-006 | Accepted | GovOn Shell MVP를 CLI + daemon + approval loop 구조로 확정 |
+| ADR-006 | Accepted | GovOn Shell MVP를 CLI + daemon + LangGraph approval loop 구조로 확정 |
 
 ## 현재 우선 문서
 

@@ -11,7 +11,7 @@ GovOn의 핵심 기술 결정을 기록하는 인덱스입니다. 현재 ADR은 
 |-----|------|------|------|
 | ADR-003 | [docs/adr/ADR-003-vllm-serving.md](ADR-003-vllm-serving.md) | Accepted | `govon` CLI가 붙는 로컬 FastAPI daemon의 추론 엔진으로 vLLM 유지 |
 | ADR-004 | [docs/adr/ADR-004-faiss-vector-search.md](ADR-004-faiss-vector-search.md) | Accepted | 로컬 RAG 검색 계층으로 FAISS + BM25 유지 |
-| ADR-006 | [docs/architecture/ADR-006-agentic-architecture.md](../architecture/ADR-006-agentic-architecture.md) | Accepted | GovOn Shell MVP의 전체 아키텍처를 CLI + daemon + approval loop로 확정 |
+| ADR-006 | [docs/architecture/ADR-006-agentic-architecture.md](../architecture/ADR-006-agentic-architecture.md) | Accepted | GovOn Shell MVP의 전체 아키텍처를 CLI + daemon + LangGraph approval loop로 확정 |
 
 ## 현재 기준선
 
@@ -19,7 +19,7 @@ GovOn의 현재 제품 기준은 다음과 같습니다.
 
 - 제품 본체는 웹 UI가 아니라 `govon` 대화형 CLI 셸이다.
 - 내부에는 로컬 FastAPI daemon runtime이 자동 기동된다.
-- base model은 의도 파악과 tool 선택을 담당한다.
+- LangGraph planner는 의도 파악과 tool 선택을 담당한다.
 - 민원 답변 작성 단계에서만 civil-response LoRA adapter를 사용한다.
 - tool 실행은 작업 단위 승인 후 진행한다.
 - 근거/출처는 기본 표시가 아니라 후속 증강 작업으로 다룬다.

@@ -10,7 +10,7 @@
 
 GovOn MVP is a **shell-first administrative assistant**.
 
-The user does not open a web UI or call a public API directly. The user runs `govon`, talks to the assistant in natural language, and the assistant decides whether it needs retrieval, external APIs, or the civil-response adapter to complete the requested work.
+The user does not open a web UI or call a public API directly. The user runs `govon`, talks to the assistant in natural language, and a LangGraph-based agent runtime decides whether it needs retrieval, external APIs, or the civil-response adapter to complete the requested work.
 
 The product is composed of two local processes:
 
@@ -27,6 +27,7 @@ The CLI is the user surface. The daemon is the execution engine.
 
 - Natural-language interactive CLI shell
 - Local daemon auto-start and reconnect
+- LangGraph state graph runtime for planner, approval, execution, synthesis
 - Task-scoped approval gate before tool execution
 - Local RAG search against a configured folder
 - External API lookup through a unified tool surface
@@ -41,9 +42,10 @@ The CLI is the user surface. The daemon is the execution engine.
 - Public document drafting
 - Complaint classification as a first-class feature
 - Web UI as a product surface
+- Regex/pattern-based business tool routing as the canonical planner
 - Separate `/sources` workflow as a primary interaction
 - Persistent storage of full draft history
-- Complex graph checkpoint engine as a hard dependency
+- Distributed graph checkpoint engine as a product feature
 
 ---
 
@@ -91,7 +93,16 @@ Then it must wait for a simple two-option approval UI:
 - `승인`
 - `거절`
 
-### 3.4 One Approval Per Task Loop
+### 3.4 Model-Driven Tool Choice
+
+Business tool routing is not defined by regex pattern matching.
+
+- shell control commands stay rule-based
+- business requests are planned by the LLM inside LangGraph
+- the planner reads session context and tool metadata
+- the executor can only run the validated approved plan
+
+### 3.5 One Approval Per Task Loop
 
 If a single user request requires multiple tools, the runtime groups them into one task plan and asks for approval once before execution.
 
@@ -104,7 +115,7 @@ Examples:
 
 These may be one approved task loop if they belong to one user intent.
 
-### 3.5 Rejection Means Idle
+### 3.6 Rejection Means Idle
 
 If the user rejects the proposed task:
 
@@ -114,7 +125,7 @@ If the user rejects the proposed task:
 
 The next move must come from the user.
 
-### 3.6 Evidence Is a Follow-up Capability
+### 3.7 Evidence Is a Follow-up Capability
 
 The assistant may use retrieval during draft generation, but it does not have to expose evidence immediately.
 
@@ -140,7 +151,8 @@ graph TB
 
     subgraph LocalRuntime["Local Runtime Daemon (FastAPI)"]
         API["Local API Adapter"]
-        LOOP["Task Loop Orchestrator"]
+        GRAPH["LangGraph Agent Runtime"]
+        LOOP["Approval-Gated Task Loop"]
         MODEL["Base Model Runtime"]
         ADAPTER["Civil Response Adapter Manager"]
         TOOLS["Tool Registry"]
@@ -161,7 +173,8 @@ graph TB
     CLI --> API
     CLI --> APPROVAL
     SESSION --> CLI
-    API --> LOOP
+    API --> GRAPH
+    GRAPH --> LOOP
     LOOP --> MODEL
     LOOP --> ADAPTER
     LOOP --> TOOLS
@@ -171,7 +184,7 @@ graph TB
     RAG --> DOCS
     RAG --> INDEX
     API --> STORE
-    LOOP --> STORE
+    GRAPH --> STORE
 ```
 
 ---
@@ -203,6 +216,7 @@ The daemon is a local FastAPI service bound to localhost only.
 Responsibilities:
 
 - accept requests from the shell
+- host the LangGraph runtime
 - own model lifecycle
 - own tool registry
 - own retrieval/index services
@@ -211,29 +225,30 @@ Responsibilities:
 
 The daemon is the single source of truth for runtime state.
 
-### 5.3 Task Loop Orchestrator
+### 5.3 LangGraph Agent Runtime
 
-The orchestrator performs one task loop per user request.
+The orchestrator is implemented with LangGraph `StateGraph` and performs one task loop per user request.
 
 Each loop has these phases:
 
 1. read session context
-2. infer current user intent
-3. define one task plan
-4. produce a human-readable approval request
-5. wait for user approval or rejection
-6. execute the approved tools
-7. synthesize output
-8. persist transcript and tool trace
+2. planner LLM infers current user intent
+3. produce one structured task plan
+4. validate plan against registered tools and MVP rules
+5. produce a human-readable approval request
+6. wait for user approval or rejection
+7. execute the approved tools
+8. synthesize output
+9. persist transcript and tool trace
 
-The orchestrator is deliberately simpler than a fully autonomous graph engine in MVP. Approval, interruption, and bounded execution are more important than maximum autonomy.
+The graph is deliberately bounded. Approval, interruption, and controlled execution are more important than maximum autonomy.
 
 ### 5.4 Base Model Runtime
 
 The base model is responsible for:
 
 - understanding user intent
-- shaping the task plan
+- shaping the structured task plan
 - deciding whether retrieval or external lookup is needed
 - drafting responses when no task-specific adapter is needed
 - revising existing outputs
@@ -261,6 +276,13 @@ MVP registry:
 - `rag_search`
 - `draft_civil_response`
 - `append_evidence`
+
+Each tool carries metadata for:
+
+- planner selection
+- approval summary generation
+- executor binding
+- session logging
 
 The user does not call these names directly in normal operation. They exist as internal capabilities chosen by the orchestrator.
 
@@ -374,7 +396,7 @@ Stored entities:
 Not stored in MVP:
 
 - full draft version history as a primary product feature
-- heavy checkpoint graph snapshots
+- distributed or user-visible graph checkpoint snapshots
 - long-lived evidence cache as user-visible history
 
 ### Resume Behavior
@@ -435,8 +457,8 @@ The core requirement is not corpus scale, but whether the system can correctly i
 
 ```text
 User request
--> intent understanding
--> task plan
+-> planner node
+-> plan validation
 -> approval prompt
 -> approved retrieval/api work
 -> optional adapter attach
@@ -449,7 +471,7 @@ User request
 
 ```text
 User asks for rewrite
--> task plan for revision
+-> planner node for revision
 -> approval prompt
 -> optional re-search
 -> revised evidence summary
@@ -461,7 +483,7 @@ User asks for rewrite
 
 ```text
 User asks for evidence
--> task plan for evidence augmentation
+-> planner node for evidence augmentation
 -> approval prompt
 -> run rag/api lookup against original question + generated answer
 -> append "근거/출처" section under existing answer
@@ -506,7 +528,7 @@ Business actions remain natural-language only.
 - complaint classification workflow
 - explicit web UI product surface
 - line-level provenance
-- complex graph checkpoint engine
+- distributed checkpoint/recovery engine
 - broad multi-adapter hosting beyond civil-response drafting
 
 ### Why These Are Deferred

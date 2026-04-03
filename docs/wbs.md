@@ -13,8 +13,8 @@
 |----------|-------------|
 | WS-1 | Civil-response adapter |
 | WS-2 | Local daemon runtime + SQLite session store |
-| WS-3 | `api_lookup` + local RAG + evidence augmentation |
-| WS-4 | Approval-gated task orchestration |
+| WS-3 | LangGraph tool surface + `api_lookup` + local RAG + evidence augmentation |
+| WS-4 | LangGraph approval-gated agent runtime |
 | WS-5 | Interactive CLI shell |
 | WS-6 | 설치/패키징 |
 | WS-7 | 테스트 및 품질 검증 |
@@ -27,27 +27,32 @@
 ### 1.1 제품 경계 확정
 
 - [ ] CLI-first MVP architecture freeze
-- [ ] approval-gated task loop specification
+- [ ] LangGraph 기반 approval-gated task loop specification
 - [ ] shell control command scope freeze
 - [ ] public-doc / classification exclusion confirmation
 
 ### 1.2 로컬 런타임 기반
 
 - [ ] FastAPI local daemon contract 정의
+- [ ] daemon 내부 LangGraph runtime lifecycle 정의
 - [ ] daemon auto-start / reconnect 정책 정의
 - [ ] SQLite session schema 정의
 - [ ] runtime health/status contract 정의
 
 ### 1.3 Tool 경계 정의
 
+- [ ] planner가 읽는 tool metadata / capability contract 정의
 - [ ] unified `api_lookup` capability contract 정의
 - [ ] local `rag_search` capability contract 정의
 - [ ] `draft_civil_response` / `append_evidence` output contract 정의
+- [ ] approval payload / plan schema 정의
 
 ### Milestone 1 완료 기준
 
 - [ ] canonical architecture 문서 승인
 - [ ] PRD/WBS/ADR가 동일한 제품 경계를 설명
+- [ ] LangGraph가 MVP 필수 의존으로 반영돼 있다.
+- [ ] 정규식 기반 business router가 정본에서 제거돼 있다.
 - [ ] roadmap / workstream / task 이슈 구조가 문서와 일치
 
 ---
@@ -63,6 +68,7 @@
 
 ### 2.2 Tool layer
 
+- [ ] LangGraph에서 소비하는 tool metadata / executor binding 구현
 - [ ] external API wrapper 구현
 - [ ] local RAG ingestion / retrieval 구현
 - [ ] mixed evidence normalization 구현
@@ -70,14 +76,15 @@
 
 ### 2.3 Runtime loop
 
-- [ ] 한 작업 기준 task planning 구현
+- [ ] planner LLM 기반 task planning 구현
 - [ ] 사람말 approval prompt 구현
-- [ ] 승인 시 다중 tool 묶음 실행 구현
+- [ ] approval interrupt 후 다중 tool 묶음 실행 구현
 - [ ] 거절 시 완전 idle 복귀 동작 구현
 
 ### Milestone 2 완료 기준
 
 - [ ] 민원 답변 초안 생성이 동작한다.
+- [ ] planner가 session context를 읽고 도구를 스스로 선택한다.
 - [ ] tool 실행 전 승인 절차가 동작한다.
 - [ ] adapter attach가 작성 task에서만 동작한다.
 
@@ -160,6 +167,7 @@ Architecture freeze
 |--------|------|------|
 | adapter 품질 불안정 | 초안 품질 편차 | 데이터 검증 범위를 민원 답변 중심으로 축소 |
 | RAG 원문 부족 | 근거 보강 품질 저하 | 샘플 문서로 parser/retrieval 먼저 검증 후 운영 문서로 확장 |
+| planner hallucination 또는 과도한 tool 선택 | 승인 설명 품질 저하 및 오동작 | 구조화된 plan schema, tool metadata, approval gate, E2E 회귀 테스트로 통제 |
 | 승인 UX 미완성 | 사용자 신뢰 저하 | approval-gated E2E를 MVP 핵심 acceptance로 둠 |
 | daemon/session 불안정 | resume 실패 | SQLite 세션 복원 테스트를 필수화 |
 

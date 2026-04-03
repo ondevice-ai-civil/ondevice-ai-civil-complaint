@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "GovOn"
 version = "1.0.1"
-description = "On-Device AI Civil Complaint Analysis and Processing System using EXAONE-Deep-7.8B"
+description = "Shell-first local agentic runtime for administrative assistance and civil complaint workflows"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
@@ -13,14 +13,12 @@ authors = [
     {name = "On-Device AI Team", email = "team@example.com"}
 ]
 keywords = [
-    "llm",
-    "fine-tuning",
-    "quantization",
+    "agentic-shell",
+    "local-runtime",
     "civil-complaint",
     "korean-nlp",
-    "exaone",
-    "awq",
-    "qlora"
+    "retrieval-augmented-generation",
+    "fastapi"
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

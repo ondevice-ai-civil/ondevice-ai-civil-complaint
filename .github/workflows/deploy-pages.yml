@@ -1,12 +1,20 @@
-name: Deploy Portal to GitHub Pages
+name: Docs Portal
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'docs/**'
+      - 'README.md'
+      - '.github/workflows/deploy-pages.yml'
   push:
     branches: [main]
     paths:
       - 'site/**'
       - 'docs/**'
       - 'README.md'
+      - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
 
 permissions:
@@ -22,22 +30,27 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
-          fetch-depth: 0  # git-revision-date plugin needs full history
+          fetch-depth: 0
+
       - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
+
       - name: Install MkDocs dependencies
         run: pip install -r site/requirements-docs.txt
+
       - name: Build MkDocs site
         run: cd site && mkdocs build --strict
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site/site
 
   deploy:
     needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

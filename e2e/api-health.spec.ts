@@ -25,9 +25,11 @@ test.describe('GovOn Runtime Smoke', () => {
     expect(body).toHaveProperty('agents_loaded');
     expect(body).toHaveProperty('indexes');
     expect(body).toHaveProperty('bm25_indexes');
+    expect(body).toHaveProperty('session_store');
+    expect(body.session_store).toHaveProperty('driver', 'sqlite');
   });
 
-  test('OpenAPI advertises core runtime endpoints', async ({ request }) => {
+  test('OpenAPI advertises shell-first runtime endpoints', async ({ request }) => {
     const response = await request.get('/openapi.json');
 
     expect(response.status()).toBe(200);
@@ -35,9 +37,20 @@ test.describe('GovOn Runtime Smoke', () => {
     const schema = await response.json();
     expect(schema).toHaveProperty('paths');
 
-    for (const path of ['/health', '/v1/classify', '/v1/generate', '/v1/stream', '/v1/search']) {
+    for (const path of [
+      '/health',
+      '/search',
+      '/v1/search',
+      '/v1/generate',
+      '/v1/generate-civil-response',
+      '/v1/stream',
+      '/v1/agent/run',
+      '/v1/agent/stream',
+    ]) {
       expect(schema.paths).toHaveProperty(path);
     }
+
+    expect(schema.paths).not.toHaveProperty('/v1/classify');
   });
 });
 

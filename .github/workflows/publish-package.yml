@@ -85,10 +85,12 @@ jobs:
           body: |
             ## GovOn v${{ steps.version.outputs.version }}
 
-            ### Installation
+            ### Python artifact
             ```bash
             pip install GovOn==${{ steps.version.outputs.version }}
             ```
+
+            This publishes the Python runtime artifact. The interactive `govon` installer/bootstrap flow is tracked separately.
 
             ### Docker
             ```bash

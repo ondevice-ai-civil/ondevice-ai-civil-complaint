@@ -1,292 +1,274 @@
-# CI Workflow for GovOn
-#
-# Secrets used in this workflow:
-#   - CODECOV_TOKEN  : Codecov upload token (used in test job)
-#   - DEPLOY_TOKEN   : Deployment authentication token (used in deploy job)
-
-name: CI
+name: PR Gate
 
 on:
-  push:
-    branches: [ main ]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'assets/**'
-      - 'LICENSE'
-      - 'CODE_OF_CONDUCT.md'
-      - 'CONTRIBUTING.md'
-      - 'SECURITY.md'
   pull_request:
-    branches: [ main ]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'assets/**'
-      - 'LICENSE'
-      - 'CODE_OF_CONDUCT.md'
-      - 'CONTRIBUTING.md'
-      - 'SECURITY.md'
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: pr-gate-${{ github.ref }}
   cancel-in-progress: true
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  ESTIMATED_COLD_INSTALL_SECONDS: 60
 
 jobs:
-  # ──────────────────────────────────────────────
-  # 1. Lint — 코드 스타일 검사 (단일 환경)
-  # ──────────────────────────────────────────────
-  lint:
+  detect-changes:
     runs-on: ubuntu-latest
+    outputs:
+      runtime: ${{ steps.filter.outputs.runtime }}
+      runtime_contract: ${{ steps.filter.outputs.runtime_contract }}
+      docs: ${{ steps.filter.outputs.docs }}
+      packaging: ${{ steps.filter.outputs.packaging }}
     steps:
       - uses: actions/checkout@v6
 
-      - name: Record setup start time
-        id: setup-start
-        run: echo "time=$(date +%s%N)" >> "$GITHUB_OUTPUT"
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            runtime:
+              - 'src/**'
+              - 'tests/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - '.github/actions/**'
+              - '.github/scripts/run_inference_ci.sh'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/reusable-test.yml'
+            runtime_contract:
+              - 'src/inference/**'
+              - 'e2e/**'
+              - 'playwright.config.ts'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/actions/**'
+              - '.github/workflows/ci.yml'
+            docs:
+              - 'site/**'
+              - 'docs/**'
+              - 'README.md'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/deploy-pages.yml'
+            packaging:
+              - 'Dockerfile'
+              - '.dockerignore'
+              - 'docker-compose*.yml'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - '.github/workflows/docker-publish.yml'
+              - '.github/workflows/offline-package.yml'
+              - '.github/workflows/publish-package.yml'
+
+      - name: Change summary
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" << EOF
+          ### PR Gate Scope
+          | Lane | Changed |
+          |------|---------|
+          | Runtime | \`${{ steps.filter.outputs.runtime }}\` |
+          | Runtime contract | \`${{ steps.filter.outputs.runtime_contract }}\` |
+          | Docs | \`${{ steps.filter.outputs.docs }}\` |
+          | Packaging | \`${{ steps.filter.outputs.packaging }}\` |
+          EOF
+
+  lint:
+    needs: detect-changes
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.runtime == 'true' ||
+      needs.detect-changes.outputs.packaging == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
 
       - name: Setup Python with uv
         uses: ./.github/actions/setup-python-uv
         with:
           extras: '--extra dev'
 
-      - name: Record setup end time
-        id: setup-end
-        run: echo "time=$(date +%s%N)" >> "$GITHUB_OUTPUT"
-
-      - name: Check cache status
-        id: cache-status
-        run: |
-          if [ -d "$HOME/.cache/uv" ] && [ "$(ls -A $HOME/.cache/uv 2>/dev/null)" ]; then
-            echo "status=hit" >> "$GITHUB_OUTPUT"
-          else
-            echo "status=miss" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Record task start time
-        id: task-start
-        run: echo "time=$(date +%s%N)" >> "$GITHUB_OUTPUT"
-
-      - name: Black (format check)
-        continue-on-error: true
+      - name: Black
         run: uv run black --check .
 
-      - name: isort (import order check)
-        continue-on-error: true
+      - name: isort
         run: uv run isort --check .
 
-      - name: Flake8 (syntax errors only)
-        continue-on-error: true
-        run: uv run flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=.venv,.git,__pycache__,build,dist
-
-      - name: Record task end time
-        id: task-end
-        run: echo "time=$(date +%s%N)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Performance Report
-        if: always()
+      - name: Flake8
         run: |
-          setup_start=${{ steps.setup-start.outputs.time }}
-          setup_end=${{ steps.setup-end.outputs.time }}
-          task_start=${{ steps.task-start.outputs.time }}
-          task_end=${{ steps.task-end.outputs.time }}
-          cache_status="${{ steps.cache-status.outputs.status }}"
-          cold_baseline=${{ env.ESTIMATED_COLD_INSTALL_SECONDS }}
+          uv run flake8 . \
+            --count \
+            --select=E9,F63,F7,F82 \
+            --show-source \
+            --statistics \
+            --exclude=.venv,.git,__pycache__,build,dist
 
-          setup_ns=$((setup_end - setup_start))
-          task_ns=$((task_end - task_start))
-          total_ns=$((setup_ns + task_ns))
-
-          setup_sec=$(echo "scale=2; $setup_ns / 1000000000" | bc)
-          task_sec=$(echo "scale=2; $task_ns / 1000000000" | bc)
-          total_sec=$(echo "scale=2; $total_ns / 1000000000" | bc)
-
-          if [ "$cache_status" = "hit" ]; then
-            cache_display="✅ HIT"
-            improvement=$(echo "scale=2; ($cold_baseline - $setup_sec) / $cold_baseline * 100" | bc)
-            savings=$(echo "scale=2; $cold_baseline - $setup_sec" | bc)
-            savings_line="| Estimated Savings | ~${savings}s (estimated cold install: ~${cold_baseline}s) |"
-            improvement_line="| Improvement Rate | ~${improvement}% |"
-          else
-            cache_display="❌ MISS"
-            savings_line="| Estimated Savings | N/A (cache miss, this run establishes the cache) |"
-            improvement_line="| Improvement Rate | N/A (cache miss, this run establishes the cache) |"
-          fi
-
-          cat >> $GITHUB_STEP_SUMMARY << EOF
-          ### ⏱️ Cache Performance Report — Lint
-          | Metric | Value |
-          |--------|-------|
-          | Cache Status | ${cache_display} |
-          | Setup Duration | ${setup_sec}s |
-          | Task Duration | ${task_sec}s |
-          | Total Duration | ${total_sec}s |
-          ${savings_line}
-          ${improvement_line}
-          EOF
-
-  # ──────────────────────────────────────────────
-  # 2. Test — 재사용 가능한 워크플로우로 다중 환경 테스트
-  # ──────────────────────────────────────────────
   test:
-    needs: [lint]
+    needs: [detect-changes, lint]
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.runtime == 'true' ||
+      needs.detect-changes.outputs.packaging == 'true'
     uses: ./.github/workflows/reusable-test.yml
     with:
       python-versions: '["3.10", "3.11"]'
-      os-list: '["ubuntu-latest", "ubuntu-22.04"]'
+      os-list: '["ubuntu-latest"]'
       coverage-threshold: 80
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  # ──────────────────────────────────────────────
-  # 3. Build — 패키지 빌드 및 아티팩트 업로드
-  # ──────────────────────────────────────────────
-  build:
-    needs: [test]
+  security:
+    needs: [detect-changes, lint]
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.runtime == 'true' ||
+      needs.detect-changes.outputs.packaging == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
-      - name: Record setup start time
-        id: setup-start
-        run: echo "time=$(date +%s%N)" >> "$GITHUB_OUTPUT"
+      - name: Setup Python with uv
+        uses: ./.github/actions/setup-python-uv
+        with:
+          extras: '--extra dev'
+
+      - name: Run Bandit on runtime code
+        run: uv run bandit -r src/inference -lll -x tests
+
+  runtime-contract:
+    needs: [detect-changes, test]
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.runtime_contract == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
 
       - name: Setup Python with uv
-        uses: astral-sh/setup-uv@v7
+        uses: ./.github/actions/setup-python-uv
         with:
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
+          python-version: '3.10'
+          extras: '--extra dev'
 
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v6
+      - name: Install runtime dependencies for contract tests
+        run: |
+          uv pip install --python .venv/bin/python \
+            'fastapi>=0.100.0' \
+            'uvicorn>=0.23.0' \
+            'rank-bm25>=0.2.2' \
+            'faiss-cpu>=1.7.4' \
+            'sentence-transformers>=3.0.0'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Run shell-first runtime contract tests
+        env:
+          API_KEY: dev-e2e-key
+          CI: true
+          GOVON_API_KEY: dev-e2e-key
+          GOVON_RUNTIME_BASE_URL: http://127.0.0.1:8000
+          SERVING_PROFILE: local
+          SKIP_MODEL_LOAD: "true"
+        run: |
+          set -euo pipefail
+
+          mkdir -p test-results playwright-report
+
+          .venv/bin/python -m uvicorn src.inference.api_server:app \
+            --host 127.0.0.1 \
+            --port 8000 \
+            > test-results/runtime-server.log 2>&1 &
+          SERVER_PID=$!
+
+          cleanup() {
+            if kill -0 "$SERVER_PID" 2>/dev/null; then
+              kill "$SERVER_PID" 2>/dev/null || true
+              wait "$SERVER_PID" 2>/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
+
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health > /dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+
+          curl -fsS http://127.0.0.1:8000/health > /dev/null
+          npx playwright test
+
+      - name: Upload runtime contract artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: runtime-contract-report
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+
+  docs-build:
+    needs: detect-changes
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
 
-      - name: Record setup end time
-        id: setup-end
-        run: echo "time=$(date +%s%N)" >> "$GITHUB_OUTPUT"
+      - name: Install MkDocs dependencies
+        run: pip install -r site/requirements-docs.txt
 
-      - name: Check cache status
-        id: cache-status
-        run: |
-          if [ -d "$HOME/.cache/uv" ] && [ "$(ls -A $HOME/.cache/uv 2>/dev/null)" ]; then
-            echo "status=hit" >> "$GITHUB_OUTPUT"
-          else
-            echo "status=miss" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Build docs with strict mode
+        run: cd site && mkdocs build --strict
 
-      - name: Record task start time
-        id: task-start
-        run: echo "time=$(date +%s%N)" >> "$GITHUB_OUTPUT"
+      - name: Upload docs artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-site-preview
+          path: site/site
+          retention-days: 7
 
-      - name: Build package
+  build:
+    needs: [detect-changes, test]
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.runtime == 'true' ||
+      needs.detect-changes.outputs.packaging == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+
+      - name: Build Python package
         run: uv build
 
-      - name: Record task end time
-        id: task-end
-        run: echo "time=$(date +%s%N)" >> "$GITHUB_OUTPUT"
-
-      - name: Upload build artifact
+      - name: Upload package artifact
         uses: actions/upload-artifact@v7
         with:
           name: dist-package
           path: dist/
           retention-days: 14
-
-      - name: Build Summary
-        run: |
-          echo "### Build Artifacts" >> $GITHUB_STEP_SUMMARY
-          ls -lh dist/ >> $GITHUB_STEP_SUMMARY
-
-      - name: Cache Performance Report
-        if: always()
-        run: |
-          setup_start=${{ steps.setup-start.outputs.time }}
-          setup_end=${{ steps.setup-end.outputs.time }}
-          task_start=${{ steps.task-start.outputs.time }}
-          task_end=${{ steps.task-end.outputs.time }}
-          cache_status="${{ steps.cache-status.outputs.status }}"
-          cold_baseline=${{ env.ESTIMATED_COLD_INSTALL_SECONDS }}
-
-          setup_ns=$((setup_end - setup_start))
-          task_ns=$((task_end - task_start))
-          total_ns=$((setup_ns + task_ns))
-
-          setup_sec=$(echo "scale=2; $setup_ns / 1000000000" | bc)
-          task_sec=$(echo "scale=2; $task_ns / 1000000000" | bc)
-          total_sec=$(echo "scale=2; $total_ns / 1000000000" | bc)
-
-          if [ "$cache_status" = "hit" ]; then
-            cache_display="✅ HIT"
-            improvement=$(echo "scale=2; ($cold_baseline - $setup_sec) / $cold_baseline * 100" | bc)
-            savings=$(echo "scale=2; $cold_baseline - $setup_sec" | bc)
-            savings_line="| Estimated Savings | ~${savings}s (estimated cold install: ~${cold_baseline}s) |"
-            improvement_line="| Improvement Rate | ~${improvement}% |"
-          else
-            cache_display="❌ MISS"
-            savings_line="| Estimated Savings | N/A (cache miss, this run establishes the cache) |"
-            improvement_line="| Improvement Rate | N/A (cache miss, this run establishes the cache) |"
-          fi
-
-          cat >> $GITHUB_STEP_SUMMARY << EOF
-          ### ⏱️ Cache Performance Report — Build
-          | Metric | Value |
-          |--------|-------|
-          | Cache Status | ${cache_display} |
-          | Setup Duration | ${setup_sec}s |
-          | Task Duration | ${task_sec}s |
-          | Total Duration | ${total_sec}s |
-          ${savings_line}
-          ${improvement_line}
-          EOF
-
-  # ──────────────────────────────────────────────
-  # 4. Deploy — 배포 (main 브랜치에서만 실제 배포)
-  # ──────────────────────────────────────────────
-  deploy:
-    needs: [build]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: dist-package
-          path: dist/
-
-      - name: Verify artifact
-        run: |
-          echo "### Deploy Artifact Verification" >> $GITHUB_STEP_SUMMARY
-          echo "Downloaded artifacts:" >> $GITHUB_STEP_SUMMARY
-          ls -lh dist/ | tee -a $GITHUB_STEP_SUMMARY
-
-      - name: Dry-run deploy (PR)
-        if: github.event_name == 'pull_request'
-        run: |
-          echo "=== Dry-run deploy (PR #${{ github.event.number }}) ==="
-          echo "Would deploy the following artifacts:"
-          ls -lh dist/
-          echo "Dry-run complete. No actual deployment performed."
-
-      - name: Deploy to production
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        env:
-          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
-        run: |
-          echo "=== Deploying to production ==="
-          echo "Branch: ${{ github.ref }}"
-          echo "Commit: ${{ github.sha }}"
-          echo "Artifacts:"
-          ls -lh dist/
-          echo ""
-          if [ -n "$DEPLOY_TOKEN" ]; then
-            echo "DEPLOY_TOKEN is configured. Proceeding with deployment..."
-          else
-            echo "WARNING: DEPLOY_TOKEN is not set. Skipping authenticated deployment."
-          fi
-          echo "Production deployment placeholder complete."

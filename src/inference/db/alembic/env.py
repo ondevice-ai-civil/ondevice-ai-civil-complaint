@@ -1,12 +1,14 @@
 """
 Alembic 환경 설정.
 
-DATABASE_URL 환경변수를 통해 PostgreSQL 연결 문자열을 주입받는다.
+DATABASE_URL 환경변수를 통해 연결 문자열을 주입받는다.
+기본값은 로컬 GovOn 홈 디렉터리 아래 SQLite 파일을 사용한다.
 """
 
 import logging
 import os
 import sys
+from pathlib import Path
 from logging.config import fileConfig
 
 from alembic import context
@@ -28,13 +30,14 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 # 환경변수에서 DB URL 가져오기
-_DEFAULT_DATABASE_URL = "postgresql://govon:govon@localhost:5432/govon"
+_DEFAULT_GOVON_HOME = Path(os.getenv("GOVON_HOME", Path.home() / ".govon"))
+_DEFAULT_DATABASE_URL = f"sqlite:///{_DEFAULT_GOVON_HOME / 'metadata.sqlite3'}"
 database_url = os.getenv("DATABASE_URL", _DEFAULT_DATABASE_URL)
 
 if database_url == _DEFAULT_DATABASE_URL:
     logging.getLogger(__name__).warning(
-        "DATABASE_URL 환경변수가 설정되지 않아 기본값을 사용합니다. "
-        "프로덕션 환경에서는 반드시 DATABASE_URL을 설정하세요."
+        "DATABASE_URL 환경변수가 설정되지 않아 로컬 SQLite 기본값을 사용합니다. "
+        "별도 RDBMS를 사용하려면 DATABASE_URL을 명시적으로 설정하세요."
     )
 
 config.set_main_option("sqlalchemy.url", database_url)

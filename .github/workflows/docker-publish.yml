@@ -1,10 +1,18 @@
 name: Docker Publish
 
 on:
-  push:
+  workflow_run:
+    workflows: ["PR Gate"]
+    types: [completed]
     branches: [main]
+  push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      git_ref:
+        description: 'Git ref or commit SHA to build'
+        required: false
+        default: 'main'
 
 concurrency:
   group: docker-publish-${{ github.ref }}
@@ -17,15 +25,32 @@ env:
 
 jobs:
   build-and-push:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     outputs:
-      image_tag: ${{ steps.image-ref.outputs.image_tag }}
+      image_tag: ${{ steps.build-metadata.outputs.image_tag }}
 
     steps:
-      - name: Checkout repository
+      - name: Checkout workflow-run commit
+        if: github.event_name == 'workflow_run'
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Checkout requested ref
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.git_ref }}
+
+      - name: Checkout tag ref
+        if: github.event_name == 'push'
         uses: actions/checkout@v6
 
       - name: Lowercase image name
@@ -45,31 +70,41 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.REGISTRY }}/${{ steps.lower.outputs.image_name }}
-          tags: |
-            type=semver,pattern=v{{version}}
-            type=sha,prefix=sha-
-            type=raw,value=latest,enable={{is_default_branch}}
+      - name: Determine build metadata
+        id: build-metadata
+        run: |
+          SHA="$(git rev-parse HEAD)"
+          SHORT_SHA="$(git rev-parse --short HEAD)"
+          IMAGE_BASE="${{ env.REGISTRY }}/${{ steps.lower.outputs.image_name }}"
+          PRIMARY_TAG="${IMAGE_BASE}:sha-${SHORT_SHA}"
+          TAGS="${PRIMARY_TAG}"
 
-      - name: Set short SHA
-        id: short-sha
-        run: echo "sha=$(echo ${{ github.sha }} | cut -c1-7)" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            TAGS="${TAGS}"$'\n'"${IMAGE_BASE}:latest"
+            SOURCE="main branch after PR Gate success"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            TAGS="${TAGS}"$'\n'"${IMAGE_BASE}:${GITHUB_REF_NAME}"
+            SOURCE="release tag ${GITHUB_REF_NAME}"
+          else
+            SOURCE="manual dispatch (${GITHUB_EVENT_NAME})"
+          fi
 
-      - name: Set image reference output
-        id: image-ref
-        run: echo "image_tag=${{ env.REGISTRY }}/${{ steps.lower.outputs.image_name }}:sha-${{ steps.short-sha.outputs.sha }}" >> "$GITHUB_OUTPUT"
+          {
+            echo "sha=${SHA}"
+            echo "short_sha=${SHORT_SHA}"
+            echo "image_tag=${PRIMARY_TAG}"
+            echo "source=${SOURCE}"
+            echo "tags<<EOF"
+            echo "${TAGS}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v7
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.build-metadata.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -77,24 +112,24 @@ jobs:
         continue-on-error: true
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ steps.lower.outputs.image_name }}:sha-${{ steps.short-sha.outputs.sha }}
+          image-ref: ${{ steps.build-metadata.outputs.image_tag }}
           severity: CRITICAL,HIGH
           exit-code: '1'
           format: table
 
       - name: Publish summary
         run: |
-          echo "### Docker Publish" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Event | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Ref | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Image | ${{ steps.image-ref.outputs.image_tag }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Next Step | Use \\`image_tag=sha-${{ steps.short-sha.outputs.sha }}\\` when manually dispatching Deploy to Cloud Run. |" >> $GITHUB_STEP_SUMMARY
+          echo "### Docker Publish" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Item | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Source | ${{ steps.build-metadata.outputs.source }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Commit | ${{ steps.build-metadata.outputs.sha }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Primary Image | ${{ steps.build-metadata.outputs.image_tag }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Deploy Flow | Use \`Deploy Demo Runtime to Cloud Run\` manually if demo verification is needed. |" >> "$GITHUB_STEP_SUMMARY"
 
   smoke-test:
-    needs: [build-and-push]
+    needs: build-and-push
     runs-on: ubuntu-latest
     permissions:
       packages: read
@@ -116,38 +151,25 @@ jobs:
 
       - name: Verify image structure
         run: |
-          echo "### Docker Smoke Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Check | Result |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "### Docker Smoke Test Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Check | Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
 
-          # Check Python is available
           if docker run --rm ${{ env.image }} python3.10 --version 2>&1; then
-            echo "| Python installed | ✅ |" >> $GITHUB_STEP_SUMMARY
+            echo "| Python installed | yes |" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "| Python installed | ❌ |" >> $GITHUB_STEP_SUMMARY
+            echo "| Python installed | no |" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-          # Check source code exists
           if docker run --rm ${{ env.image }} ls /app/src/inference/api_server.py 2>&1; then
-            echo "| Source code present | ✅ |" >> $GITHUB_STEP_SUMMARY
+            echo "| Runtime source present | yes |" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "| Source code present | ❌ |" >> $GITHUB_STEP_SUMMARY
+            echo "| Runtime source present | no |" >> "$GITHUB_STEP_SUMMARY"
           fi
-
-          # Check key dependencies (optional — may fail without GPU libs)
-          if docker run --rm ${{ env.image }} python3.10 -c "import fastapi; print(f'FastAPI {fastapi.__version__}')" 2>&1; then
-            echo "| FastAPI importable | ✅ |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| FastAPI importable | ⚠️ (optional dep, may require GPU build) |" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          # Check working directory
-          WORKDIR=$(docker run --rm ${{ env.image }} pwd 2>&1) || true
-          echo "| Working directory | ${WORKDIR} |" >> $GITHUB_STEP_SUMMARY
 
       - name: Container runtime smoke test
         run: |
           HEALTH_RESPONSE="$(bash .github/scripts/smoke_test_container.sh "${{ env.image }}")"
-          echo "| Runtime contract | ✅ (/health ready with container profile) |" >> $GITHUB_STEP_SUMMARY
-          echo "| Health response | \`${HEALTH_RESPONSE}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Runtime contract | passed |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Health response | \`${HEALTH_RESPONSE}\` |" >> "$GITHUB_STEP_SUMMARY"

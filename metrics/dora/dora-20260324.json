@@ -1,0 +1,47 @@
+{
+  "timestamp": "2026-03-24T11:58:47Z",
+  "period": "last_30_days",
+  "grade": "Elite",
+  "primary_branch": "develop",
+  "develop": {
+    "deployment_frequency": {
+      "weekly": 5,
+      "monthly": 10,
+      "avg_per_week": 2.5
+    },
+    "lead_time_for_changes": {
+      "method": "first_commit_to_merge",
+      "avg_seconds": 19230,
+      "avg_hours": 5.3,
+      "sample_count": 10
+    },
+    "change_failure_rate": {
+      "rate_percent": 10.5,
+      "failure_commits": 34,
+      "total_commits": 324
+    },
+    "mean_time_to_recovery": {
+      "avg_seconds": 21688,
+      "avg_hours": 6.0,
+      "sample_count": 1
+    }
+  },
+  "main": {
+    "deployment_frequency": {
+      "weekly": 20,
+      "monthly": 30,
+      "avg_per_week": 7.5
+    },
+    "lead_time_for_changes": {
+      "method": "first_commit_to_merge",
+      "avg_seconds": 16356,
+      "avg_hours": 4.5,
+      "sample_count": 30
+    },
+    "change_failure_rate": {
+      "rate_percent": 10.5,
+      "failure_commits": 34,
+      "total_commits": 324
+    }
+  }
+}

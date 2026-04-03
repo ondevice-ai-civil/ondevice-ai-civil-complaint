@@ -1,375 +1,169 @@
 # Work Breakdown Structure (WBS)
-## On-Device AI 민원 분석 및 처리 시스템
+## GovOn CLI Shell MVP
 
-**프로젝트 기간**: 16주 (2026년 3월 - 6월)
-**작성일**: 2026-03-05
-**팀 규모**: 4명
+**프로젝트 기간**: R1 기준 16주  
+**작성일**: 2026-04-03  
+**기준 문서**: `docs/architecture/GovOn-shell-mvp-architecture.md`
 
 ---
 
 ## 진행률 요약
 
-| 마일스톤 | 기간 | 작업 수 | 완료 | 진행률 |
-|----------|------|---------|------|--------|
-| M1: 기획 및 설계 | Week 1-4 | 16개 | 0 | 0% |
-| M2: 핵심 기능 구현 (MVP) | Week 5-8 | 16개 | 0 | 0% |
-| M3: 고도화 및 최적화 | Week 9-12 | 16개 | 0 | 0% |
-| M4: 테스트 및 문서화 | Week 13-16 | 14개 | 0 | 0% |
-| **총계** | **16주** | **62개** | **0** | **0%** |
+| Workstream | 핵심 산출물 |
+|----------|-------------|
+| WS-1 | Civil-response adapter |
+| WS-2 | Local daemon runtime + SQLite session store |
+| WS-3 | `api_lookup` + local RAG + evidence augmentation |
+| WS-4 | Approval-gated task orchestration |
+| WS-5 | Interactive CLI shell |
+| WS-6 | 설치/패키징 |
+| WS-7 | 테스트 및 품질 검증 |
+| WS-8 | 문서화 및 최종 납품 |
 
 ---
 
-## Milestone 1: 기획 및 설계 (Week 1-4)
+## Milestone 1: Architecture Freeze and Runtime Basis
 
-### Week 1: 프로젝트 킥오프 및 요구사항 분석
+### 1.1 제품 경계 확정
 
-- [ ] 프로젝트 킥오프 미팅 진행
-  - 담당: 전체 팀
-  - 산출물: 킥오프 회의록
+- [ ] CLI-first MVP architecture freeze
+- [ ] approval-gated task loop specification
+- [ ] shell control command scope freeze
+- [ ] public-doc / classification exclusion confirmation
 
-- [ ] 요구사항 분석 및 정리
-  - 담당: 전체 팀
-  - 산출물: 요구사항 명세서
+### 1.2 로컬 런타임 기반
 
-- [ ] 기술 조사 (HuggingFace, vLLM, FAISS)
-  - 담당: AI 엔지니어
-  - 산출물: 기술 스택 선정 보고서
+- [ ] FastAPI local daemon contract 정의
+- [ ] daemon auto-start / reconnect 정책 정의
+- [ ] SQLite session schema 정의
+- [ ] runtime health/status contract 정의
 
-- [ ] EXAONE-Deep-7.8B 모델 조사 및 검증
-  - 담당: AI 엔지니어
-  - 산출물: 모델 분석 리포트
+### 1.3 Tool 경계 정의
 
-### Week 2: 시스템 아키텍처 설계
+- [ ] unified `api_lookup` capability contract 정의
+- [ ] local `rag_search` capability contract 정의
+- [ ] `draft_civil_response` / `append_evidence` output contract 정의
 
-- [ ] 전체 시스템 아키텍처 설계
-  - 담당: 백엔드 개발자
-  - 산출물: 아키텍처 다이어그램
+### Milestone 1 완료 기준
 
-- [ ] 데이터베이스 스키마 설계
-  - 담당: 백엔드 개발자
-  - 산출물: ERD
-
-- [ ] API 명세 작성
-  - 담당: 백엔드 개발자
-  - 산출물: API 명세서
-
-- [ ] vLLM 서빙 아키텍처 설계
-  - 담당: AI 엔지니어
-  - 산출물: 서빙 구조 문서
-
-### Week 3: 개발 환경 구축 및 크롤러 개발
-
-- [ ] 개발 환경 구축 (Python, CUDA, Docker)
-  - 담당: 데이터 엔지니어
-  - 산출물: 개발 환경 가이드
-
-- [ ] Git 저장소 설정 및 브랜치 전략 수립
-  - 담당: 전체 팀
-  - 산출물: Git 워크플로우 문서
-
-- [ ] 민원 데이터 크롤러 프로토타입 개발
-  - 담당: 데이터 엔지니어
-  - 산출물: 크롤러 초안
-
-- [ ] 크롤링 대상 사이트 선정 및 분석
-  - 담당: 데이터 엔지니어
-  - 산출물: 크롤링 대상 목록
-
-### Week 4: 데이터 수집 및 전처리
-
-- [ ] 데이터 크롤링 실행 (10,000건 이상)
-  - 담당: 데이터 엔지니어
-  - 산출물: 원본 민원 데이터
-
-- [ ] 데이터 전처리 파이프라인 구축
-  - 담당: 데이터 엔지니어
-  - 산출물: 전처리 스크립트
-
-- [ ] 개인정보 비식별화 처리
-  - 담당: 데이터 엔지니어
-  - 산출물: 비식별화된 데이터셋
-
-- [ ] 데이터 품질 검증 및 정제
-  - 담당: 데이터 엔지니어
-  - 산출물: 최종 학습 데이터셋
-
-#### Milestone 1 완료 기준
-- [ ] 10,000건 이상 민원 데이터 수집 완료
-- [ ] 개인정보 비식별화 처리 완료
-- [ ] 시스템 아키텍처 문서 승인
+- [ ] canonical architecture 문서 승인
+- [ ] PRD/WBS/ADR가 동일한 제품 경계를 설명
+- [ ] roadmap / workstream / task 이슈 구조가 문서와 일치
 
 ---
 
-## Milestone 2: 핵심 기능 구현 - MVP (Week 5-8)
+## Milestone 2: Civil Drafting and Tooling MVP
 
-### Week 5: 모델 준비 및 학습 환경 설정
+### 2.1 Civil-response adapter
 
-- [ ] EXAONE-Deep-7.8B 모델 다운로드 및 검증
-  - 담당: AI 엔지니어
-  - 산출물: EXAONE-Deep-7.8B 모델 (15GB)
+- [ ] civil-response adapter 학습 데이터 확보
+- [ ] 데이터 전처리 및 검증
+- [ ] 단일 adapter 학습 및 평가
+- [ ] adapter attach policy 정의
 
-- [ ] 학습 데이터 EXAONE Chat Template 포맷 변환
-  - 담당: AI 엔지니어
-  - 산출물: Chat Template 적용 학습 데이터
+### 2.2 Tool layer
 
-- [ ] QLoRA 파인튜닝 환경 설정 (PEFT, bfloat16)
-  - 담당: AI 엔지니어
-  - 산출물: PEFT 설정 파일
+- [ ] external API wrapper 구현
+- [ ] local RAG ingestion / retrieval 구현
+- [ ] mixed evidence normalization 구현
+- [ ] evidence summary -> final draft synthesis 구현
 
-- [ ] 학습 하이퍼파라미터 실험 계획 수립
-  - 담당: AI 엔지니어
-  - 산출물: 실험 계획서
+### 2.3 Runtime loop
 
-### Week 6: 모델 파인튜닝 및 평가
+- [ ] 한 작업 기준 task planning 구현
+- [ ] 사람말 approval prompt 구현
+- [ ] 승인 시 다중 tool 묶음 실행 구현
+- [ ] 거절 시 완전 idle 복귀 동작 구현
 
-- [ ] QLoRA SFT 실행 (bfloat16)
-  - 담당: AI 엔지니어
-  - 산출물: 파인튜닝된 LoRA 어댑터
+### Milestone 2 완료 기준
 
-- [ ] 하이퍼파라미터 튜닝
-  - 담당: AI 엔지니어
-  - 산출물: 최적 하이퍼파라미터
-
-- [ ] 모델 평가 및 벤치마킹
-  - 담당: AI 엔지니어
-  - 산출물: 성능 평가 리포트
-
-- [ ] LoRA 어댑터 병합 및 모델 저장
-  - 담당: AI 엔지니어
-  - 산출물: 병합된 모델
-
-### Week 7: 백엔드 API 개발
-
-- [ ] FastAPI 백엔드 프로젝트 구축
-  - 담당: 백엔드 개발자
-  - 산출물: 백엔드 API 서버 기본 구조
-
-- [ ] vLLM OpenAI 호환 API 연동
-  - 담당: 백엔드 개발자
-  - 산출물: vLLM 클라이언트 통합
-
-- [ ] EXAONE 표준 프롬프트 설계 및 구현
-  - 담당: 백엔드 개발자
-  - 산출물: 프롬프트 템플릿
-
-- [ ] 답변 생성 API 엔드포인트 구현
-  - 담당: 백엔드 개발자
-  - 산출물: /generate API
-
-### Week 8: 프론트엔드 및 MVP 통합
-
-- [ ] Figma UI/UX 디자인 (동서대 디자인학부 협업)
-  - 담당: 프론트엔드 개발자 + 디자인학부생
-  - 산출물: Figma 디자인 파일
-
-- [ ] Figma MCP 기반 React/Next.js 웹 UI 구축
-  - 담당: 프론트엔드 개발자
-  - 산출물: React/Next.js 프로젝트
-
-- [ ] 민원 입력/출력 화면 구현
-  - 담당: 프론트엔드 개발자
-  - 산출물: 기본 웹 UI
-
-- [ ] 백엔드-프론트엔드 통합
-  - 담당: 전체 팀
-  - 산출물: 통합 시스템
-
-- [ ] MVP 통합 테스트 및 데모 준비
-  - 담당: 전체 팀
-  - 산출물: MVP 데모
-
-#### Milestone 2 완료 기준
-- [ ] 파인튜닝된 모델 답변 생성 성공
-- [ ] 웹 UI에서 민원 입력 → 답변 출력 기능 작동
-- [ ] 답변 생성 속도 < 10초 (최적화 전)
-- [ ] 멘토 교수 중간 점검 통과
+- [ ] 민원 답변 초안 생성이 동작한다.
+- [ ] tool 실행 전 승인 절차가 동작한다.
+- [ ] adapter attach가 작성 task에서만 동작한다.
 
 ---
 
-## Milestone 3: 고도화 및 최적화 (Week 9-12)
+## Milestone 3: CLI Shell and Evidence Augmentation
 
-### Week 9: 벡터 검색 시스템 구축
+### 3.1 CLI shell
 
-- [ ] 문서 임베딩 모델 선정 (multilingual-e5-large)
-  - 담당: 데이터 엔지니어
-  - 산출물: 임베딩 모델
+- [ ] interactive prompt 구현
+- [ ] daemon attach / auto-start 구현
+- [ ] 상태 표시 및 approval UI 구현
+- [ ] `govon --session <id>` 재개 구현
 
-- [ ] 민원 데이터 임베딩 생성
-  - 담당: 데이터 엔지니어
-  - 산출물: 임베딩 벡터
+### 3.2 Evidence augmentation
 
-- [ ] FAISS 벡터 인덱스 구축
-  - 담당: 데이터 엔지니어
-  - 산출물: FAISS 인덱스 파일
+- [ ] 초안 작성 후 근거 추가 요청 처리 구현
+- [ ] 원 질문 + 생성 답변 기준 재검색 구현
+- [ ] 기존 답변 아래 `근거/출처` 섹션 추가 구현
+- [ ] RAG provenance를 `파일경로 + 페이지`로 정규화
 
-- [ ] 유사도 검색 API 구현
-  - 담당: 백엔드 개발자
-  - 산출물: /search API
+### 3.3 RAG validation
 
-### Week 10: RAG 파이프라인 및 분류 기능
+- [ ] 샘플 문서 폴더 기반 ingestion 검증
+- [ ] `pdf/hwp/docx/txt/html` 파서 검증
+- [ ] 검색 정확성 및 인용 일관성 확인
 
-- [ ] RAG 파이프라인 통합 구현
-  - 담당: AI 엔지니어
-  - 산출물: RAG 통합 시스템
+### Milestone 3 완료 기준
 
-- [ ] 검색 결과 활용 답변 생성 로직 개발
-  - 담당: AI 엔지니어
-  - 산출물: RAG 기반 답변 생성
-
-- [ ] 민원 자동 분류 기능 추가
-  - 담당: AI 엔지니어
-  - 산출물: 분류 기능
-
-- [ ] 분류 정확도 검증 및 튜닝
-  - 담당: AI 엔지니어
-  - 산출물: 분류 성능 리포트
-
-### Week 11: 모델 최적화 및 vLLM 서빙
-
-- [ ] AWQ Quantization 적용
-  - 담당: AI 엔지니어
-  - 산출물: AWQ 양자화된 모델
-
-- [ ] vLLM 서버 구축 및 설정
-  - 담당: AI 엔지니어
-  - 산출물: vLLM 서빙 설정
-
-- [ ] 추론 속도 벤치마킹 (p50, p95)
-  - 담당: AI 엔지니어
-  - 산출물: 성능 개선 리포트
-
-- [ ] GPU 메모리 최적화
-  - 담당: AI 엔지니어
-  - 산출물: 메모리 사용량 리포트
-
-### Week 12: UI 고도화 및 Docker 배포
-
-- [ ] Figma 디자인 고도화 (유사 사례 표시, 피드백 UI)
-  - 담당: 프론트엔드 개발자 + 디자인학부생
-  - 산출물: 고도화된 Figma 디자인
-
-- [ ] Figma MCP 기반 프론트엔드 고도화
-  - 담당: 프론트엔드 개발자
-  - 산출물: 유사 사례 패널, 피드백 UI
-
-- [ ] Docker 컨테이너화 (vLLM + FastAPI + React/Next.js)
-  - 담당: DevOps
-  - 산출물: Dockerfile, docker-compose.yml
-
-- [ ] 폐쇄망 배포 테스트
-  - 담당: 전체 팀
-  - 산출물: 배포 테스트 리포트
-
-#### Milestone 3 완료 기준
-- [ ] 유사 사례 검색 기능 작동 (Recall@5 ≥ 80%)
-- [ ] 답변 생성 속도 < 5초 (p95)
-- [ ] Docker 컨테이너 배포 성공
-- [ ] 모든 핵심 기능 구현 완료
+- [ ] CLI에서 세션 시작/재개/종료가 가능하다.
+- [ ] 후속 근거 보강 요청이 동작한다.
+- [ ] 샘플 문서 기반 RAG가 mixed-format에서 동작한다.
 
 ---
 
-## Milestone 4: 테스트 및 문서화 (Week 13-16)
+## Milestone 4: Packaging, QA, Docs, Delivery
 
-### Week 13: 통합 테스트 및 버그 수정
+### 4.1 Packaging
 
-- [ ] 통합 테스트 실행
-  - 담당: 전체 팀
-  - 산출물: 테스트 결과 리포트
+- [ ] daemon + shell 설치 자산 정리
+- [ ] 로컬 실행 runbook 작성
+- [ ] 로그/설정/문서 경로 정리
 
-- [ ] 성능 벤치마킹 (전체 KPI 검증)
-  - 담당: AI 엔지니어
-  - 산출물: 최종 성능 리포트
+### 4.2 Quality assurance
 
-- [ ] 버그 수정 및 안정화
-  - 담당: 전체 팀
-  - 산출물: 버그 픽스
+- [ ] approval-gated E2E 테스트
+- [ ] session resume 테스트
+- [ ] evidence augmentation 테스트
+- [ ] latency / stability benchmark
 
-### Week 14: 문서화
+### 4.3 Documentation and delivery
 
-- [ ] 사용자 매뉴얼 작성
-  - 담당: 전체 팀 (분담)
-  - 산출물: 사용자 매뉴얼
+- [ ] 사용자 가이드
+- [ ] 운영 가이드
+- [ ] architecture / ADR / PRD / WBS 정합성 확인
+- [ ] demo package / release note / known issues 정리
 
-- [ ] 기술 문서 작성 (API, 아키텍처)
-  - 담당: 백엔드 개발자
-  - 산출물: 기술 문서
+### Milestone 4 완료 기준
 
-- [ ] 설치 가이드 작성 (폐쇄망 배포)
-  - 담당: DevOps
-  - 산출물: 설치 가이드
-
-- [ ] README 최종 업데이트
-  - 담당: 전체 팀
-  - 산출물: README.md
-
-### Week 15: 사용자 수용 테스트 (UAT)
-
-- [ ] UAT 계획 수립 및 테스터 섭외
-  - 담당: 전체 팀
-  - 산출물: UAT 계획서
-
-- [ ] UAT 실행 및 피드백 수집
-  - 담당: 전체 팀
-  - 산출물: UAT 결과 리포트
-
-- [ ] 피드백 반영 및 최종 수정
-  - 담당: 전체 팀
-  - 산출물: 최종 버전
-
-### Week 16: 최종 발표 준비
-
-- [ ] 최종 발표 자료 준비
-  - 담당: 전체 팀
-  - 산출물: 발표 자료
-
-- [ ] 데모 영상 제작
-  - 담당: 전체 팀
-  - 산출물: 데모 영상
-
-- [ ] 프로젝트 회고
-  - 담당: 전체 팀
-  - 산출물: 회고록
-
-- [ ] 최종 발표
-  - 담당: 전체 팀
-  - 산출물: 발표 완료
-
-#### Milestone 4 완료 기준
-- [ ] 모든 KPI 목표 달성
-- [ ] UAT 통과 (사용자 만족도 ≥ 3.5/5.0)
-- [ ] 문서화 완료 (README, 매뉴얼, 기술 문서)
-- [ ] 최종 발표 성공
+- [ ] `govon` MVP 설치와 실행이 재현 가능하다.
+- [ ] 핵심 E2E 시나리오가 통과한다.
+- [ ] 문서와 실제 동작이 일치한다.
+- [ ] v1.0.0 전달 패키지가 완성된다.
 
 ---
 
-## 의존성 관계
+## 핵심 의존 관계
 
+```text
+Architecture freeze
+    -> runtime/approval loop 정리
+    -> tool layer 정리
+    -> shell UX 구현
+    -> packaging/QA/docs
 ```
-Week 1-4 (데이터 수집)
-    ↓
-Week 5-6 (모델 학습)
-    ↓
-Week 7-8 (백엔드/프론트엔드) → MVP
-    ↓
-Week 9-10 (벡터 검색 + RAG)
-    ↓
-Week 11-12 (최적화 + Docker)
-    ↓
-Week 13-16 (테스트 + 문서화) → 최종 배포
-```
-
----
 
 ## 주요 리스크
 
-| 리스크 | 영향 | 가능성 | 대응 방안 |
-|--------|------|--------|-----------|
-| GPU 서버 접근 불가 | 높음 | 중간 | CPU 학습, AWQ 양자화 적용 |
-| 모델 성능 미달 | 높음 | 낮음 | 추가 데이터 수집, 프롬프트 개선 |
-| 일정 지연 | 중간 | 높음 | 범위 조정, 병렬 작업 |
-| 크롤링 실패 | 중간 | 중간 | 대체 데이터 소스 활용 |
+| 리스크 | 영향 | 대응 |
+|--------|------|------|
+| adapter 품질 불안정 | 초안 품질 편차 | 데이터 검증 범위를 민원 답변 중심으로 축소 |
+| RAG 원문 부족 | 근거 보강 품질 저하 | 샘플 문서로 parser/retrieval 먼저 검증 후 운영 문서로 확장 |
+| 승인 UX 미완성 | 사용자 신뢰 저하 | approval-gated E2E를 MVP 핵심 acceptance로 둠 |
+| daemon/session 불안정 | resume 실패 | SQLite 세션 복원 테스트를 필수화 |
 
 ---
 
-**작성자**: 프로젝트 팀
-**최종 수정**: 2026-03-09
+**작성자**: GovOn Team  
+**최종 수정**: 2026-04-03

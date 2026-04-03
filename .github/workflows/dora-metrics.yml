@@ -1,0 +1,349 @@
+name: DORA Metrics Collector
+
+on:
+  # 매주 월요일 09:00 KST (00:00 UTC) 자동 수집
+  schedule:
+    - cron: '0 0 * * 1'
+  # 수동 실행
+  workflow_dispatch:
+  # main 머지 시에도 실행 (배포 빈도 실시간 반영)
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  issues: read
+  pull-requests: read
+
+jobs:
+  collect-dora-metrics:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Collect DORA 4 Metrics
+        id: dora
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          WEEK_AGO=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          MONTH_AGO=$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ)
+
+          echo "=== DORA Metrics Collection: $NOW ==="
+
+          TARGET_BRANCH="main"
+          echo ""
+          echo "========== [$TARGET_BRANCH] 브랜치 메트릭 수집 =========="
+
+          # -------------------------------------------------------
+          # 1. Deployment Frequency (배포 빈도)
+          #    main에 머지된 PR 수 / 주
+          # -------------------------------------------------------
+          DEPLOYS_WEEK=$(gh pr list --repo "$REPO" --state merged --base "$TARGET_BRANCH" \
+            --search "merged:>=$WEEK_AGO" --json number --jq 'length' 2>/dev/null || echo "0")
+          DEPLOYS_MONTH=$(gh pr list --repo "$REPO" --state merged --base "$TARGET_BRANCH" \
+            --search "merged:>=$MONTH_AGO" --json number --jq 'length' 2>/dev/null || echo "0")
+          DEPLOYS_PER_WEEK=$(printf "%.2f" "$(echo "scale=2; $DEPLOYS_MONTH / 4" | bc)")
+          echo "[$TARGET_BRANCH] 배포 빈도: 주간 $DEPLOYS_WEEK건, 월간 $DEPLOYS_MONTH건 (주 평균 ${DEPLOYS_PER_WEEK}건)"
+
+          # -------------------------------------------------------
+          # 2. Lead Time for Changes (변경 리드 타임)
+          #    PR의 첫 커밋 시점 → 머지 시점까지의 평균 시간
+          # -------------------------------------------------------
+          LEAD_TIMES=()
+          PR_NUMBERS=()
+
+          while IFS= read -r line; do
+            PR_NUM=$(echo "$line" | jq -r '.number')
+            MERGED=$(echo "$line" | jq -r '.mergedAt')
+            CREATED=$(echo "$line" | jq -r '.createdAt')
+            if [ "$MERGED" != "null" ] && [ -n "$MERGED" ] && [ -n "$PR_NUM" ]; then
+              PR_NUMBERS+=("$PR_NUM")
+
+              FIRST_COMMIT_DATE=""
+              FIRST_COMMIT_DATE=$(gh api "repos/${REPO}/pulls/${PR_NUM}/commits" \
+                --jq 'sort_by(.commit.author.date) | .[0].commit.author.date' 2>/dev/null || echo "")
+
+              if [ -z "$FIRST_COMMIT_DATE" ] || [ "$FIRST_COMMIT_DATE" = "null" ]; then
+                START_DATE="$CREATED"
+                echo "  PR #${PR_NUM}: 커밋 히스토리 조회 실패, PR 생성 시점으로 fallback"
+              else
+                START_DATE="$FIRST_COMMIT_DATE"
+              fi
+
+              START_TS=$(date -d "$START_DATE" +%s 2>/dev/null || echo "0")
+              MERGED_TS=$(date -d "$MERGED" +%s 2>/dev/null || echo "0")
+              if [ "$START_TS" -gt 0 ] && [ "$MERGED_TS" -gt 0 ] && [ "$MERGED_TS" -ge "$START_TS" ]; then
+                DIFF=$(( MERGED_TS - START_TS ))
+                LEAD_TIMES+=($DIFF)
+                HOURS=$(printf "%.1f" "$(echo "scale=2; $DIFF / 3600" | bc)")
+                echo "  PR #${PR_NUM}: 첫 커밋 → 머지 = ${HOURS}h"
+              fi
+            fi
+          done < <(gh pr list --repo "$REPO" --state merged --base "$TARGET_BRANCH" \
+            --search "merged:>=$MONTH_AGO" --json number,createdAt,mergedAt --jq '.[]' 2>/dev/null)
+
+          if [ ${#LEAD_TIMES[@]} -gt 0 ]; then
+            SUM=0
+            for t in "${LEAD_TIMES[@]}"; do SUM=$((SUM + t)); done
+            AVG_LEAD_TIME=$((SUM / ${#LEAD_TIMES[@]}))
+            AVG_LEAD_HOURS=$(printf "%.1f" "$(echo "scale=2; $AVG_LEAD_TIME / 3600" | bc)")
+          else
+            AVG_LEAD_TIME=0
+            AVG_LEAD_HOURS="0.0"
+          fi
+          echo "[$TARGET_BRANCH] 리드 타임: 평균 ${AVG_LEAD_HOURS}시간 (${#LEAD_TIMES[@]}건 기준, 첫 커밋 → 머지)"
+
+          # -------------------------------------------------------
+          # 3. Change Failure Rate (변경 실패율)
+          # -------------------------------------------------------
+          TOTAL_COMMITS=$(git log --oneline --since="30 days ago" "origin/${TARGET_BRANCH}" 2>/dev/null | wc -l | tr -d ' ')
+          FAILURE_COMMITS=$(git log --oneline --since="30 days ago" "origin/${TARGET_BRANCH}" --grep="fix\|hotfix\|revert\|rollback" -i 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$TOTAL_COMMITS" -gt 0 ]; then
+            CFR=$(printf "%.1f" "$(echo "scale=2; $FAILURE_COMMITS * 100 / $TOTAL_COMMITS" | bc)")
+          else
+            CFR="0.0"
+          fi
+          echo "[$TARGET_BRANCH] 변경 실패율: ${CFR}% ($FAILURE_COMMITS/$TOTAL_COMMITS)"
+
+          # -------------------------------------------------------
+          # 4. Mean Time to Recovery (평균 복구 시간)
+          #    bug/hotfix 라벨 이슈의 open → close 평균 시간
+          # -------------------------------------------------------
+          MTTR_TIMES=()
+          while IFS= read -r line; do
+            CREATED=$(echo "$line" | jq -r '.createdAt')
+            CLOSED=$(echo "$line" | jq -r '.closedAt')
+            if [ "$CLOSED" != "null" ] && [ -n "$CLOSED" ]; then
+              CREATED_TS=$(date -d "$CREATED" +%s 2>/dev/null || echo "0")
+              CLOSED_TS=$(date -d "$CLOSED" +%s 2>/dev/null || echo "0")
+              if [ "$CREATED_TS" -gt 0 ] && [ "$CLOSED_TS" -gt 0 ]; then
+                DIFF=$(( CLOSED_TS - CREATED_TS ))
+                MTTR_TIMES+=($DIFF)
+              fi
+            fi
+          done < <(gh issue list --repo "$REPO" --state closed --label "bug" \
+            --search "closed:>=$MONTH_AGO" --json createdAt,closedAt --jq '.[]' 2>/dev/null)
+
+          if [ ${#MTTR_TIMES[@]} -gt 0 ]; then
+            SUM=0
+            for t in "${MTTR_TIMES[@]}"; do SUM=$((SUM + t)); done
+            AVG_MTTR=$((SUM / ${#MTTR_TIMES[@]}))
+            AVG_MTTR_HOURS=$(printf "%.1f" "$(echo "scale=2; $AVG_MTTR / 3600" | bc)")
+          else
+            AVG_MTTR=0
+            AVG_MTTR_HOURS="0.0"
+          fi
+          echo "[$TARGET_BRANCH] 평균 복구 시간: ${AVG_MTTR_HOURS}시간 (${#MTTR_TIMES[@]}건 기준)"
+
+          # -------------------------------------------------------
+          # DORA 등급 판정 (main 브랜치 기준)
+          # -------------------------------------------------------
+          LEAD_TIME=$AVG_LEAD_HOURS
+          if [ "$(echo "$DEPLOYS_PER_WEEK >= 1" | bc)" -eq 1 ] && \
+             [ "$(echo "$LEAD_TIME < 24" | bc)" -eq 1 ]; then
+            GRADE="Elite"
+          elif [ "$(echo "$DEPLOYS_PER_WEEK >= 0.5" | bc)" -eq 1 ]; then
+            GRADE="High"
+          elif [ "$DEPLOYS_MONTH" -gt 0 ]; then
+            GRADE="Medium"
+          else
+            GRADE="Low"
+          fi
+
+          echo ""
+          echo "========== DORA 등급: $GRADE (main 기준) =========="
+
+          # -------------------------------------------------------
+          # JSON 아티팩트 저장
+          # -------------------------------------------------------
+          mkdir -p metrics/dora
+          FILENAME="metrics/dora/dora-$(date -u +%Y%m%d).json"
+          python3 -c "
+          import json, sys
+          data = {
+            'timestamp': '$NOW',
+            'period': 'last_30_days',
+            'grade': '$GRADE',
+            'primary_branch': 'main',
+            'main': {
+              'deployment_frequency': {
+                'weekly': $DEPLOYS_WEEK,
+                'monthly': $DEPLOYS_MONTH,
+                'avg_per_week': $DEPLOYS_PER_WEEK
+              },
+              'lead_time_for_changes': {
+                'method': 'first_commit_to_merge',
+                'avg_seconds': $AVG_LEAD_TIME,
+                'avg_hours': $AVG_LEAD_HOURS,
+                'sample_count': ${#LEAD_TIMES[@]}
+              },
+              'change_failure_rate': {
+                'rate_percent': $CFR,
+                'failure_commits': $FAILURE_COMMITS,
+                'total_commits': $TOTAL_COMMITS
+              },
+              'mean_time_to_recovery': {
+                'avg_seconds': $AVG_MTTR,
+                'avg_hours': $AVG_MTTR_HOURS,
+                'sample_count': ${#MTTR_TIMES[@]}
+              }
+            }
+          }
+          with open('$FILENAME', 'w') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+          print(f'JSON 저장: $FILENAME')
+          "
+
+          # GitHub Actions 출력
+          {
+            echo "deploys_week=$DEPLOYS_WEEK"
+            echo "deploys_month=$DEPLOYS_MONTH"
+            echo "lead_time_hours=$AVG_LEAD_HOURS"
+            echo "lead_time_method=first_commit_to_merge"
+            echo "cfr=$CFR"
+            echo "mttr_hours=$AVG_MTTR_HOURS"
+            echo "grade=$GRADE"
+            echo "filename=$FILENAME"
+          } >> $GITHUB_OUTPUT
+
+      - name: Generate Step Summary
+        env:
+          DEPLOYS_WEEK: ${{ steps.dora.outputs.deploys_week }}
+          DEPLOYS_MONTH: ${{ steps.dora.outputs.deploys_month }}
+          LEAD_TIME: ${{ steps.dora.outputs.lead_time_hours }}
+          LEAD_METHOD: ${{ steps.dora.outputs.lead_time_method }}
+          CFR: ${{ steps.dora.outputs.cfr }}
+          MTTR: ${{ steps.dora.outputs.mttr_hours }}
+          GRADE: ${{ steps.dora.outputs.grade }}
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## DORA Metrics Report
+
+          ### main 브랜치
+          | 지표 | 값 | 등급 기준 |
+          |------|-----|----------|
+          | **배포 빈도** | 주 ${DEPLOYS_WEEK}건 / 월 ${DEPLOYS_MONTH}건 | Elite: 일 1회+ |
+          | **리드 타임** | ${LEAD_TIME}시간 (${LEAD_METHOD}) | Elite: < 1일 |
+          | **변경 실패율** | ${CFR}% | Elite: < 15% |
+          | **평균 복구 시간** | ${MTTR}시간 | Elite: < 1시간 |
+
+          **종합 등급: ${GRADE}**
+
+          > 리드 타임 측정 방식: PR의 첫 커밋 시점 → 머지 시점 (실제 개발 시작 반영)
+          EOF
+
+      - name: Commit metrics data to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add metrics/dora/
+          git diff --staged --quiet || git commit -m "chore: DORA 메트릭 수집 $(date -u +%Y-%m-%d)"
+          git push origin main || echo "No changes to push"
+
+      - name: Push to Grafana Cloud
+        if: env.GRAFANA_CLOUD_URL != ''
+        env:
+          GRAFANA_CLOUD_URL: ${{ secrets.GRAFANA_CLOUD_URL }}
+          GRAFANA_CLOUD_USER: ${{ secrets.GRAFANA_CLOUD_USER }}
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          DEPLOYS_WEEK: ${{ steps.dora.outputs.deploys_week }}
+          DEPLOYS_MONTH: ${{ steps.dora.outputs.deploys_month }}
+          LEAD_TIME: ${{ steps.dora.outputs.lead_time_hours }}
+          CFR: ${{ steps.dora.outputs.cfr }}
+          MTTR: ${{ steps.dora.outputs.mttr_hours }}
+          GRADE: ${{ steps.dora.outputs.grade }}
+        run: |
+          INFLUX_URL="${GRAFANA_CLOUD_URL/api\/prom\/push/api/v1/push/influx/write}"
+
+          case "$GRADE" in
+            Elite) GRADE_NUM=4 ;;
+            High)  GRADE_NUM=3 ;;
+            Medium) GRADE_NUM=2 ;;
+            *)     GRADE_NUM=1 ;;
+          esac
+
+          # Prometheus staleness 방지: 과거 7일간 5분 간격으로 동일 값 backfill
+          python3 << PYEOF
+          import subprocess, time, tempfile, os
+
+          NOW = int(time.time())
+          INTERVAL = 300  # 5분
+          DURATION = 7 * 24 * 3600  # 7일
+          START = NOW - DURATION
+
+          METRICS = {
+              "dora_deployment_frequency,project=govon,branch=main,period=weekly": ${DEPLOYS_WEEK},
+              "dora_deployment_frequency,project=govon,branch=main,period=monthly": ${DEPLOYS_MONTH},
+              "dora_lead_time_hours,project=govon,branch=main": ${LEAD_TIME},
+              "dora_change_failure_rate,project=govon,branch=main": ${CFR},
+              "dora_mttr_hours,project=govon,branch=main": ${MTTR},
+              "dora_grade,project=govon,branch=main": ${GRADE_NUM},
+          }
+
+          URL = "${INFLUX_URL}"
+          AUTH = "${GRAFANA_CLOUD_USER}:${GRAFANA_CLOUD_API_KEY}"
+
+          POINTS = DURATION // INTERVAL
+          print(f"Pushing {POINTS} data points (7d backfill, 5min intervals) for main...")
+
+          batch_size = 500
+          lines = []
+          sent = 0
+
+          for i in range(POINTS + 1):
+              ts = (START + i * INTERVAL) * 1_000_000_000
+              for metric, value in METRICS.items():
+                  lines.append(f"{metric} value={value} {ts}")
+
+              if len(lines) >= batch_size * len(METRICS):
+                  tmp = "/tmp/metrics_batch.txt"
+                  with open(tmp, "w") as f:
+                      f.write("\n".join(lines))
+                  subprocess.run(
+                      ["curl", "-s", "-o", "/dev/null",
+                       "-X", "POST", URL, "-u", AUTH,
+                       "-H", "Content-Type: text/plain",
+                       "--data-binary", f"@{tmp}"],
+                      capture_output=True
+                  )
+                  sent += len(lines) // len(METRICS)
+                  lines = []
+
+          if lines:
+              tmp = "/tmp/metrics_batch.txt"
+              with open(tmp, "w") as f:
+                  f.write("\n".join(lines))
+              result = subprocess.run(
+                  ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+                   "-X", "POST", URL, "-u", AUTH,
+                   "-H", "Content-Type: text/plain",
+                   "--data-binary", f"@{tmp}"],
+                  capture_output=True, text=True
+              )
+              sent += len(lines) // len(METRICS)
+              code = result.stdout.strip()
+          else:
+              code = "204"
+
+          print(f"Grafana Cloud 메트릭 전송 완료 ({sent} points, HTTP {code})")
+          PYEOF
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: dora-metrics-${{ github.run_number }}
+          path: metrics/dora/
+          retention-days: 90

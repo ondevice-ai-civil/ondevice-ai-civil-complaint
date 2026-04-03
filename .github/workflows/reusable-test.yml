@@ -1,0 +1,137 @@
+# Reusable Test Workflow for GovOn
+#
+# Secrets used in this workflow:
+#   - CODECOV_TOKEN  : Codecov upload token (optional)
+
+name: Reusable Test
+
+on:
+  workflow_call:
+    inputs:
+      python-versions:
+        description: 'JSON array of Python versions'
+        required: false
+        type: string
+        default: '["3.10", "3.11"]'
+      os-list:
+        description: 'JSON array of OS'
+        required: false
+        type: string
+        default: '["ubuntu-latest", "ubuntu-22.04"]'
+      coverage-threshold:
+        description: 'Minimum coverage percentage'
+        required: false
+        type: number
+        default: 80
+    secrets:
+      CODECOV_TOKEN:
+        required: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  ESTIMATED_COLD_INSTALL_SECONDS: 60
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJSON(inputs.python-versions) }}
+        os: ${{ fromJSON(inputs.os-list) }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Record setup start time
+        id: setup-start
+        run: echo "time=$(date +%s%N)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Python with uv
+        uses: ./.github/actions/setup-python-uv
+        with:
+          python-version: ${{ matrix.python-version }}
+          extras: '--extra dev --extra inference --extra database'
+
+      - name: Record setup end time
+        id: setup-end
+        run: echo "time=$(date +%s%N)" >> "$GITHUB_OUTPUT"
+
+      - name: Check cache status
+        id: cache-status
+        run: |
+          if [ -d "$HOME/.cache/uv" ] && [ "$(ls -A $HOME/.cache/uv 2>/dev/null)" ]; then
+            echo "status=hit" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=miss" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Record task start time
+        id: task-start
+        run: echo "time=$(date +%s%N)" >> "$GITHUB_OUTPUT"
+
+      - name: Run PR-Safe Inference Suite
+        run: bash .github/scripts/run_inference_ci.sh ${{ inputs.coverage-threshold }}
+
+      - name: Record task end time
+        id: task-end
+        run: echo "time=$(date +%s%N)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ./coverage.xml
+          fail_ci_if_error: false
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: ./coverage.xml
+          retention-days: 7
+
+      - name: Test Summary
+        if: always()
+        run: echo "### Test Results (${{ matrix.os }}, Python ${{ matrix.python-version }})" >> $GITHUB_STEP_SUMMARY
+
+      - name: Cache Performance Report
+        if: always()
+        run: |
+          setup_start=${{ steps.setup-start.outputs.time }}
+          setup_end=${{ steps.setup-end.outputs.time }}
+          task_start=${{ steps.task-start.outputs.time }}
+          task_end=${{ steps.task-end.outputs.time }}
+          cache_status="${{ steps.cache-status.outputs.status }}"
+          cold_baseline=${{ env.ESTIMATED_COLD_INSTALL_SECONDS }}
+
+          setup_ns=$((setup_end - setup_start))
+          task_ns=$((task_end - task_start))
+          total_ns=$((setup_ns + task_ns))
+
+          setup_sec=$(echo "scale=2; $setup_ns / 1000000000" | bc)
+          task_sec=$(echo "scale=2; $task_ns / 1000000000" | bc)
+          total_sec=$(echo "scale=2; $total_ns / 1000000000" | bc)
+
+          if [ "$cache_status" = "hit" ]; then
+            cache_display="✅ HIT"
+            improvement=$(echo "scale=2; ($cold_baseline - $setup_sec) / $cold_baseline * 100" | bc)
+            savings=$(echo "scale=2; $cold_baseline - $setup_sec" | bc)
+            savings_line="| Estimated Savings | ~${savings}s (estimated cold install: ~${cold_baseline}s) |"
+            improvement_line="| Improvement Rate | ~${improvement}% |"
+          else
+            cache_display="❌ MISS"
+            savings_line="| Estimated Savings | N/A (cache miss, this run establishes the cache) |"
+            improvement_line="| Improvement Rate | N/A (cache miss, this run establishes the cache) |"
+          fi
+
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ### ⏱️ Cache Performance Report — Test (${{ matrix.os }}, Python ${{ matrix.python-version }})
+          | Metric | Value |
+          |--------|-------|
+          | Cache Status | ${cache_display} |
+          | Setup Duration | ${setup_sec}s |
+          | Task Duration | ${task_sec}s |
+          | Total Duration | ${total_sec}s |
+          ${savings_line}
+          ${improvement_line}
+          EOF

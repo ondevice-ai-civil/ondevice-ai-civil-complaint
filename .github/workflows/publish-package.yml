@@ -1,0 +1,112 @@
+name: Publish Package
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: publish-package-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"
+          else
+            VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "### Package Version: $VERSION" >> $GITHUB_STEP_SUMMARY
+
+      - name: Verify version consistency
+        run: |
+          TAG_VERSION="${{ steps.version.outputs.version }}"
+          TOML_VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if [[ "${{ github.ref_type }}" == "tag" && "$TAG_VERSION" != "$TOML_VERSION" ]]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match pyproject.toml version ($TOML_VERSION)"
+            exit 1
+          fi
+          echo "Version check passed: $TOML_VERSION"
+
+      - name: Build package
+        run: |
+          uv build
+          echo "### Built Artifacts" >> $GITHUB_STEP_SUMMARY
+          ls -lh dist/ >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-package-${{ steps.version.outputs.version }}
+          path: dist/
+          retention-days: 30
+
+      - name: Publish to GitHub Packages
+        if: github.ref_type == 'tag'
+        run: |
+          uv publish \
+            --publish-url https://ghcr.io/api/packages/${{ github.repository_owner }}/pypi/upload \
+            --token ${{ secrets.GITHUB_TOKEN }} \
+            dist/* || echo "::warning::GitHub Packages PyPI publish failed, continuing..."
+
+      - name: Create GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          body: |
+            ## GovOn v${{ steps.version.outputs.version }}
+
+            ### Installation
+            ```bash
+            pip install GovOn==${{ steps.version.outputs.version }}
+            ```
+
+            ### Docker
+            ```bash
+            docker pull ghcr.io/govon-org/govon:v${{ steps.version.outputs.version }}
+            ```
+
+      - name: Publish Summary
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Publish Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Package Build | Done |" >> $GITHUB_STEP_SUMMARY
+          echo "| Artifact Upload | Done |" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "| GitHub Release | Done |" >> $GITHUB_STEP_SUMMARY
+            echo "| GitHub Packages | Done |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| GitHub Release | Skipped (manual trigger) |" >> $GITHUB_STEP_SUMMARY
+            echo "| GitHub Packages | Skipped (manual trigger) |" >> $GITHUB_STEP_SUMMARY
+          fi

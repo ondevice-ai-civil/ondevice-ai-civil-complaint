@@ -1,0 +1,19 @@
+# CODEOWNERS
+# 각 경로에 대한 기본 리뷰어를 지정합니다.
+# PR 생성 시 해당 경로가 변경되면 자동으로 리뷰 요청이 전송됩니다.
+# 형식: <경로패턴> <GitHub 사용자명 또는 팀>
+
+# 전체 기본 리뷰어
+* @umyunsang
+
+# 서빙 및 추론 관련 (서빙팀)
+/src/inference/          @umyunsang
+
+# 에이전트 페르소나 정의
+/agents/                 @umyunsang
+
+# CI/CD 및 GitHub 설정
+/.github/                @umyunsang
+
+# 설정 파일
+/configs/                @umyunsang

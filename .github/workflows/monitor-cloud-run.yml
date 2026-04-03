@@ -1,0 +1,173 @@
+name: Cloud Run Monitoring
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'  # Every 10 minutes
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  SERVICE_NAME: govon-api
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check GCP credentials
+        id: check-creds
+        run: |
+          if [ -z "$GCP_SA_KEY" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::GCP_SA_KEY 시크릿이 설정되지 않았습니다. 모니터링을 건너뜁니다."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Authenticate to Google Cloud
+        if: steps.check-creds.outputs.available == 'true'
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        if: steps.check-creds.outputs.available == 'true'
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Get service URL
+        id: service
+        if: steps.check-creds.outputs.available == 'true'
+        continue-on-error: true
+        run: |
+          URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+            --region=${{ secrets.GCP_REGION || 'asia-northeast3' }} \
+            --format='value(status.url)' 2>/dev/null || echo "")
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Health check
+        id: health
+        if: steps.check-creds.outputs.available == 'true'
+        continue-on-error: true
+        run: |
+          URL="${{ steps.service.outputs.url }}"
+          if [ -z "$URL" ]; then
+            echo "status=unknown" >> "$GITHUB_OUTPUT"
+            echo "Service URL not found — service may not be deployed yet"
+            exit 0
+          fi
+
+          HTTP_CODE=$(curl -sf -o /tmp/health-response.json -w "%{http_code}" "${URL}/health" 2>/dev/null || echo "000")
+          LATENCY=$(curl -sf -o /dev/null -w "%{time_total}" "${URL}/health" 2>/dev/null || echo "0")
+
+          echo "http_code=$HTTP_CODE" >> "$GITHUB_OUTPUT"
+          echo "latency=$LATENCY" >> "$GITHUB_OUTPUT"
+
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "status=healthy" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=unhealthy" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check metrics
+        id: metrics
+        if: steps.check-creds.outputs.available == 'true'
+        continue-on-error: true
+        run: |
+          # Get instance count
+          INSTANCES=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+            --region=${{ secrets.GCP_REGION || 'asia-northeast3' }} \
+            --format='value(spec.template.spec.containerConcurrency)' 2>/dev/null || echo "N/A")
+          echo "concurrency=$INSTANCES" >> "$GITHUB_OUTPUT"
+
+          # Get latest revision
+          REVISION=$(gcloud run revisions list \
+            --service=${{ env.SERVICE_NAME }} \
+            --region=${{ secrets.GCP_REGION || 'asia-northeast3' }} \
+            --format='value(REVISION)' \
+            --limit=1 2>/dev/null || echo "N/A")
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+
+      - name: Create alert issue on failure
+        if: steps.health.outputs.status == 'unhealthy'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            // Check for existing open alert
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'monitoring,alert',
+              state: 'open',
+            });
+
+            if (issues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `Cloud Run 서비스 다운: ${new Date().toISOString()}`,
+                body: [
+                  `## 모니터링 알림`,
+                  ``,
+                  `| 항목 | 값 |`,
+                  `|------|-----|`,
+                  `| Service | ${{ env.SERVICE_NAME }} |`,
+                  `| HTTP Code | ${{ steps.health.outputs.http_code }} |`,
+                  `| Revision | ${{ steps.metrics.outputs.revision }} |`,
+                  `| 감지 시각 | ${new Date().toISOString()} |`,
+                  ``,
+                  `서비스 헬스체크에 실패했습니다. 즉시 확인이 필요합니다.`,
+                ].join('\n'),
+                labels: ['monitoring', 'alert'],
+              });
+            }
+
+      - name: Close alert if recovered
+        if: steps.health.outputs.status == 'healthy'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'monitoring,alert',
+              state: 'open',
+            });
+
+            for (const issue of issues.data) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed',
+                state_reason: 'completed',
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `서비스가 복구되었습니다. (${new Date().toISOString()})`,
+              });
+            }
+
+      - name: Monitoring Summary
+        if: always()
+        run: |
+          echo "### Cloud Run Monitoring" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.check-creds.outputs.available }}" != "true" ]; then
+            echo "> **GCP_SA_KEY 시크릿 미설정으로 모니터링을 건너뛰었습니다.**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Service | ${{ env.SERVICE_NAME }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Status | ${{ steps.health.outputs.status }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| HTTP Code | ${{ steps.health.outputs.http_code }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Latency | ${{ steps.health.outputs.latency }}s |" >> $GITHUB_STEP_SUMMARY
+            echo "| Revision | ${{ steps.metrics.outputs.revision }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Timestamp | $(date -u +%Y-%m-%dT%H:%M:%SZ) |" >> $GITHUB_STEP_SUMMARY
+          fi

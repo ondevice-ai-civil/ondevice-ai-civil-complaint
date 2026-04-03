@@ -29,6 +29,8 @@ ENV/
 # IDE
 .idea/
 .vscode/
+!frontend/.vscode/
+!frontend/.vscode/settings.json
 *.swp
 *.swo
 *~
@@ -50,7 +52,7 @@ lightning_logs/
 data/raw/
 !data/raw/**/
 !data/raw/aihub/71852/*.zip
-data/processed/
+data/processed/*
 !data/processed/*.jsonl
 !data/processed/*.json
 data/calibration/
@@ -59,9 +61,17 @@ data/calibration/
 *.csv
 *.json
 *.jsonl
+!frontend/package.json
+!frontend/package-lock.json
+!frontend/tsconfig.json
+!frontend/.vscode/settings.json
 !configs/*.json
 !docs/outputs/M2_MVP/*.json
 !src/training/*.json
+!data/processed/*.jsonl
+!data/processed/*.json
+!data/calibration/*.json
+!metrics/**/*.json
 
 # Model files (large)
 models/*.bin
@@ -70,6 +80,7 @@ models/*.onnx
 
 # Logs
 logs/
+.cache/
 *.log
 
 # Environment variables
@@ -84,11 +95,22 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Node.js (Playwright)
+node_modules/
+!package.json
+!package-lock.json
 # Tool contexts
-.claude/
 .gemini/
+.codex/
+.claude/
 .claude_bak/
 .gemini_bak/
+/AGENTS.md
+/frontend/AGENTS.md
 CLAUDE.md
 
 

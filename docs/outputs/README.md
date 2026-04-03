@@ -7,8 +7,6 @@
 ```
 outputs/
 ├── M1_Planning/       # 기획 및 설계 (Week 1-4)
-├── M2_MVP/            # 핵심 기능 구현 (Week 5-8)
-├── M3_Optimization/   # 고도화 및 최적화 (Week 9-12)
 └── M4_Testing/        # 테스트 및 문서화 (Week 13-16)
 ```
 
@@ -16,9 +14,7 @@ outputs/
 
 | 마일스톤 | 기간 | 상태 | 주요 성과 |
 |----------|------|------|-----------|
-| M1_Planning | Week 1-4 | 완료 (90%) | 시스템 설계, 데이터 수집 모듈, 크롤러 프로토타입 |
-| M2_MVP | Week 5-8 | 핵심 완료 (75%) | QLoRA 파인튜닝, AWQ 양자화, HuggingFace 배포 |
-| M3_Optimization | Week 9-12 | 부분 완료 (40%) | vLLM 최적화, 분류 90%, 추론 2.43s |
+| M1_Planning | Week 1-4 | 완료 (90%) | 시스템 설계, 발표자료, 초기 산출물 정리 |
 | M4_Testing | Week 13-16 | 미시작 (0%) | - |
 
 ## 최근 추가 산출물
@@ -28,16 +24,6 @@ outputs/
 | 2026-03-12 | M1_Planning | 3/16 미팅 발표자료 v1.2 | [W02_0316_project_presentation_v1.2.pptx](M1_Planning/04_Presentation/W02_0316_project_presentation_v1.2.pptx) |
 | 2026-03-12 | M1_Planning | 3/16 미팅 발표자료 v1.1 | [W02_0316_project_presentation_v1.1.pptx](M1_Planning/04_Presentation/W02_0316_project_presentation_v1.1.pptx) |
 | 2026-03-11 | M1_Planning | 3/16 미팅 발표자료 v1.0 | [W02_0316_project_presentation_v1.0.pptx](M1_Planning/04_Presentation/W02_0316_project_presentation_v1.0.pptx) |
-
-## 핵심 KPI 현황 (2026-03-09 기준)
-
-| 지표 | 목표 | 현재 | 상태 |
-|------|------|------|------|
-| 분류 정확도 | >= 85% | 90.0% | 달성 |
-| 추론 속도 (Avg) | < 2s | 2.43s | 근접 |
-| GPU VRAM | < 8GB | 4.17 GB | 달성 |
-| 모델 크기 | < 5GB | 4.94 GB | 달성 |
-| BERTScore F1 | 베이스라인 | 46.05 | 확보 |
 
 ## 파일 명명 규칙
 

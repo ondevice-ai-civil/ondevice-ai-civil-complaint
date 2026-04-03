@@ -1,103 +1,86 @@
-# On-device AI 민원 처리 및 분석 시스템
+# GovOn
 
-LLM을 경량화하여 온디바이스에서 실행하고, 파인튜닝을 통해 현장 산업체에 최적화된 민원 처리 시스템
+GovOn은 행정 업무를 보조하는 **에이전틱 CLI 셸**이다. 사용자는 `govon`을 실행한 뒤 자연어로 요청하고, 셸은 로컬 daemon runtime과 연결되어 검색·조회·작성 도구를 승인 기반으로 사용한다.
 
-## 프로젝트 개요
+[![Docs Portal](https://img.shields.io/badge/Docs-Portal-blue?logo=readthedocs)](https://govon-org.github.io/GovOn/)
+[![Public Roadmap](https://img.shields.io/badge/Public_Roadmap-Workstreams-7C3AED)](https://github.com/GovOn-Org/GovOn/issues?q=label%3A%22%F0%9F%A7%AD+Workstream%22+sort%3Aupdated-desc)
 
-### 현장미러형 연계 프로젝트
+## 현재 제품 기준
 
-본 프로젝트는 **현장미러형 연계 프로젝트**로, 실제 현장에서 부딪히는 문제를 해결하기 위해 산업체 수요 과제를 기획, 설계, 제작하여 현장 실무 능력 향상을 도모합니다.
+- 진입점은 웹이 아니라 `govon` 대화형 CLI 셸
+- 내부 runtime은 로컬 FastAPI daemon
+- base model이 의도 파악, 작업 계획, tool 선택 담당
+- 민원 답변 작성 단계에서만 civil-response adapter 사용
+- tool 실행은 작업 단위 승인 후 진행
+- 근거/출처는 기본 출력이 아니라 후속 증강 작업으로 처리
 
-### 목표
+상세 기준 문서는 [docs/architecture/GovOn-shell-mvp-architecture.md](docs/architecture/GovOn-shell-mvp-architecture.md)다.
 
-- 경량화된 LLM 기반 온디바이스 민원 처리 시스템 개발
-- 산업체 현장에 최적화된 AI 솔루션 구축
+## MVP 범위
 
-### 핵심 기술
+포함:
 
-- **LLM 경량화**: Quantization, Pruning, Knowledge Distillation
-- **도메인 특화 파인튜닝**: 현장 산업체 맞춤형 답변 생성
-- **온디바이스 추론 최적화**: 엣지 디바이스에서의 실시간 처리
+- 자연어 기반 CLI 셸
+- 로컬 daemon 자동 기동 및 재연결
+- 민원 답변 작성
+- 외부 API lookup
+- 로컬 RAG 검색
+- 작업 단위 승인 UI
+- SQLite 기반 세션 resume
+- 후속 근거/출처 증강
 
-## 프로젝트 구조
+제외:
 
-```
-GovOn/
-├── data/                    # 학습 데이터
-├── models/                  # 모델 파일
-├── src/                     # 소스 코드
-│   ├── preprocessing/       # 데이터 전처리
-│   ├── training/           # 모델 학습
-│   ├── inference/          # 추론 엔진
-│   └── utils/              # 유틸리티
-├── configs/                 # 설정 파일
-├── docs/                    # 프로젝트 문서
-│   ├── draft.md            # 문제정의서
-│   ├── toc.md              # 제안서 작성 가이드
-│   ├── prd.md              # PRD (Product Requirements Document)
-│   ├── wbs.md              # WBS (Work Breakdown Structure)
-│   ├── official/           # 공식 문서 (공문)
-│   │   ├── 문제정의서.pdf
-│   │   └── 서식일체.pdf
-│   └── outputs/            # 마일스톤별 산출물
-│       ├── M1_Planning/
-│       ├── M2_MVP/
-│       ├── M3_Optimization/
-│       └── M4_Testing/
-├── notebooks/              # 실험 노트북
-└── tests/                  # 테스트 코드
-```
+- 공문서 작성
+- 분류 기능
+- 웹/앱 제품화
 
-## 개발 환경 설정
+## 상위 구조
 
-```bash
-# 저장소 클론
-git clone https://github.com/GovOn-org/GovOn.git
-cd GovOn
-
-# 가상환경 생성 및 활성화
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# 의존성 설치
-pip install -r requirements.txt
+```mermaid
+graph TD
+    A[govon CLI] --> B[Local FastAPI daemon]
+    B --> C[Task loop]
+    C --> D[vLLM base model]
+    C --> E[Civil-response adapter]
+    C --> F[Tool registry]
+    C --> G[(SQLite session DB)]
+    F --> H[api_lookup]
+    F --> I[local RAG]
 ```
 
-## 브랜치 전략
+## 사용자 흐름
 
-- `main`: 프로덕션 브랜치 (직접 push 금지, PR을 통해서만 머지)
-- `develop`: 개발 브랜치
-- `feature/*`: 기능 개발 브랜치
-- `fix/*`: 버그 수정 브랜치
+1. 사용자가 `govon`을 실행한다.
+2. CLI가 로컬 daemon을 자동 기동하거나 기존 daemon에 재연결한다.
+3. 사용자가 자연어로 업무를 요청한다.
+4. 시스템이 이번 턴의 한 작업을 정의하고, 쉬운 설명과 함께 `승인 / 거절` UI를 보여준다.
+5. 승인되면 필요한 여러 tool과 adapter를 묶어서 실행한다.
+6. 결과는 `근거 요약 -> 최종 초안` 순서로 출력한다.
+7. 사용자가 후속으로 근거를 요청하면 RAG/API를 다시 사용해 기존 답변 아래에 근거 섹션을 추가한다.
+8. 종료 시 세션 ID를 보여주고, `govon --session <id>`로 재개한다.
 
-## 기여 방법
+## 문서
 
-1. 이슈 생성 또는 할당된 이슈 확인
-2. `develop` 브랜치에서 새 브랜치 생성
-   ```bash
-   git checkout develop
-   git pull origin develop
-   git checkout -b feature/기능명
-   ```
-3. 코드 작성 및 커밋
-4. Pull Request 생성
-5. 코드 리뷰 후 팀장이 머지
+- 제품 아키텍처: [docs/architecture/GovOn-shell-mvp-architecture.md](docs/architecture/GovOn-shell-mvp-architecture.md)
+- 오케스트레이션 워크플로우: [docs/architecture/WORKFLOW-orchestrator-tool-calling.md](docs/architecture/WORKFLOW-orchestrator-tool-calling.md)
+- ADR: [docs/adr/README.md](docs/adr/README.md)
+- PRD: [docs/prd.md](docs/prd.md)
+- WBS: [docs/wbs.md](docs/wbs.md)
+- 공식 문서: [docs/official](docs/official)
 
-## 팀원
+## GitHub 이슈 구조
 
-| 역할 | 이름 | 학번 | 학과 | GitHub |
-|------|------|------|------|--------|
-| 팀장 | 엄윤상 | 1705817 | AI학과 | [@umyunsang](https://github.com/umyunsang) |
-| 팀원 | 장시우 | 2143655 | AI학과 | [@siuJang](https://github.com/siuJang) |
-| 팀원 | 이유정 | 2243951 | AI학과 | [@yuujjjj](https://github.com/yuujjjj) |
+- root roadmap: `#402`
+- roadmap의 하위: `workstream`
+- workstream의 하위: `task`
+- 세부 작업 내용은 `task` 이슈 본문에만 작성한다.
 
-## 공식 문서
+## 개발 규칙
 
-| 문서명 | 설명 | 파일 |
-|--------|------|------|
-| 문제정의서 | On-Device AI 민원분석 및 처리시스템 문제정의서 | [PDF](docs/official/U20260304_164737858_2026-32.On-DeviceAI민원분석및처리시스템.pdf) |
-| 신청서/계획서 | 2026 현장미러형연계프로젝트 서식일체 | [PDF](docs/official/1705817_ai학과_엄윤상_2026%20현장미러형연계프로젝트%20서식일체.pdf) |
+기여 전 아래 문서를 먼저 본다.
 
-## 라이선스
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [site/docs/guide/development.md](site/docs/guide/development.md)
 
-MIT License
+브랜치는 GitHub Flow를 사용하고, 기본 대상 브랜치는 항상 `main`이다.

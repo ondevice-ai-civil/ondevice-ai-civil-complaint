@@ -1,0 +1,57 @@
+services:
+  govon-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: govon-backend:ci
+    container_name: govon-backend-ci
+    ports:
+      - "18000:8000"
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+      - ./agents:/app/agents
+      - ./configs:/app/configs
+      - ./logs:/var/log/govon
+      - ./.cache:/app/.cache
+    environment:
+      SERVING_PROFILE: container
+      HOST: 0.0.0.0
+      PORT: 8000
+      LOG_LEVEL: INFO
+      RELOAD: "false"
+      API_KEY: ci-test-key
+      MODEL_PATH: umyunsang/GovOn-EXAONE-AWQ-v2
+      TRUST_REMOTE_CODE: "true"
+      MODEL_DTYPE: half
+      ENFORCE_EAGER: "true"
+      DATA_PATH: /app/data/processed/v2_train.jsonl
+      INDEX_PATH: /app/models/faiss_index/complaints.index
+      FAISS_INDEX_DIR: /app/models/faiss_index
+      BM25_INDEX_DIR: /app/models/bm25_index
+      AGENTS_DIR: /app/agents
+      LOG_DIR: /var/log/govon
+      CACHE_DIR: /app/.cache
+      GPU_UTILIZATION: 0.1
+      MAX_MODEL_LEN: 2048
+      SKIP_MODEL_LOAD: "true"
+      RATE_LIMIT_ENABLED: "false"
+      REQUEST_TIMEOUT_SEC: 60
+      USE_RAG_PIPELINE: "false"
+      MODEL_VERSION: ci_smoke
+      LANGGRAPH_MODEL_BASE_URL: http://127.0.0.1:8001/v1
+      LANGGRAPH_MODEL_API_KEY: EMPTY
+      HEALTH_INTERVAL_SEC: 5
+      HEALTH_TIMEOUT_SEC: 5
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3.10",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s

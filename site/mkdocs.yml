@@ -1,0 +1,83 @@
+site_name: "GovOn - Agentic Administrative Shell"
+site_url: https://govon-org.github.io/GovOn/
+repo_url: https://github.com/GovOn-Org/GovOn
+repo_name: GovOn-Org/GovOn
+
+theme:
+  name: material
+  language: ko
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: 다크 모드로 전환
+    - scheme: slate
+      primary: indigo
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: 라이트 모드로 전환
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - toc.integrate
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search:
+      lang: ko
+  - mermaid2
+
+markdown_extensions:
+  - admonition
+  - codehilite
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - toc:
+      permalink: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - tables
+  - attr_list
+  - md_in_html
+
+nav:
+  - 홈: index.md
+  - 아키텍처:
+      - 개요: architecture/overview.md
+      - ADR: architecture/adr/index.md
+      - 모델 카드: architecture/model-card.md
+  - 개발 가이드:
+      - 개발 규칙: guide/development.md
+  - 배포:
+      - 배포 아키텍처: deployment/architecture.md
+  - CI/CD:
+      - 파이프라인 개요: cicd/overview.md
+      - 워크플로우 상세: cicd/workflows.md
+      - 테스트 전략: cicd/testing.md
+      - DORA 메트릭: cicd/dora.md
+      - 보안 스캔: cicd/security.md
+  - 마일스톤:
+      - 개요: milestones/index.md
+      - M2 핵심 기능 MVP: milestones/m2.md
+      - M3 고도화: milestones/m3.md
+      - M4 테스트: milestones/m4.md
+      - M5 AIOSS 기반: milestones/m5.md

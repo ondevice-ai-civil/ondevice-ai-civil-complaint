@@ -1,0 +1,129 @@
+# Production Docker Compose with Blue/Green Deployment Strategy
+#
+# Usage:
+#   Blue deployment:  docker compose -f docker-compose.prod.yml --profile blue up -d
+#   Green deployment: docker compose -f docker-compose.prod.yml --profile green up -d
+#   Switch traffic:   Update nginx upstream to point to active deployment
+#   Rollback:         Activate previous profile, deactivate current
+#
+# Automated deployment: ./scripts/deploy.sh deploy <image-tag>
+
+services:
+  # ──────────────────────────────────────────────
+  # Blue deployment (default active)
+  # ──────────────────────────────────────────────
+  govon-blue:
+    image: ghcr.io/govon-org/govon:${BLUE_TAG:-latest}
+    container_name: govon-blue
+    profiles: ["blue"]
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+      - ./agents:/app/agents
+      - ./configs:/app/configs
+    environment:
+      - API_KEY=${API_KEY}
+      - MODEL_PATH=${MODEL_PATH:-umyunsang/GovOn-EXAONE-AWQ-v2}
+      - GPU_UTILIZATION=${GPU_UTILIZATION:-0.8}
+      - MAX_MODEL_LEN=${MAX_MODEL_LEN:-8192}
+      - DEPLOYMENT_SLOT=blue
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3.10",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ──────────────────────────────────────────────
+  # Green deployment (standby)
+  # ──────────────────────────────────────────────
+  govon-green:
+    image: ghcr.io/govon-org/govon:${GREEN_TAG:-latest}
+    container_name: govon-green
+    profiles: ["green"]
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+      - ./agents:/app/agents
+      - ./configs:/app/configs
+    environment:
+      - API_KEY=${API_KEY}
+      - MODEL_PATH=${MODEL_PATH:-umyunsang/GovOn-EXAONE-AWQ-v2}
+      - GPU_UTILIZATION=${GPU_UTILIZATION:-0.8}
+      - MAX_MODEL_LEN=${MAX_MODEL_LEN:-8192}
+      - DEPLOYMENT_SLOT=green
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3.10",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ──────────────────────────────────────────────
+  # Nginx reverse proxy (traffic router)
+  # ──────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: govon-nginx
+    profiles: ["router"]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      govon-blue:
+        condition: service_healthy
+        required: false
+      govon-green:
+        condition: service_healthy
+        required: false
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:80/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3

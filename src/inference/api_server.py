@@ -52,6 +52,11 @@ from .schemas import (
 from .session_context import SessionContext, SessionStore
 from .tool_router import ToolType, tool_name
 
+
+async def _noop_tool(query: str, context: dict, session: Any) -> dict:
+    """build_mvp_registry fallback용 no-op tool."""
+    return {"success": False, "error": "tool이 초기화되지 않았습니다"}
+
 if not SKIP_MODEL_LOAD:
     try:
         from vllm.engine.arg_utils import AsyncEngineArgs
@@ -715,19 +720,46 @@ class vLLMEngineManager:
         self.agent_loop = AgentLoop(tool_registry=tool_registry)
 
     def _build_tool_registry(self) -> Dict[str, Any]:
-        """tool registry를 str key dict로 반환한다.
+        """CapabilityBase 기반 MVP tool registry를 반환한다.
 
-        기존 _init_agent_loop에서 정의한 tool 함수들을
-        str 키(ToolType.value)로 매핑하여 반환한다.
-        RegistryExecutorAdapter에서 사용한다.
+        build_mvp_registry()를 사용하여 단일 소스에서 registry를 구성한다.
+        planner metadata와 executor binding이 동일한 CapabilityBase 인스턴스에서 나온다.
+        AgentLoop 하위호환: AgentLoop._tools에서 closure를 추출하여 wrapper로 래핑한다.
         """
         if self.agent_loop is None:
             return {}
-        # AgentLoop의 tool_registry는 ToolType -> callable 매핑이므로
-        # str key로 변환한다
-        return {
-            str(k.value if hasattr(k, "value") else k): v for k, v in self.agent_loop._tools.items()
+
+        from src.inference.graph.capabilities.registry import build_mvp_registry
+
+        # AgentLoop의 tool_registry에서 기존 closure를 추출
+        raw_tools = {
+            str(k.value if hasattr(k, "value") else k): v
+            for k, v in self.agent_loop._tools.items()
         }
+
+        return build_mvp_registry(
+            rag_search_fn=raw_tools.get("rag_search", _noop_tool),
+            api_lookup_action=self._get_api_lookup_action(),
+            draft_civil_response_fn=raw_tools.get("draft_civil_response", _noop_tool),
+            append_evidence_fn=raw_tools.get("append_evidence", _noop_tool),
+        )
+
+    def _get_api_lookup_action(self) -> Any:
+        """AgentLoop에 등록된 api_lookup의 MinwonAnalysisAction을 추출한다."""
+        if self.agent_loop is None:
+            return None
+        tool_fn = self.agent_loop._tools.get(ToolType.API_LOOKUP)
+        # ApiLookupCapability인 경우 action을 직접 추출
+        if hasattr(tool_fn, "_action"):
+            return tool_fn._action
+        # closure인 경우 action을 추출할 수 없으므로 None 반환
+        # (MinwonAnalysisAction은 _init_agent_loop에서 새로 생성한다)
+        try:
+            from src.inference.actions.data_go_kr import MinwonAnalysisAction
+
+            return MinwonAnalysisAction()
+        except Exception:
+            return None
 
     def _init_graph(self) -> None:
         """LangGraph StateGraph를 초기화한다.

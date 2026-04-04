@@ -1,10 +1,11 @@
 """Executor adapter: tool registry에서 tool을 조회하고 실행.
 
 Issue #415: LangGraph runtime 기반 및 planner/executor adapter 구성.
+Issue #416: tool metadata registry 및 LangGraph executor binding 정리.
 
 두 가지 구현체를 제공한다:
 - `ExecutorAdapter` (ABC): 추상 인터페이스
-- `RegistryExecutorAdapter`: 기존 tool_registry dict를 재사용하는 구현체
+- `RegistryExecutorAdapter`: CapabilityBase 기반 registry를 사용하는 구현체
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from loguru import logger
 
@@ -88,7 +89,17 @@ class RegistryExecutorAdapter(ExecutorAdapter):
         query: str,
         context: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """tool을 조회하고 타임아웃 포함하여 실행한다."""
+        """tool을 조회하고 타임아웃 포함하여 실행한다.
+
+        registry에 등록되지 않은 tool은 비MVP capability로 차단한다.
+        """
+        from src.inference.graph.capabilities.registry import is_mvp_capability
+
+        # 비MVP capability 차단
+        if not is_mvp_capability(tool_name):
+            logger.warning(f"[RegistryExecutorAdapter] 비MVP capability 차단: {tool_name}")
+            return {"success": False, "error": f"비MVP capability: {tool_name}"}
+
         tool_fn = self._tools.get(tool_name)
         if tool_fn is None:
             return {"success": False, "error": f"등록되지 않은 tool: {tool_name}"}
@@ -157,3 +168,22 @@ class RegistryExecutorAdapter(ExecutorAdapter):
             "approval_summary": "",
             "provider": "",
         }
+
+    def get_tool_descriptions_for_planner(self) -> List[dict]:
+        """planner가 읽을 tool 목록을 단일 메서드로 노출한다.
+
+        등록된 모든 tool의 metadata를 dict 목록으로 반환한다.
+        CapabilityBase 인스턴스는 풍부한 metadata를, 일반 callable은
+        이름만 포함된 기본 dict를 반환한다.
+
+        Returns
+        -------
+        List[dict]
+            각 tool의 metadata dict 목록.
+        """
+        descriptions: List[dict] = []
+        for name in self._tools:
+            meta = self.get_tool_metadata(name)
+            if meta is not None:
+                descriptions.append(meta)
+        return descriptions

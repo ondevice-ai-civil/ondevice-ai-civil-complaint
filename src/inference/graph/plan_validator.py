@@ -1,6 +1,7 @@
 """ToolPlan 검증기.
 
 Issue #410: planner schema 검증 및 LangGraph 상태 전이 규칙 구현.
+Issue #416: MVP_CAPABILITIES를 registry 단일 소스에서 가져온다.
 
 planner_node가 반환한 ToolPlan을 graph 실행 전에 검증한다.
 MVP에서 허용되는 capability 목록과 필수 필드를 확인하며,
@@ -9,16 +10,11 @@ MVP에서 허용되는 capability 목록과 필수 필드를 확인하며,
 
 from __future__ import annotations
 
+from .capabilities.registry import get_mvp_capability_ids
 from .state import TaskType, ToolPlan
 
-MVP_CAPABILITIES: frozenset[str] = frozenset(
-    [
-        "rag_search",
-        "api_lookup",
-        "draft_civil_response",
-        "append_evidence",
-    ]
-)
+# registry 단일 소스에서 MVP capability 목록을 가져온다
+MVP_CAPABILITIES: frozenset[str] = get_mvp_capability_ids()
 
 
 class PlanValidationError(ValueError):

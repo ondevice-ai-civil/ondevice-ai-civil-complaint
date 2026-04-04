@@ -1,6 +1,7 @@
 """Planner adapter: 사용자 요청을 구조화된 실행 계획으로 변환.
 
 Issue #415: LangGraph runtime 기반 및 planner/executor adapter 구성.
+Issue #416: AVAILABLE_TOOLS를 registry 단일 소스에서 가져온다.
 
 두 가지 구현체를 제공한다:
 - `LLMPlannerAdapter`: LLM(ChatOpenAI 또는 호환 모델) 기반 planner
@@ -15,6 +16,7 @@ from typing import Any, Dict, Sequence
 
 from langchain_core.messages import AnyMessage
 
+from .capabilities.registry import get_mvp_capability_ids
 from .state import TaskType, ToolPlan
 
 
@@ -61,7 +63,7 @@ class LLMPlannerAdapter(PlannerAdapter):
         langchain-openai ChatOpenAI 또는 호환 LLM.
     """
 
-    AVAILABLE_TOOLS = ["rag_search", "api_lookup", "draft_civil_response", "append_evidence"]
+    AVAILABLE_TOOLS = sorted(get_mvp_capability_ids())
 
     SYSTEM_PROMPT = (
         "당신은 GovOn 민원 답변 보조 시스템의 작업 계획기입니다.\n"

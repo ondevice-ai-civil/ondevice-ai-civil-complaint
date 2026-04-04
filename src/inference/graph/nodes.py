@@ -279,14 +279,10 @@ async def persist_node(
         f"| 이유: {state.get('reason', '')} | tools: {planned_tools}"
     )
 
-    total_latency_ms = sum(
-        r.get("latency_ms", 0.0) for r in tool_results.values()
-    )
+    total_latency_ms = sum(r.get("latency_ms", 0.0) for r in tool_results.values())
 
     # 거절 시 status를 "rejected"로, 승인 시 "completed"로 기록
-    graph_status = (
-        "rejected" if approval_status == ApprovalStatus.REJECTED.value else "completed"
-    )
+    graph_status = "rejected" if approval_status == ApprovalStatus.REJECTED.value else "completed"
 
     session.add_graph_run(
         request_id=request_id,

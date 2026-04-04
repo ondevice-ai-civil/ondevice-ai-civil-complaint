@@ -15,11 +15,15 @@ from __future__ import annotations
 
 import asyncio
 import os
+import tempfile
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+# api_server import 전에 환경변수 고정 — 로컬 SQLite 경로 의존성 제거
+_tmp_db = tempfile.mktemp(suffix=".sqlite3")
+os.environ.setdefault("GOVON_SESSION_DB", _tmp_db)
 os.environ.setdefault("SKIP_MODEL_LOAD", "true")
 
 

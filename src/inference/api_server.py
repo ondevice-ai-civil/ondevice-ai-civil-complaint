@@ -1146,10 +1146,11 @@ async def v2_agent_run(
     from langchain_core.messages import HumanMessage
 
     thread_id = request.session_id or str(uuid.uuid4())
+    session_id = thread_id  # thread_id를 session_id로 확정
     request_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
     initial_state = {
-        "session_id": request.session_id,
+        "session_id": session_id,
         "request_id": request_id,
         "messages": [HumanMessage(content=request.query)],
     }
@@ -1168,7 +1169,7 @@ async def v2_agent_run(
             return {
                 "status": "awaiting_approval",
                 "thread_id": thread_id,
-                "session_id": request.session_id,
+                "session_id": session_id,
                 "graph_run_id": request_id,
                 "approval_request": approval_value,
             }
@@ -1178,7 +1179,7 @@ async def v2_agent_run(
         return {
             "status": "completed",
             "thread_id": thread_id,
-            "session_id": request.session_id,
+            "session_id": session_id,
             "graph_run_id": request_id,
             "text": final_state.get("final_text", ""),
         }
@@ -1187,7 +1188,7 @@ async def v2_agent_run(
         # graph_run을 "error" status로 기록 시도
         try:
             if manager.session_store:
-                session = manager.session_store.get_or_create(request.session_id)
+                session = manager.session_store.get_or_create(session_id)
                 session.add_graph_run(
                     request_id=request_id,
                     plan_summary=f"[error] {exc}",
@@ -1201,7 +1202,7 @@ async def v2_agent_run(
         return {
             "status": "error",
             "thread_id": thread_id,
-            "session_id": request.session_id,
+            "session_id": session_id,
             "graph_run_id": request_id,
             "error": str(exc),
         }
@@ -1256,6 +1257,8 @@ async def v2_agent_approve(
     except Exception as exc:
         logger.error(f"[v2/agent/approve] 예외 발생: {exc}")
         # graph_run을 "error" status로 기록 시도
+        session_id = ""
+        request_id = ""
         try:
             if manager.session_store:
                 graph_state = await asyncio.to_thread(manager.graph.get_state, config)
@@ -1277,6 +1280,8 @@ async def v2_agent_approve(
         return {
             "status": "error",
             "thread_id": thread_id,
+            "session_id": session_id,
+            "graph_run_id": request_id,
             "error": str(exc),
         }
 

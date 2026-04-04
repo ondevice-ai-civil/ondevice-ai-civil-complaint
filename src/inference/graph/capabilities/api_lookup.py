@@ -96,17 +96,7 @@ class ApiLookupCapability(CapabilityBase):
         """MinwonAnalysisAction.fetch_similar_cases를 래핑하여 LookupResult로 반환."""
         provider = self.metadata.provider
 
-        # action이 없으면 빈 결과 (경량 환경)
-        if self._action is None:
-            logger.debug("[api_lookup] action이 None — 빈 결과 반환")
-            return LookupResult(
-                success=True,
-                query=query,
-                provider=provider,
-                empty_reason="no_match",
-            )
-
-        # 파라미터 추출 및 검증
+        # 파라미터 추출 및 검증 (action 유무와 무관하게 항상 수행)
         params = ApiLookupParams.from_context(query, context)
         validation_error = params.validate()
         if validation_error:
@@ -116,6 +106,16 @@ class ApiLookupCapability(CapabilityBase):
                 provider=provider,
                 error=validation_error,
                 empty_reason="validation_error",
+            )
+
+        # action이 없으면 빈 결과 (경량 환경)
+        if self._action is None:
+            logger.debug("[api_lookup] action이 None — 빈 결과 반환")
+            return LookupResult(
+                success=True,
+                query=params.query,
+                provider=provider,
+                empty_reason="no_match",
             )
 
         # action에 파라미터 반영

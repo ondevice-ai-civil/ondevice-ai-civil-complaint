@@ -121,7 +121,7 @@ async def test_approve_rejected_returns_rejected_status(patched_app):
         "approval_status": "rejected",
     }
 
-    with patch("asyncio.to_thread", new_callable=lambda: _make_async_to_thread):
+    with patch("asyncio.to_thread", new=AsyncMock(side_effect=_fake_to_thread)):
         resp = await v2_agent_approve(thread_id="t-1", approved=False, _=None)
 
     assert resp["status"] == "rejected"
@@ -144,7 +144,7 @@ async def test_approve_approved_returns_completed_status(patched_app):
         "approval_status": "approved",
     }
 
-    with patch("asyncio.to_thread", new_callable=lambda: _make_async_to_thread):
+    with patch("asyncio.to_thread", new=AsyncMock(side_effect=_fake_to_thread)):
         resp = await v2_agent_approve(thread_id="t-1", approved=True, _=None)
 
     assert resp["status"] == "completed"
@@ -172,7 +172,7 @@ async def test_cancel_sets_interrupted_status(patched_app):
         "interrupt_reason": "user_cancel",
     }
 
-    with patch("asyncio.to_thread", new_callable=lambda: _make_async_to_thread):
+    with patch("asyncio.to_thread", new=AsyncMock(side_effect=_fake_to_thread)):
         resp = await v2_agent_cancel(thread_id="t-1", _=None)
 
     assert resp["status"] == "cancelled"
@@ -194,7 +194,7 @@ async def test_run_response_includes_session_id(patched_app):
 
     request = AgentRunRequest(query="테스트 질의", session_id="sess-run")
 
-    with patch("asyncio.to_thread", new_callable=lambda: _make_async_to_thread):
+    with patch("asyncio.to_thread", new=AsyncMock(side_effect=_fake_to_thread)):
         resp = await v2_agent_run(request=request, _=None)
 
     assert resp["session_id"] == "sess-run"
@@ -217,7 +217,7 @@ async def test_approve_response_includes_session_id(patched_app):
         "approval_status": "approved",
     }
 
-    with patch("asyncio.to_thread", new_callable=lambda: _make_async_to_thread):
+    with patch("asyncio.to_thread", new=AsyncMock(side_effect=_fake_to_thread)):
         resp = await v2_agent_approve(thread_id="t-2", approved=True, _=None)
 
     assert resp["session_id"] == "sess-approve"
@@ -235,7 +235,7 @@ async def test_run_error_returns_error_status(patched_app):
 
     request = AgentRunRequest(query="오류 질의", session_id="sess-err")
 
-    with patch("asyncio.to_thread", new_callable=lambda: _make_async_to_thread):
+    with patch("asyncio.to_thread", new=AsyncMock(side_effect=_fake_to_thread)):
         resp = await v2_agent_run(request=request, _=None)
 
     assert resp["status"] == "error"
@@ -254,7 +254,7 @@ async def test_approve_error_returns_error_status(patched_app):
     # get_state도 실패하지 않도록 설정
     mock_graph.get_state.return_value = _make_graph_state_done()
 
-    with patch("asyncio.to_thread", new_callable=lambda: _make_async_to_thread):
+    with patch("asyncio.to_thread", new=AsyncMock(side_effect=_fake_to_thread)):
         resp = await v2_agent_approve(thread_id="t-err", approved=True, _=None)
 
     assert resp["status"] == "error"
@@ -266,13 +266,8 @@ async def test_approve_error_returns_error_status(patched_app):
 # ---------------------------------------------------------------------------
 
 
-def _make_async_to_thread():
-    """asyncio.to_thread를 동기 함수 직접 호출로 대체하는 mock 팩토리."""
-
-    async def _fake_to_thread(func, *args, **kwargs):
-        # side_effect가 있으면 예외를 발생시킨다
-        if hasattr(func, "side_effect") and func.side_effect is not None:
-            raise func.side_effect
-        return func(*args, **kwargs)
-
-    return AsyncMock(side_effect=_fake_to_thread)
+async def _fake_to_thread(func, *args, **kwargs):
+    """asyncio.to_thread를 동기 함수 직접 호출로 대체한다."""
+    if hasattr(func, "side_effect") and func.side_effect is not None:
+        raise func.side_effect
+    return func(*args, **kwargs)

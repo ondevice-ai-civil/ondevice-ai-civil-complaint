@@ -12,7 +12,8 @@ I/O가 필요한 노드는 async 함수이며, `approval_wait` 노드는 `interr
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict
+import time
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from langchain_core.messages import AIMessage
 from langgraph.types import interrupt
@@ -260,11 +261,48 @@ async def persist_node(
         user_msg = messages[0]
         session.add_turn("user", user_msg.content)
 
-    # tool 실행 기록 저장
-    for name, result in state.get("tool_results", {}).items():
+    # --- graph_run 기록 (plan + approval + executed capabilities) ---
+    request_id: str = state.get("request_id", "")
+    approval_status: str = state.get("approval_status", "")
+    planned_tools: List[str] = state.get("planned_tools", [])
+    tool_results: Dict[str, Any] = state.get("tool_results", {})
+
+    # 승인된 경우에만 실행된 도구 목록을 기록, 거절 시 빈 리스트
+    executed_capabilities: List[str] = (
+        [name for name in planned_tools if name in tool_results]
+        if approval_status == ApprovalStatus.APPROVED.value
+        else []
+    )
+
+    plan_summary = (
+        f"[{state.get('task_type', '')}] {state.get('goal', '')} "
+        f"| 이유: {state.get('reason', '')} | tools: {planned_tools}"
+    )
+
+    total_latency_ms = sum(
+        r.get("latency_ms", 0.0) for r in tool_results.values()
+    )
+
+    # 거절 시 status를 "rejected"로, 승인 시 "completed"로 기록
+    graph_status = (
+        "rejected" if approval_status == ApprovalStatus.REJECTED.value else "completed"
+    )
+
+    session.add_graph_run(
+        request_id=request_id,
+        plan_summary=plan_summary,
+        approval_status=approval_status,
+        executed_capabilities=executed_capabilities,
+        status=graph_status,
+        total_latency_ms=total_latency_ms,
+    )
+
+    # tool 실행 기록 저장 (graph_run_request_id로 연결)
+    for name, result in tool_results.items():
         session.add_tool_run(
             tool=name,
             success=result.get("success", True),
+            graph_run_request_id=request_id,
             latency_ms=result.get("latency_ms", 0.0),
             error=result.get("error"),
         )
@@ -274,7 +312,7 @@ async def persist_node(
     if final_text:
         session.add_turn("assistant", final_text)
 
-    logger.debug(f"[persist] session_id={session.session_id} saved")
+    logger.debug(f"[persist] session_id={session.session_id} graph_run={request_id} saved")
 
     return {}
 

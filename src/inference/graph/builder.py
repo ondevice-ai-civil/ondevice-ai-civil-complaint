@@ -8,7 +8,7 @@ Issue #415: LangGraph runtime 기반 및 planner/executor adapter 구성.
 Graph topology:
   START -> session_load -> planner -> approval_wait
                -> [approved] tool_execute -> synthesis -> persist -> END
-               -> [rejected] END
+               -> [rejected] persist -> END
 """
 
 from __future__ import annotations
@@ -47,11 +47,11 @@ def route_after_approval(state: GovOnGraphState) -> str:
     Returns
     -------
     str
-        "tool_execute" (승인) 또는 "__end__" (거절).
+        "tool_execute" (승인) 또는 "persist" (거절).
     """
     if state.get("approval_status") == ApprovalStatus.APPROVED.value:
         return "tool_execute"
-    return "__end__"
+    return "persist"
 
 
 def build_govon_graph(
@@ -91,6 +91,9 @@ def build_govon_graph(
     # --- 노드 등록 (closure로 adapter와 session_store 주입) ---
 
     def _run_async(coro):
+        # TODO(#409): 이 sync wrapper는 MVP invoke() 전용이다.
+        # FastAPI ainvoke() 전환 시 이미 running loop가 존재하므로
+        # RuntimeError가 발생한다. ainvoke() 전환 시 async 노드를 직접 등록해야 한다.
         try:
             asyncio.get_running_loop()
         except RuntimeError:
@@ -128,7 +131,7 @@ def build_govon_graph(
         route_after_approval,
         {
             "tool_execute": "tool_execute",
-            "__end__": END,
+            "persist": "persist",
         },
     )
     graph.add_edge("tool_execute", "synthesis")

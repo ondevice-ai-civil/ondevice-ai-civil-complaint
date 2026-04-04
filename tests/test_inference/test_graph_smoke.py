@@ -175,3 +175,107 @@ class TestGraphSmoke:
             result.get("approval_status") == ApprovalStatus.REJECTED.value
         ), f"approval_status가 REJECTED여야 합니다. 실제: {result.get('approval_status')}"
         assert not result.get("tool_results"), "거절 후 tool_results가 비어있어야 합니다"
+
+    def test_persist_logs_graph_run(self, graph, session_store):
+        """승인 후 전체 실행 완료 시 SessionStore에 graph_run 레코드가 기록된다.
+
+        plan_summary, approval_status, executed_capabilities가 포함되어야 한다.
+        """
+        from langgraph.types import Command
+
+        config = {"configurable": {"thread_id": "smoke-graph-run-1"}}
+        session_id = "test-session-graph-run"
+        request_id = "test-request-graph-run"
+        initial = {
+            "session_id": session_id,
+            "request_id": request_id,
+            "messages": [HumanMessage(content="답변 초안 작성해줘")],
+        }
+
+        # 1단계: interrupt까지 실행
+        graph.invoke(initial, config=config)
+
+        # 2단계: 승인으로 resume
+        graph.invoke(
+            Command(resume={"approved": True}),
+            config=config,
+        )
+
+        # graph_run 레코드 검증
+        session = session_store.get_or_create(session_id)
+        assert len(session.recent_graph_runs) > 0, "graph_run 레코드가 기록되어야 합니다"
+
+        run = session.recent_graph_runs[0]
+        assert run.request_id == request_id
+        assert run.approval_status == ApprovalStatus.APPROVED.value
+        assert run.plan_summary, "plan_summary가 비어있지 않아야 합니다"
+        assert len(run.executed_capabilities) > 0, "executed_capabilities가 있어야 합니다"
+        assert run.status == "completed"
+
+    def test_persist_logs_tool_runs_with_request_id(self, graph, session_store):
+        """tool_runs가 올바른 graph_run_request_id로 기록된다."""
+        from langgraph.types import Command
+
+        config = {"configurable": {"thread_id": "smoke-tool-run-1"}}
+        session_id = "test-session-tool-run"
+        request_id = "test-request-tool-run"
+        initial = {
+            "session_id": session_id,
+            "request_id": request_id,
+            "messages": [HumanMessage(content="답변 초안 작성해줘")],
+        }
+
+        # 1단계: interrupt까지 실행
+        graph.invoke(initial, config=config)
+
+        # 2단계: 승인으로 resume
+        graph.invoke(
+            Command(resume={"approved": True}),
+            config=config,
+        )
+
+        # tool_run 레코드 검증
+        session = session_store.get_or_create(session_id)
+        tool_runs = session.recent_tool_runs
+        assert len(tool_runs) > 0, "tool_run 레코드가 기록되어야 합니다"
+
+        for tr in tool_runs:
+            assert tr.graph_run_request_id == request_id, (
+                f"tool_run의 graph_run_request_id가 '{request_id}'여야 합니다. "
+                f"실제: {tr.graph_run_request_id}"
+            )
+
+    def test_persist_logs_graph_run_on_rejection(self, graph, session_store):
+        """거절 시에도 graph_run 레코드가 기록된다.
+
+        거절 경로도 persist 노드를 거치므로 graph_run이 남아야 한다.
+        """
+        from langgraph.types import Command
+
+        config = {"configurable": {"thread_id": "smoke-reject-persist-1"}}
+        session_id = "test-session-reject-persist"
+        request_id = "test-request-reject-persist"
+        initial = {
+            "session_id": session_id,
+            "request_id": request_id,
+            "messages": [HumanMessage(content="답변 초안 작성해줘")],
+        }
+
+        # 1단계: interrupt까지 실행
+        graph.invoke(initial, config=config)
+
+        # 2단계: 거절로 resume
+        graph.invoke(
+            Command(resume={"approved": False}),
+            config=config,
+        )
+
+        # graph_run 레코드 검증
+        session = session_store.get_or_create(session_id)
+        assert len(session.recent_graph_runs) > 0, "거절 시에도 graph_run이 기록되어야 합니다"
+
+        run = session.recent_graph_runs[0]
+        assert run.request_id == request_id
+        assert run.approval_status == ApprovalStatus.REJECTED.value
+        assert run.status == "rejected"
+        assert len(run.executed_capabilities) == 0, "거절 시 executed_capabilities가 비어야 합니다"

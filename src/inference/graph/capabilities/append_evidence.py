@@ -27,8 +27,7 @@ class AppendEvidenceCapability(CapabilityBase):
         return CapabilityMetadata(
             name="append_evidence",
             description=(
-                "기존 답변에 법령 근거, 유사 사례, 외부 통계 등 "
-                "추가 출처를 보강합니다."
+                "기존 답변에 법령 근거, 유사 사례, 외부 통계 등 " "추가 출처를 보강합니다."
             ),
             approval_summary="기존 답변에 법적 근거와 출처를 추가합니다.",
             provider="local_vectordb+data.go.kr",

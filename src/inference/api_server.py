@@ -57,6 +57,7 @@ async def _noop_tool(query: str, context: dict, session: Any) -> dict:
     """build_mvp_registry fallback용 no-op tool."""
     return {"success": False, "error": "tool이 초기화되지 않았습니다"}
 
+
 if not SKIP_MODEL_LOAD:
     try:
         from vllm.engine.arg_utils import AsyncEngineArgs
@@ -733,8 +734,7 @@ class vLLMEngineManager:
 
         # AgentLoop의 tool_registry에서 기존 closure를 추출
         raw_tools = {
-            str(k.value if hasattr(k, "value") else k): v
-            for k, v in self.agent_loop._tools.items()
+            str(k.value if hasattr(k, "value") else k): v for k, v in self.agent_loop._tools.items()
         }
 
         return build_mvp_registry(

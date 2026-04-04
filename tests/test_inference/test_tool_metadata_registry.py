@@ -86,7 +86,6 @@ from src.inference.graph.capabilities.registry import (
     is_mvp_capability,
 )
 
-
 # ---------------------------------------------------------------------------
 # fixture: 테스트용 mock closure
 # ---------------------------------------------------------------------------
@@ -256,12 +255,11 @@ class TestRegistryExecutorAdapterIntegration:
         names = {d["name"] for d in descriptions}
         assert names == MVP_CAPABILITY_IDS
 
-    def test_non_mvp_capability_blocked(self, registry):
+    @pytest.mark.asyncio
+    async def test_non_mvp_capability_blocked(self, registry):
         """비MVP capability 실행이 차단된다."""
         adapter = self._make_adapter(registry)
-        result = asyncio.get_event_loop().run_until_complete(
-            adapter.execute("non_existent_tool", "query", {})
-        )
+        result = await adapter.execute("non_existent_tool", "query", {})
         assert result["success"] is False
         assert "비MVP" in result["error"]
 

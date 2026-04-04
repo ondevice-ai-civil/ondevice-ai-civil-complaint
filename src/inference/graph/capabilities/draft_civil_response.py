@@ -27,8 +27,7 @@ class DraftCivilResponseCapability(CapabilityBase):
         return CapabilityMetadata(
             name="draft_civil_response",
             description=(
-                "검색된 법령/사례와 외부 민원분석 결과를 종합하여 "
-                "민원 답변 초안을 생성합니다."
+                "검색된 법령/사례와 외부 민원분석 결과를 종합하여 " "민원 답변 초안을 생성합니다."
             ),
             approval_summary="AI 모델이 검색 결과를 종합하여 민원 답변 초안을 생성합니다.",
             provider="local_llm",

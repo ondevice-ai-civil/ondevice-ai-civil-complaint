@@ -15,9 +15,11 @@ export SKIP_MODEL_LOAD="${SKIP_MODEL_LOAD:-true}"
 # - keeps integration/E2E and storage-heavy indexing flows in dedicated lanes
 test_targets=(
   tests/test_inference/test_agent_loop.py
+  tests/test_inference/test_api_lookup_capability.py
   tests/test_inference/test_api_server_units.py
   tests/test_inference/test_feature_flags.py
   tests/test_inference/test_graph_smoke.py
+  tests/test_inference/test_plan_validator.py
   tests/test_inference/test_response_formatter.py
   tests/test_inference/test_session_context.py
   tests/test_inference/test_tool_router.py

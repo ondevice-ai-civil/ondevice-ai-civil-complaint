@@ -19,6 +19,7 @@ from langchain_core.messages import AIMessage
 from langgraph.types import interrupt
 from loguru import logger
 
+from .plan_validator import PlanValidationError, ToolPlanValidator
 from .state import ApprovalStatus, GovOnGraphState
 
 if TYPE_CHECKING:
@@ -96,8 +97,20 @@ async def planner_node(
 
     plan = await planner_adapter.plan(messages=messages, context=context)
 
+    validator = ToolPlanValidator()
+    try:
+        validator.validate(plan)
+    except PlanValidationError as e:
+        logger.warning(f"[planner] validation 실패: {e}")
+        return {
+            **validator.make_fallback_plan(e),
+            "task_type": "",
+            "adapter_mode": "regex",
+        }
+
     logger.info(
-        f"[planner] task_type={plan.task_type.value} " f"tools={plan.tools} reason={plan.reason}"
+        f"[planner] task_type={plan.task_type.value} "
+        f"tools={plan.tools} reason={plan.reason} adapter_mode={plan.adapter_mode}"
     )
 
     return {
@@ -105,6 +118,7 @@ async def planner_node(
         "goal": plan.goal,
         "reason": plan.reason,
         "planned_tools": plan.tools,
+        "adapter_mode": plan.adapter_mode,
     }
 
 

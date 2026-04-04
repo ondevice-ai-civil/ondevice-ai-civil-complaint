@@ -55,6 +55,7 @@ class ToolPlan:
     goal: str
     reason: str
     tools: List[str]
+    adapter_mode: str = "regex"  # "regex" | "llm"
 
 
 class GovOnGraphState(TypedDict, total=False):
@@ -79,6 +80,7 @@ class GovOnGraphState(TypedDict, total=False):
     goal: str  # 승인 프롬프트에 표시할 작업 설명
     reason: str  # 작업 이유
     planned_tools: List[str]  # 실행 예정 tool 이름 리스트
+    adapter_mode: str  # planner adapter 모드 ("regex" | "llm")
 
     # --- approval gate ---
     approval_status: str  # ApprovalStatus.value

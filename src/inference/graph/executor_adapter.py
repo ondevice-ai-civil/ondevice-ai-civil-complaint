@@ -121,3 +121,39 @@ class RegistryExecutorAdapter(ExecutorAdapter):
     def list_tools(self) -> list[str]:
         """등록된 tool 이름 목록을 반환한다."""
         return list(self._tools.keys())
+
+    def get_tool_metadata(self, tool_name: str) -> Optional[dict]:
+        """capability의 planner metadata를 반환한다.
+
+        CapabilityBase 인스턴스가 등록된 경우 metadata 프로퍼티에서 정보를 추출하고,
+        일반 callable인 경우 이름만 포함된 기본 dict를 반환한다.
+        등록되지 않은 tool이면 None을 반환한다.
+
+        Parameters
+        ----------
+        tool_name : str
+            조회할 tool 이름.
+
+        Returns
+        -------
+        Optional[dict]
+            tool metadata dict 또는 None.
+        """
+        tool = self._tools.get(tool_name)
+        if tool is None:
+            return None
+        # CapabilityBase 인터페이스 지원
+        if hasattr(tool, "metadata"):
+            meta = tool.metadata
+            return {
+                "name": meta.name,
+                "description": meta.description,
+                "approval_summary": meta.approval_summary,
+                "provider": getattr(meta, "provider", ""),
+            }
+        return {
+            "name": tool_name,
+            "description": "",
+            "approval_summary": "",
+            "provider": "",
+        }

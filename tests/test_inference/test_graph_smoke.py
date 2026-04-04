@@ -51,6 +51,30 @@ class StubExecutorAdapter(ExecutorAdapter):
         return ["rag_search", "api_lookup", "draft_civil_response", "append_evidence"]
 
 
+class RecordingExecutorAdapter(ExecutorAdapter):
+    """tool별 query를 기록하는 테스트용 executor."""
+
+    def __init__(self) -> None:
+        self.seen_queries: dict[str, str] = {}
+
+    async def execute(
+        self,
+        tool_name: str,
+        query: str,
+        context: dict,
+    ) -> dict:
+        self.seen_queries[tool_name] = query
+        return {
+            "success": True,
+            "text": f"[recording] {tool_name}",
+            "query": query,
+            "latency_ms": 1.0,
+        }
+
+    def list_tools(self) -> list[str]:
+        return ["rag_search", "api_lookup", "draft_civil_response", "append_evidence"]
+
+
 @pytest.fixture
 def session_store(tmp_path):
     """임시 디렉터리에 SessionStore를 생성한다.
@@ -279,6 +303,45 @@ class TestGraphSmoke:
         assert run.approval_status == ApprovalStatus.REJECTED.value
         assert run.status == "rejected"
         assert len(run.executed_capabilities) == 0, "거절 시 executed_capabilities가 비어야 합니다"
+
+    def test_follow_up_queries_use_context_aware_variants(self, session_store):
+        """follow-up 요청에서 rag/api query가 각각 다른 variant를 사용한다."""
+        from langgraph.types import Command
+
+        session_id = "test-session-follow-up"
+        request_id = "test-request-follow-up"
+        session = session_store.get_or_create(session_id)
+        session.add_turn("user", "도로 포장이 파손되어 위험합니다")
+        session.add_turn(
+            "assistant",
+            "도로 보수 접수를 진행하겠습니다. 담당 부서 검토 후 보수 일정을 안내드리겠습니다.",
+        )
+
+        planner = RegexPlannerAdapter()
+        executor = RecordingExecutorAdapter()
+        graph = build_govon_graph(
+            planner_adapter=planner,
+            executor_adapter=executor,
+            session_store=session_store,
+            checkpointer=MemorySaver(),
+        )
+
+        config = {"configurable": {"thread_id": "smoke-follow-up-1"}}
+        initial = {
+            "session_id": session_id,
+            "request_id": request_id,
+            "messages": [HumanMessage(content="이 답변의 근거를 붙여줘")],
+        }
+
+        graph.invoke(initial, config=config)
+        graph.invoke(Command(resume={"approved": True}), config=config)
+
+        assert "도로 포장이 파손되어 위험합니다" in executor.seen_queries["rag_search"]
+        assert "도로 보수 접수를 진행하겠습니다." in executor.seen_queries["rag_search"]
+        assert "관련 법령 지침 매뉴얼 공지 내부 문서" in executor.seen_queries["rag_search"]
+        assert "유사 민원 사례 통계 최근 이슈" in executor.seen_queries["api_lookup"]
+        assert executor.seen_queries["append_evidence"] == "이 답변의 근거를 붙여줘"
+        assert executor.seen_queries["rag_search"] != executor.seen_queries["api_lookup"]
 
 
 class TestToolExecuteApprovalGuard:

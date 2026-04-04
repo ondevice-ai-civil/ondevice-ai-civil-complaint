@@ -610,7 +610,7 @@ class vLLMEngineManager:
         minwon_action = MinwonAnalysisAction()
 
         async def _rag_search_tool(query: str, context: dict, session: SessionContext) -> dict:
-            working_query = engine_ref._build_working_query(query, session)
+            working_query = query.strip()
             search_results = await engine_ref._retrieve_search_results(
                 working_query,
                 [IndexType.CASE, IndexType.LAW, IndexType.MANUAL, IndexType.NOTICE],
@@ -626,7 +626,7 @@ class vLLMEngineManager:
             }
 
         async def _api_lookup_tool(query: str, context: dict, session: SessionContext) -> dict:
-            working_query = engine_ref._build_working_query(query, session)
+            working_query = query.strip()
             payload = await minwon_action.fetch_similar_cases(
                 working_query,
                 {

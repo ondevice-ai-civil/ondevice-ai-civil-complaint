@@ -101,6 +101,20 @@ class TestMinwonAnalysisAction:
         assert "근거 보여줘" in query
         assert "이전 답변" in query or "원래 민원 요청" in query
 
+    def test_enrich_query_respects_prebuilt_api_variant(self):
+        action = MinwonAnalysisAction(api_key="test-key")
+        prepared = "도로 포장 파손 기존 초안 요약 유사 민원 사례 통계 최근 이슈"
+
+        query = action._enrich_query(
+            prepared,
+            {
+                "session_context": "### 최근 대화\n[사용자] 원래 민원 요청",
+                "query_variants": {"api_lookup": prepared},
+            },
+        )
+
+        assert query == prepared
+
 
 class TestToolRouterApiLookup:
     def setup_method(self):

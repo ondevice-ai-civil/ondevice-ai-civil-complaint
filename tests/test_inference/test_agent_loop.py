@@ -173,6 +173,47 @@ class TestAgentLoop:
         assert "[로컬 문서 근거]" in trace.final_text
         assert "공공데이터포털" in trace.final_text
 
+    @pytest.mark.asyncio
+    async def test_follow_up_uses_context_aware_query_variants_for_search_tools(self):
+        seen_queries: Dict[str, str] = {}
+
+        async def capture_rag(query: str, context: dict, session: Any) -> dict:
+            seen_queries["rag_search"] = query
+            return {"query": query, "results": [], "count": 0}
+
+        async def capture_api(query: str, context: dict, session: Any) -> dict:
+            seen_queries["api_lookup"] = query
+            return {"query": query, "results": [], "count": 0, "context_text": ""}
+
+        async def capture_append(query: str, context: dict, session: Any) -> dict:
+            seen_queries["append_evidence"] = query
+            return {"text": f"append::{query}"}
+
+        loop = AgentLoop(
+            tool_registry={
+                ToolType.RAG_SEARCH: capture_rag,
+                ToolType.API_LOOKUP: capture_api,
+                ToolType.APPEND_EVIDENCE: capture_append,
+            },
+            tool_timeout=2.0,
+        )
+        session = SessionContext()
+        session.add_turn("user", "도로 포장이 파손되어 위험합니다")
+        session.add_turn(
+            "assistant",
+            "도로 보수 접수를 진행하겠습니다. 담당 부서 검토 후 보수 일정을 안내드리겠습니다.",
+        )
+
+        trace = await loop.run("이 답변의 근거를 붙여줘", session)
+
+        assert trace.error is None
+        assert seen_queries["append_evidence"] == "이 답변의 근거를 붙여줘"
+        assert "도로 포장이 파손되어 위험합니다" in seen_queries["rag_search"]
+        assert "담당 부서 검토 후 보수 일정을 안내드리겠습니다." in seen_queries["rag_search"]
+        assert "관련 법령 지침 매뉴얼 공지 내부 문서" in seen_queries["rag_search"]
+        assert "유사 민원 사례 통계 최근 이슈" in seen_queries["api_lookup"]
+        assert seen_queries["rag_search"] != seen_queries["api_lookup"]
+
 
 class TestAgentLoopStream:
     @pytest.mark.asyncio

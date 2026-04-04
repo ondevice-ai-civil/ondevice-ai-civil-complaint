@@ -10,6 +10,7 @@ from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 
 from loguru import logger
 
+from .query_builder import build_query_variants, build_runtime_query_context, resolve_tool_query
 from .session_context import SessionContext
 from .tool_router import ExecutionPlan, ToolName, ToolRouter, ToolStep, ToolType, tool_name
 
@@ -90,14 +91,16 @@ class AgentLoop:
             plan = self._router.plan(query, has_context=has_context, force_tools=force_tools)
             trace.plan = plan
 
-            accumulated: Dict[str, Any] = {
-                "query": query,
-                "session_context": session.build_context_summary(),
-                "conversation": [
-                    {"role": turn.role, "content": turn.content}
-                    for turn in session.recent_history[-5:]
-                ],
-            }
+            accumulated: Dict[str, Any] = build_runtime_query_context(session, query)
+            accumulated["conversation"] = [
+                {"role": turn.role, "content": turn.content}
+                for turn in session.recent_history[-5:]
+            ]
+            accumulated["query_variants"] = build_query_variants(
+                query,
+                tool_names=plan.tool_names,
+                context=accumulated,
+            )
 
             for step in plan.steps:
                 result = await self._execute_tool(step, accumulated, session)
@@ -154,10 +157,12 @@ class AgentLoop:
                 "reason": plan.reason,
             }
 
-            accumulated: Dict[str, Any] = {
-                "query": query,
-                "session_context": session.build_context_summary(),
-            }
+            accumulated: Dict[str, Any] = build_runtime_query_context(session, query)
+            accumulated["query_variants"] = build_query_variants(
+                query,
+                tool_names=plan.tool_names,
+                context=accumulated,
+            )
 
             for step in plan.steps:
                 yield {"type": "tool_start", "request_id": rid, "tool": step.step_id}
@@ -227,9 +232,10 @@ class AgentLoop:
 
         start = time.monotonic()
         try:
+            execution_query = resolve_tool_query(step_name, accumulated)
             result_data = await asyncio.wait_for(
                 tool_fn(
-                    query=accumulated.get("query", ""),
+                    query=execution_query,
                     context=accumulated,
                     session=session,
                 ),

@@ -355,6 +355,12 @@ class MinwonAnalysisAction(BaseAction):
         str
             보강된 검색어.
         """
+        query_variants = context.get("query_variants", {})
+        if isinstance(query_variants, dict):
+            prepared_query = str(query_variants.get("api_lookup", "")).strip()
+            if prepared_query and prepared_query == str(query).strip():
+                return prepared_query
+
         session_context = str(context.get("session_context", "")).strip()
         if session_context:
             recent_summary = " ".join(session_context.splitlines()[-2:]).strip()

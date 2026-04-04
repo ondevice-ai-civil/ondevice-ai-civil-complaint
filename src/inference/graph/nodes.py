@@ -19,6 +19,12 @@ from langchain_core.messages import AIMessage
 from langgraph.types import interrupt
 from loguru import logger
 
+from src.inference.query_builder import (
+    build_query_variants,
+    build_runtime_query_context,
+    resolve_tool_query,
+)
+
 from .plan_validator import PlanValidationError, ToolPlanValidator
 from .state import ApprovalStatus, GovOnGraphState
 
@@ -54,19 +60,15 @@ async def session_load_node(
     session_id: str | None = state.get("session_id")
     session = session_store.get_or_create(session_id)
 
-    context_summary = session.build_context_summary()
-
     messages = state.get("messages", [])
     query = messages[-1].content if messages else ""
+    accumulated_context = build_runtime_query_context(session, query)
 
     logger.debug(f"[session_load] session_id={session.session_id} query_len={len(query)}")
 
     return {
         "session_id": session.session_id,
-        "accumulated_context": {
-            "session_context": context_summary,
-            "query": query,
-        },
+        "accumulated_context": accumulated_context,
     }
 
 
@@ -113,12 +115,22 @@ async def planner_node(
         f"tools={plan.tools} reason={plan.reason} adapter_mode={plan.adapter_mode}"
     )
 
+    query_variants = build_query_variants(
+        context.get("query", ""),
+        tool_names=plan.tools,
+        context=context,
+    )
+
     return {
         "task_type": plan.task_type.value,
         "goal": plan.goal,
         "reason": plan.reason,
         "planned_tools": plan.tools,
         "adapter_mode": plan.adapter_mode,
+        "accumulated_context": {
+            **context,
+            "query_variants": query_variants,
+        },
     }
 
 
@@ -215,10 +227,11 @@ async def tool_execute_node(
     tool_results: Dict[str, Any] = {}
 
     for name in planned_tools:
+        execution_query = resolve_tool_query(name, accumulated)
         logger.info(f"[tool_execute] 실행: {name}")
         result = await executor_adapter.execute(
             tool_name=name,
-            query=accumulated.get("query", ""),
+            query=execution_query,
             context=accumulated,
         )
         tool_results[name] = result

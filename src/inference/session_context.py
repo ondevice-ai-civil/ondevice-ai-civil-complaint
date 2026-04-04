@@ -293,11 +293,9 @@ class SessionStore:
                     updated_at REAL NOT NULL,
                     PRIMARY KEY (owner_type, owner_id, key)
                 );
-                """
-            )
+                """)
             tool_run_columns = {
-                row["name"]
-                for row in conn.execute("PRAGMA table_info(tool_runs)").fetchall()
+                row["name"] for row in conn.execute("PRAGMA table_info(tool_runs)").fetchall()
             }
             if "graph_run_request_id" not in tool_run_columns:
                 conn.execute("ALTER TABLE tool_runs ADD COLUMN graph_run_request_id TEXT")
@@ -586,10 +584,7 @@ class SessionStore:
                 """,
                 (owner_type, owner_id),
             ).fetchall()
-        return {
-            row["key"]: json.loads(row["value_json"] or "null")
-            for row in rows
-        }
+        return {row["key"]: json.loads(row["value_json"] or "null") for row in rows}
 
     def _build_context(self, session_id: str, max_history: int) -> Optional[SessionContext]:
         row = self._load_session_metadata(session_id)

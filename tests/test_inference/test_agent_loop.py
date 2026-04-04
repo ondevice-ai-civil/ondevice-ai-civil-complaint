@@ -115,7 +115,9 @@ class TestAgentLoop:
         assert trace.tool_results[2].success is True
         assert "최종 초안" in trace.final_text
         assert session.graph_runs[0].status == "completed_with_errors"
-        assert all(tool_run.graph_run_request_id == trace.request_id for tool_run in session.tool_runs)
+        assert all(
+            tool_run.graph_run_request_id == trace.request_id for tool_run in session.tool_runs
+        )
 
     @pytest.mark.asyncio
     async def test_tool_timeout_is_recorded(self):

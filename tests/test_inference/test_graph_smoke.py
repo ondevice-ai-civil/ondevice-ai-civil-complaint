@@ -279,3 +279,106 @@ class TestGraphSmoke:
         assert run.approval_status == ApprovalStatus.REJECTED.value
         assert run.status == "rejected"
         assert len(run.executed_capabilities) == 0, "거절 시 executed_capabilities가 비어야 합니다"
+
+
+class TestToolExecuteApprovalGuard:
+    """tool_execute_node의 approval guard 단위 테스트."""
+
+    @pytest.mark.asyncio
+    async def test_tool_execute_blocked_without_approval(self):
+        """approval이 REJECTED인 상태에서 tool_execute_node 호출 시 실행이 차단된다."""
+        from src.inference.graph.nodes import tool_execute_node
+
+        class StubExecutor:
+            called = False
+
+            async def execute(self, tool_name, query, context):
+                StubExecutor.called = True
+                return {"success": True}
+
+            def list_tools(self):
+                return ["rag_search"]
+
+        state = {
+            "approval_status": ApprovalStatus.REJECTED.value,
+            "planned_tools": ["rag_search"],
+            "accumulated_context": {"query": "test"},
+        }
+        result = await tool_execute_node(state, executor_adapter=StubExecutor())
+        assert not StubExecutor.called, "승인 없이 tool이 실행되면 안 됩니다"
+        assert result.get("tool_results") == {}
+        assert result.get("error"), "차단 시 error 메시지가 있어야 합니다"
+
+    @pytest.mark.asyncio
+    async def test_tool_execute_blocked_when_pending(self):
+        """approval_status가 PENDING(기본값)인 경우에도 실행이 차단된다."""
+        from src.inference.graph.nodes import tool_execute_node
+
+        class StubExecutor:
+            called = False
+
+            async def execute(self, tool_name, query, context):
+                StubExecutor.called = True
+                return {"success": True}
+
+            def list_tools(self):
+                return ["rag_search"]
+
+        state = {
+            "approval_status": ApprovalStatus.PENDING.value,
+            "planned_tools": ["rag_search"],
+            "accumulated_context": {"query": "test"},
+        }
+        result = await tool_execute_node(state, executor_adapter=StubExecutor())
+        assert not StubExecutor.called, "PENDING 상태에서 tool이 실행되면 안 됩니다"
+        assert result.get("tool_results") == {}
+        assert result.get("error"), "차단 시 error 메시지가 있어야 합니다"
+
+    @pytest.mark.asyncio
+    async def test_tool_execute_blocked_when_empty_status(self):
+        """approval_status가 빈 문자열(미설정)인 경우에도 실행이 차단된다."""
+        from src.inference.graph.nodes import tool_execute_node
+
+        class StubExecutor:
+            called = False
+
+            async def execute(self, tool_name, query, context):
+                StubExecutor.called = True
+                return {"success": True}
+
+            def list_tools(self):
+                return ["rag_search"]
+
+        state = {
+            "approval_status": "",
+            "planned_tools": ["rag_search"],
+            "accumulated_context": {"query": "test"},
+        }
+        result = await tool_execute_node(state, executor_adapter=StubExecutor())
+        assert not StubExecutor.called, "미설정 상태에서 tool이 실행되면 안 됩니다"
+        assert result.get("tool_results") == {}
+
+
+class TestRejectionIdleRecovery:
+    """거절 후 graph idle 상태 복귀 테스트."""
+
+    def test_rejection_produces_clean_idle_state(self, graph, session_store):
+        """거절 후 graph가 error 없이 clean idle 상태로 복귀한다."""
+        from langgraph.types import Command
+
+        config = {"configurable": {"thread_id": "idle-recovery-1"}}
+        initial = {
+            "session_id": "test-idle",
+            "request_id": "test-idle-req",
+            "messages": [HumanMessage(content="답변 작성해줘")],
+        }
+        graph.invoke(initial, config=config)
+        result = graph.invoke(Command(resume={"approved": False}), config=config)
+
+        # idle 조건:
+        assert result.get("approval_status") == ApprovalStatus.REJECTED.value
+        assert not result.get("tool_results"), "거절 후 tool이 실행되면 안 됩니다"
+        assert not result.get("error"), "거절 후 error가 없어야 합니다"
+
+        state = graph.get_state(config)
+        assert not state.next, "거절 후 graph가 idle 상태여야 합니다"

@@ -192,8 +192,26 @@ async def tool_execute_node(
     dict
         `tool_results`와 `accumulated_context`를 갱신한다.
     """
+    # approval guard: 승인 없이 tool 실행 차단
+    approval_status = state.get("approval_status", "")
+    if approval_status != ApprovalStatus.APPROVED.value:
+        logger.warning(
+            f"[tool_execute] 승인되지 않은 상태에서 실행 시도 차단: approval_status={approval_status!r}"
+        )
+        return {
+            "tool_results": {},
+            "accumulated_context": dict(state.get("accumulated_context", {})),
+            "error": f"tool 실행 차단: 승인 필요 (현재 상태: {approval_status!r})",
+        }
+
     planned_tools: list[str] = state.get("planned_tools", [])
     accumulated: Dict[str, Any] = dict(state.get("accumulated_context", {}))
+
+    # planned_tools가 비어있는 경우 (validation 실패 fallback 등)
+    if not planned_tools:
+        logger.warning("[tool_execute] planned_tools가 비어있어 실행 건너뜀")
+        return {"tool_results": {}, "accumulated_context": accumulated}
+
     tool_results: Dict[str, Any] = {}
 
     for name in planned_tools:

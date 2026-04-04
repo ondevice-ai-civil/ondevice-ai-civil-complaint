@@ -93,8 +93,7 @@ class AgentLoop:
 
             accumulated: Dict[str, Any] = build_runtime_query_context(session, query)
             accumulated["conversation"] = [
-                {"role": turn.role, "content": turn.content}
-                for turn in session.recent_history[-5:]
+                {"role": turn.role, "content": turn.content} for turn in session.recent_history[-5:]
             ]
             accumulated["query_variants"] = build_query_variants(
                 query,

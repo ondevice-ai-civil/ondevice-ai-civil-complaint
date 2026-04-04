@@ -63,7 +63,11 @@ def extract_previous_turns(
     """현재 요청 직전의 user / assistant turn을 추출한다."""
     turns = list(session.recent_history)
     normalized_current = normalize_text(current_query)
-    if turns and turns[-1].role == "user" and normalize_text(turns[-1].content) == normalized_current:
+    if (
+        turns
+        and turns[-1].role == "user"
+        and normalize_text(turns[-1].content) == normalized_current
+    ):
         turns = turns[:-1]
 
     previous_user = next(
@@ -105,7 +109,9 @@ def build_query_variants(
     """RAG/API lookup용 tool-specific query variant를 생성한다."""
     normalized_query = normalize_text(query)
     previous_user = clip_text(context.get("previous_user_query", ""), _MAX_USER_LEN)
-    previous_assistant = clip_text(context.get("previous_assistant_response", ""), _MAX_ASSISTANT_LEN)
+    previous_assistant = clip_text(
+        context.get("previous_assistant_response", ""), _MAX_ASSISTANT_LEN
+    )
     recent_tool_summary = clip_text(context.get("recent_tool_summary", ""), _MAX_TOOL_SUMMARY_LEN)
     follow_up = should_use_follow_up_context(
         normalized_query,

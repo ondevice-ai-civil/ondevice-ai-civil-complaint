@@ -165,9 +165,19 @@ def approval_wait_node(state: GovOnGraphState) -> dict:
     if isinstance(user_response, dict) and user_response.get("approved"):
         logger.info("[approval_wait] 승인됨")
         return {"approval_status": ApprovalStatus.APPROVED.value}
+
+    # cancel 신호가 있으면 interrupt_reason을 "user_cancel"로 설정
+    interrupt_reason = None
+    if isinstance(user_response, dict) and user_response.get("cancel"):
+        logger.info("[approval_wait] 사용자 취소 (cancel)")
+        interrupt_reason = "user_cancel"
     else:
         logger.info("[approval_wait] 거절됨")
-        return {"approval_status": ApprovalStatus.REJECTED.value}
+
+    return {
+        "approval_status": ApprovalStatus.REJECTED.value,
+        "interrupt_reason": interrupt_reason,
+    }
 
 
 async def tool_execute_node(
@@ -313,8 +323,14 @@ async def persist_node(
 
     total_latency_ms = sum(r.get("latency_ms", 0.0) for r in tool_results.values())
 
-    # 거절 시 status를 "rejected"로, 승인 시 "completed"로 기록
-    graph_status = "rejected" if approval_status == ApprovalStatus.REJECTED.value else "completed"
+    # interrupt_reason이 있으면 "interrupted", 거절이면 "rejected", 그 외 "completed"
+    interrupt_reason: str | None = state.get("interrupt_reason")
+    if interrupt_reason:
+        graph_status = "interrupted"
+    elif approval_status == ApprovalStatus.REJECTED.value:
+        graph_status = "rejected"
+    else:
+        graph_status = "completed"
 
     session.add_graph_run(
         request_id=request_id,

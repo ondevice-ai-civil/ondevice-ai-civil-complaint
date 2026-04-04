@@ -94,4 +94,5 @@ class GovOnGraphState(TypedDict, total=False):
 
     # --- 메타데이터 ---
     error: Optional[str]
+    interrupt_reason: Optional[str]  # "user_cancel" | "timeout" | None
     total_latency_ms: float

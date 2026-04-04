@@ -1146,36 +1146,65 @@ async def v2_agent_run(
     from langchain_core.messages import HumanMessage
 
     thread_id = request.session_id or str(uuid.uuid4())
+    request_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
     initial_state = {
         "session_id": request.session_id,
-        "request_id": str(uuid.uuid4()),
+        "request_id": request_id,
         "messages": [HumanMessage(content=request.query)],
     }
 
-    # interrupt()는 sync invoke 경로에서 가장 안정적으로 동작한다.
-    await asyncio.to_thread(manager.graph.invoke, initial_state, config)
+    try:
+        # interrupt()는 sync invoke 경로에서 가장 안정적으로 동작한다.
+        await asyncio.to_thread(manager.graph.invoke, initial_state, config)
 
-    # interrupt 상태 확인
-    graph_state = await asyncio.to_thread(manager.graph.get_state, config)
-    if graph_state.next:
-        # interrupt 대기 중: approval_request 정보를 클라이언트에 반환
-        approval_value = None
-        if graph_state.tasks and graph_state.tasks[0].interrupts:
-            approval_value = graph_state.tasks[0].interrupts[0].value
+        # interrupt 상태 확인
+        graph_state = await asyncio.to_thread(manager.graph.get_state, config)
+        if graph_state.next:
+            # interrupt 대기 중: approval_request 정보를 클라이언트에 반환
+            approval_value = None
+            if graph_state.tasks and graph_state.tasks[0].interrupts:
+                approval_value = graph_state.tasks[0].interrupts[0].value
+            return {
+                "status": "awaiting_approval",
+                "thread_id": thread_id,
+                "session_id": request.session_id,
+                "graph_run_id": request_id,
+                "approval_request": approval_value,
+            }
+
+        # interrupt 없이 완료된 경우 (rejected 또는 오류)
+        final_state = graph_state.values
         return {
-            "status": "awaiting_approval",
+            "status": "completed",
             "thread_id": thread_id,
-            "approval_request": approval_value,
+            "session_id": request.session_id,
+            "graph_run_id": request_id,
+            "text": final_state.get("final_text", ""),
         }
-
-    # interrupt 없이 완료된 경우 (rejected 또는 오류)
-    final_state = graph_state.values
-    return {
-        "status": "completed",
-        "thread_id": thread_id,
-        "text": final_state.get("final_text", ""),
-    }
+    except Exception as exc:
+        logger.error(f"[v2/agent/run] 예외 발생: {exc}")
+        # graph_run을 "error" status로 기록 시도
+        try:
+            if manager.session_store:
+                session = manager.session_store.get_or_create(request.session_id)
+                session.add_graph_run(
+                    request_id=request_id,
+                    plan_summary=f"[error] {exc}",
+                    approval_status="",
+                    executed_capabilities=[],
+                    status="error",
+                    total_latency_ms=0.0,
+                )
+        except Exception as persist_exc:
+            logger.warning(f"[v2/agent/run] error persist 실패: {persist_exc}")
+        return {
+            "status": "error",
+            "thread_id": thread_id,
+            "session_id": request.session_id,
+            "graph_run_id": request_id,
+            "error": str(exc),
+        }
 
 
 @app.post("/v2/agent/approve")
@@ -1200,20 +1229,116 @@ async def v2_agent_approve(
 
     config = {"configurable": {"thread_id": thread_id}}
 
-    # resume도 동일한 sync invoke 경로로 처리한다.
-    result = await asyncio.to_thread(
-        manager.graph.invoke,
-        Command(resume={"approved": approved}),
-        config,
-    )
+    try:
+        # resume도 동일한 sync invoke 경로로 처리한다.
+        result = await asyncio.to_thread(
+            manager.graph.invoke,
+            Command(resume={"approved": approved}),
+            config,
+        )
 
-    return {
-        "status": "completed",
-        "thread_id": thread_id,
-        "text": result.get("final_text", ""),
-        "tool_results": result.get("tool_results", {}),
-        "approval_status": result.get("approval_status", ""),
-    }
+        # 거절이면 "rejected", 승인 완료면 "completed"
+        approval_status = result.get("approval_status", "")
+        if not approved:
+            response_status = "rejected"
+        else:
+            response_status = "completed"
+
+        return {
+            "status": response_status,
+            "thread_id": thread_id,
+            "session_id": result.get("session_id", ""),
+            "graph_run_id": result.get("request_id", ""),
+            "text": result.get("final_text", ""),
+            "tool_results": result.get("tool_results", {}),
+            "approval_status": approval_status,
+        }
+    except Exception as exc:
+        logger.error(f"[v2/agent/approve] 예외 발생: {exc}")
+        # graph_run을 "error" status로 기록 시도
+        try:
+            if manager.session_store:
+                graph_state = await asyncio.to_thread(manager.graph.get_state, config)
+                state_values = graph_state.values if graph_state else {}
+                session_id = state_values.get("session_id", "")
+                request_id = state_values.get("request_id", "")
+                if session_id:
+                    session = manager.session_store.get_or_create(session_id)
+                    session.add_graph_run(
+                        request_id=request_id,
+                        plan_summary=f"[error] {exc}",
+                        approval_status="",
+                        executed_capabilities=[],
+                        status="error",
+                        total_latency_ms=0.0,
+                    )
+        except Exception as persist_exc:
+            logger.warning(f"[v2/agent/approve] error persist 실패: {persist_exc}")
+        return {
+            "status": "error",
+            "thread_id": thread_id,
+            "error": str(exc),
+        }
+
+
+@app.post("/v2/agent/cancel")
+async def v2_agent_cancel(
+    thread_id: str,
+    _: None = Depends(verify_api_key),
+):
+    """interrupt 대기 중인 graph를 강제 취소한다.
+
+    interrupt 상태에서 거절 처리(Command(resume={"approved": False}))를 수행하되,
+    state에 interrupt_reason="user_cancel"을 전달하여
+    persist 노드가 graph_run status를 "interrupted"로 기록하게 한다.
+
+    Parameters
+    ----------
+    thread_id : str
+        `/v2/agent/run`에서 반환된 thread_id.
+    """
+    if not manager.graph:
+        raise HTTPException(status_code=503, detail="LangGraph graph가 초기화되지 않았습니다.")
+
+    from langgraph.types import Command
+
+    config = {"configurable": {"thread_id": thread_id}}
+
+    try:
+        # interrupt 상태 확인
+        graph_state = await asyncio.to_thread(manager.graph.get_state, config)
+        if not graph_state or not graph_state.next:
+            raise HTTPException(
+                status_code=409,
+                detail="해당 thread는 현재 interrupt 대기 상태가 아닙니다.",
+            )
+
+        session_id = graph_state.values.get("session_id", "")
+
+        # 강제 거절 + interrupt_reason 전달로 resume
+        result = await asyncio.to_thread(
+            manager.graph.invoke,
+            Command(resume={"approved": False, "cancel": True}),
+            config,
+        )
+
+        # persist 노드에서 "interrupted" 기록을 위해 state update
+        # (approval_wait_node가 cancel 신호를 interrupt_reason으로 변환)
+        return {
+            "status": "cancelled",
+            "thread_id": thread_id,
+            "session_id": session_id,
+            "graph_run_id": result.get("request_id", ""),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"[v2/agent/cancel] 예외 발생: {exc}")
+        return {
+            "status": "error",
+            "thread_id": thread_id,
+            "error": str(exc),
+        }
 
 
 if __name__ == "__main__":

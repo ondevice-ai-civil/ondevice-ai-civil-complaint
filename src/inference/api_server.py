@@ -466,17 +466,13 @@ class vLLMEngineManager:
             rag_items = [i for i in evidence["items"] if i.get("source_type") == "rag"]
             api_items = [i for i in evidence["items"] if i.get("source_type") == "api"]
             if rag_items:
-                titles = ", ".join(
-                    i["title"] for i in rag_items[:3] if i.get("title")
-                )
+                titles = ", ".join(i["title"] for i in rag_items[:3] if i.get("title"))
                 lines.append(
                     f"- 로컬 문서 {len(rag_items)}건을 참고했습니다."
                     + (f" 주요 문서: {titles}" if titles else "")
                 )
             if api_items:
-                titles = ", ".join(
-                    i["title"] for i in api_items[:3] if i.get("title")
-                )
+                titles = ", ".join(i["title"] for i in api_items[:3] if i.get("title"))
                 lines.append(
                     f"- 외부 민원분석 API에서 유사 사례 {len(api_items)}건을 확인했습니다."
                     + (f" 대표 사례: {titles}" if titles else "")

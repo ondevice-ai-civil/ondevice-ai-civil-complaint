@@ -89,6 +89,7 @@ _CONTAINER_PLATFORM_ENV_MARKERS = (
     "K_REVISION",
     "K_CONFIGURATION",
     "KUBERNETES_SERVICE_HOST",
+    "SPACE_ID",  # HuggingFace Spaces
 )
 
 

@@ -1,0 +1,31 @@
+"""HF Spaces 배포 설정 검증 테스트."""
+import os
+import unittest
+
+
+class TestHFSpaceConfig(unittest.TestCase):
+    def test_dockerfile_hfspace_exists(self):
+        assert os.path.exists("Dockerfile.hfspace")
+
+    def test_dockerfile_exposes_7860(self):
+        with open("Dockerfile.hfspace") as f:
+            content = f.read()
+        assert "EXPOSE 7860" in content
+        assert "PORT=7860" in content
+
+    def test_dockerfile_has_nonroot_user(self):
+        with open("Dockerfile.hfspace") as f:
+            content = f.read()
+        assert "USER user" in content or "USER 1000" in content
+
+    def test_space_id_in_container_markers(self):
+        from src.inference.runtime_config import _CONTAINER_PLATFORM_ENV_MARKERS
+        assert "SPACE_ID" in _CONTAINER_PLATFORM_ENV_MARKERS
+
+    def test_env_example_exists(self):
+        assert os.path.exists(".env.hfspace.example")
+
+    def test_deploy_script_exists(self):
+        assert os.path.exists("scripts/deploy-hfspace.sh")
+        # 실행 권한 확인
+        assert os.access("scripts/deploy-hfspace.sh", os.X_OK)

@@ -1,0 +1,31 @@
+FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    SERVING_PROFILE=container \
+    PORT=7860 \
+    HOST=0.0.0.0
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    python3.10 python3-pip git \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN python3.10 -m pip install --no-cache-dir --upgrade pip \
+    && python3.10 -m pip install --no-cache-dir -r requirements.txt
+
+COPY src/ ./src/
+COPY agents/ ./agents/
+
+RUN mkdir -p models/faiss_index models/bm25_index data/processed .cache logs
+
+# HF Spaces는 uid 1000 권장
+RUN useradd -m -u 1000 user && chown -R user:user /app
+USER user
+
+EXPOSE 7860
+
+CMD ["python3.10", "-m", "src.inference.api_server"]

@@ -335,9 +335,7 @@ async def tool_execute_node(
             )
         except Exception as exc:
             latency = round((time.monotonic() - t0) * 1000, 2)
-            logger.opt(exception=exc).error(
-                f"[tool_execute] 순차 실행 실패: tool={name}"
-            )
+            logger.opt(exception=exc).error(f"[tool_execute] 순차 실행 실패: tool={name}")
             tool_results[name] = {
                 "success": False,
                 "error": f"{type(exc).__name__}: {exc}",

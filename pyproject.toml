@@ -105,9 +105,17 @@ database = [
     "psycopg2-binary>=2.9.0",
 ]
 
-all = [
-    "GovOn[dev,korean-nlp,inference,database]",
+cli = [
+    "prompt_toolkit>=3.0.0",
+    "rich>=13.0.0",
 ]
+
+all = [
+    "GovOn[dev,korean-nlp,inference,database,cli]",
+]
+
+[project.scripts]
+govon = "src.cli.shell:main"
 
 [project.urls]
 Homepage = "https://github.com/GovOn-org/GovOn"

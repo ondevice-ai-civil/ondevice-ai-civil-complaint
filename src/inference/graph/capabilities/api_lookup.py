@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional
 from loguru import logger
 
 from .base import CapabilityBase, CapabilityMetadata, EvidenceEnvelope, EvidenceItem, LookupResult
+from .defaults import get_timeout
 
 try:
     import httpx
@@ -85,7 +86,7 @@ class ApiLookupCapability(CapabilityBase):
             description="공공데이터포털 민원분석정보조회 API를 호출하여 유사 민원 사례를 검색합니다.",
             approval_summary="외부 API(data.go.kr)에서 유사 민원 사례를 조회합니다.",
             provider="data.go.kr",
-            timeout_sec=10.0,
+            timeout_sec=get_timeout("api_lookup"),
         )
 
     async def execute(

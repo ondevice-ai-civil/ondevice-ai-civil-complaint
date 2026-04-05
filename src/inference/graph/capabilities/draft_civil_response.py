@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Callable, Dict
 
 from .base import CapabilityBase, CapabilityMetadata, EvidenceEnvelope, EvidenceItem, LookupResult
+from .defaults import get_timeout
 
 
 class DraftCivilResponseCapability(CapabilityBase):
@@ -31,7 +32,7 @@ class DraftCivilResponseCapability(CapabilityBase):
             ),
             approval_summary="AI 모델이 검색 결과를 종합하여 민원 답변 초안을 생성합니다.",
             provider="local_llm",
-            timeout_sec=30.0,
+            timeout_sec=get_timeout("draft_civil_response"),
         )
 
     async def execute(

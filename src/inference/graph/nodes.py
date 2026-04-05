@@ -12,6 +12,8 @@ I/O가 필요한 노드는 async 함수이며, `approval_wait` 노드는 `interr
 
 from __future__ import annotations
 
+import asyncio
+import time
 from typing import TYPE_CHECKING, Any, Dict, List
 
 from langchain_core.messages import AIMessage
@@ -56,6 +58,8 @@ async def session_load_node(
     dict
         `session_id`와 `accumulated_context`를 갱신한다.
     """
+    _start = time.monotonic()
+
     session_id: str | None = state.get("session_id")
     session = session_store.get_or_create(session_id)
 
@@ -63,11 +67,16 @@ async def session_load_node(
     query = messages[-1].content if messages else ""
     accumulated_context = build_runtime_query_context(session, query)
 
-    logger.debug(f"[session_load] session_id={session.session_id} query_len={len(query)}")
+    _latency_ms = round((time.monotonic() - _start) * 1000, 2)
+    logger.debug(
+        f"[session_load] session_id={session.session_id} "
+        f"query_len={len(query)} latency_ms={_latency_ms}"
+    )
 
     return {
         "session_id": session.session_id,
         "accumulated_context": accumulated_context,
+        "_node_latency_ms": _latency_ms,
     }
 
 
@@ -94,6 +103,8 @@ async def planner_node(
     dict
         `task_type`, `goal`, `reason`, `planned_tools`를 갱신한다.
     """
+    _start = time.monotonic()
+
     messages = state.get("messages", [])
     context = state.get("accumulated_context", {})
 
@@ -103,10 +114,12 @@ async def planner_node(
     try:
         validator.validate(plan)
     except PlanValidationError as e:
-        logger.warning(f"[planner] validation 실패: {e}")
+        _latency_ms = round((time.monotonic() - _start) * 1000, 2)
+        logger.warning(f"[planner] validation 실패: {e} latency_ms={_latency_ms}")
         return {
             **validator.make_fallback_plan(e),
             "task_type": "",
+            "_node_latency_ms": _latency_ms,
         }
 
     logger.info(
@@ -120,6 +133,9 @@ async def planner_node(
         context=context,
     )
 
+    _latency_ms = round((time.monotonic() - _start) * 1000, 2)
+    logger.debug(f"[planner] latency_ms={_latency_ms}")
+
     return {
         "task_type": plan.task_type.value,
         "goal": plan.goal,
@@ -131,6 +147,7 @@ async def planner_node(
             **context,
             "query_variants": query_variants,
         },
+        "_node_latency_ms": _latency_ms,
     }
 
 
@@ -222,6 +239,8 @@ async def tool_execute_node(
     dict
         `tool_results`와 `accumulated_context`를 갱신한다.
     """
+    _start = time.monotonic()
+
     # approval guard: 승인 없이 tool 실행 차단
     approval_status = state.get("approval_status", "")
     if approval_status != ApprovalStatus.APPROVED.value:
@@ -243,25 +262,70 @@ async def tool_execute_node(
         return {"tool_results": {}, "accumulated_context": accumulated}
 
     tool_results: Dict[str, Any] = {}
+    tool_latencies: Dict[str, float] = {}
 
-    for name in planned_tools:
+    # --- 독립 도구와 의존 도구를 분리하여 병렬/순차 실행 ---
+    INDEPENDENT_TOOLS = {"rag_search", "api_lookup"}
+
+    independent = [t for t in planned_tools if t in INDEPENDENT_TOOLS]
+    dependent = [t for t in planned_tools if t not in INDEPENDENT_TOOLS]
+
+    # Phase 1: 독립 도구 병렬 실행
+    if independent:
+
+        async def _run_tool(name: str) -> tuple[str, Dict[str, Any], float]:
+            t0 = time.monotonic()
+            execution_query = resolve_tool_query(name, accumulated)
+            logger.info(f"[tool_execute] 병렬 실행: {name}")
+            result = await executor_adapter.execute(
+                tool_name=name,
+                query=execution_query,
+                context=accumulated,
+            )
+            latency = round((time.monotonic() - t0) * 1000, 2)
+            return name, result, latency
+
+        results = await asyncio.gather(
+            *[_run_tool(name) for name in independent],
+            return_exceptions=True,
+        )
+        for item in results:
+            if isinstance(item, Exception):
+                logger.error(f"[tool_execute] 병렬 실행 실패: {item}")
+                continue
+            name, result, latency = item
+            tool_results[name] = result
+            tool_latencies[name] = latency
+            if result.get("success", True):
+                accumulated[name] = result
+
+    # Phase 2: 의존 도구 순차 실행 (accumulated context 필요)
+    for name in dependent:
+        t0 = time.monotonic()
         execution_query = resolve_tool_query(name, accumulated)
-        logger.info(f"[tool_execute] 실행: {name}")
+        logger.info(f"[tool_execute] 순차 실행: {name}")
         result = await executor_adapter.execute(
             tool_name=name,
             query=execution_query,
             context=accumulated,
         )
+        latency = round((time.monotonic() - t0) * 1000, 2)
         tool_results[name] = result
-        # 성공한 경우에만 누적 컨텍스트에 반영 (실패 시 키 부재로 구분)
+        tool_latencies[name] = latency
         if result.get("success", True):
             accumulated[name] = result
 
-    logger.info(f"[tool_execute] 완료: {list(tool_results.keys())}")
+    _latency_ms = round((time.monotonic() - _start) * 1000, 2)
+    logger.info(
+        f"[tool_execute] 완료: {list(tool_results.keys())} "
+        f"latency_ms={_latency_ms} per_tool={tool_latencies}"
+    )
 
     return {
         "tool_results": tool_results,
         "accumulated_context": accumulated,
+        "_node_latency_ms": _latency_ms,
+        "_tool_latencies": tool_latencies,
     }
 
 
@@ -281,16 +345,20 @@ async def synthesis_node(state: GovOnGraphState) -> dict:
     dict
         `final_text`와 `messages`(AIMessage 추가)를 갱신한다.
     """
+    _start = time.monotonic()
+
     accumulated = state.get("accumulated_context", {})
     task_type = state.get("task_type", "")
 
     final_text = _extract_final_text(accumulated, task_type)
 
-    logger.info(f"[synthesis] final_text_len={len(final_text)}")
+    _latency_ms = round((time.monotonic() - _start) * 1000, 2)
+    logger.info(f"[synthesis] final_text_len={len(final_text)} latency_ms={_latency_ms}")
 
     return {
         "final_text": final_text,
         "messages": [AIMessage(content=final_text)],
+        "_node_latency_ms": _latency_ms,
     }
 
 
@@ -316,6 +384,8 @@ async def persist_node(
     dict
         side effect로 DB에 저장하고, 빈 dict를 반환한다.
     """
+    _start = time.monotonic()
+
     session_id: str | None = state.get("session_id")
     session = session_store.get_or_create(session_id)
 
@@ -378,9 +448,13 @@ async def persist_node(
     if final_text:
         session.add_turn("assistant", final_text)
 
-    logger.debug(f"[persist] session_id={session.session_id} graph_run={request_id} saved")
+    _latency_ms = round((time.monotonic() - _start) * 1000, 2)
+    logger.debug(
+        f"[persist] session_id={session.session_id} "
+        f"graph_run={request_id} saved latency_ms={_latency_ms}"
+    )
 
-    return {}
+    return {"_node_latency_ms": _latency_ms}
 
 
 def _extract_final_text(accumulated: Dict[str, Any], task_type: str) -> str:

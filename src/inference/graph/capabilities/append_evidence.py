@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Callable, Dict
 
 from .base import CapabilityBase, CapabilityMetadata, EvidenceEnvelope, EvidenceItem, LookupResult
+from .defaults import get_timeout
 
 
 class AppendEvidenceCapability(CapabilityBase):
@@ -31,7 +32,7 @@ class AppendEvidenceCapability(CapabilityBase):
             ),
             approval_summary="기존 답변에 법적 근거와 출처를 추가합니다.",
             provider="local_vectordb+data.go.kr",
-            timeout_sec=15.0,
+            timeout_sec=get_timeout("append_evidence"),
         )
 
     async def execute(

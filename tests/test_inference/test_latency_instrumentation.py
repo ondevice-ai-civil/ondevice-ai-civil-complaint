@@ -20,6 +20,7 @@ from src.inference.graph.nodes import (
     tool_execute_node,
 )
 from src.inference.graph.state import ApprovalStatus
+from src.inference.session_context import SessionStore
 
 # ---------------------------------------------------------------------------
 # Helper stubs
@@ -80,12 +81,13 @@ class TestNodeLatencyInstrumentation:
     """각 노드가 _node_latency_ms를 반환하는지 확인."""
 
     @pytest.mark.asyncio
-    async def test_session_load_node_returns_latency(self):
+    async def test_session_load_node_returns_latency(self, tmp_path):
+        store = SessionStore(db_path=str(tmp_path / "test.sqlite3"))
         state = {
             "session_id": "test",
             "messages": [],
         }
-        result = await session_load_node(state, session_store=StubSessionStore())
+        result = await session_load_node(state, session_store=store)
         assert "_node_latency_ms" in result
         assert isinstance(result["_node_latency_ms"], float)
         assert result["_node_latency_ms"] >= 0

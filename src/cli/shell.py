@@ -42,9 +42,7 @@ except ImportError:  # pragma: no cover
         """Stub: real implementation provided by daemon.py agent."""
 
         def ensure_running(self) -> str:
-            raise RuntimeError(
-                "DaemonManager not available. Install the full GovOn package."
-            )
+            raise RuntimeError("DaemonManager not available. Install the full GovOn package.")
 
         def is_running(self) -> bool:
             return False
@@ -64,24 +62,16 @@ except ImportError:  # pragma: no cover
             self._base_url = base_url
 
         def run(self, query: str, session_id: str | None = None) -> dict:
-            raise RuntimeError(
-                "GovOnClient not available. Install the full GovOn package."
-            )
+            raise RuntimeError("GovOnClient not available. Install the full GovOn package.")
 
         def approve(self, thread_id: str, approved: bool) -> dict:
-            raise RuntimeError(
-                "GovOnClient not available. Install the full GovOn package."
-            )
+            raise RuntimeError("GovOnClient not available. Install the full GovOn package.")
 
         def cancel(self, thread_id: str) -> dict:
-            raise RuntimeError(
-                "GovOnClient not available. Install the full GovOn package."
-            )
+            raise RuntimeError("GovOnClient not available. Install the full GovOn package.")
 
         def health(self) -> dict:
-            raise RuntimeError(
-                "GovOnClient not available. Install the full GovOn package."
-            )
+            raise RuntimeError("GovOnClient not available. Install the full GovOn package.")
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +128,10 @@ def _process_query(
 
         render_result(approved_response)
         return (
-            approved_response.get("session_id") or approved_response.get("thread_id") or new_session_id or session_id,
+            approved_response.get("session_id")
+            or approved_response.get("thread_id")
+            or new_session_id
+            or session_id,
             True,
         )
 

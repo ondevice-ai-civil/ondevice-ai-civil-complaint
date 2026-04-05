@@ -120,3 +120,4 @@ models/merged_model/
 *.safetensors
 *.gguf
 wandb/
+training/legal_adapter/output/

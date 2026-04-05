@@ -111,9 +111,6 @@ all = [
     "GovOn[dev,korean-nlp,inference,database]",
 ]
 
-[project.scripts]
-govon = "src.cli.shell:main"
-
 [project.urls]
 Homepage = "https://github.com/GovOn-org/GovOn"
 Documentation = "https://github.com/GovOn-org/GovOn#readme"

@@ -75,6 +75,7 @@ class DaemonManager:
         bool
             기동 성공 여부 (health check 통과 시 True).
         """
+        # 레이스 컨디션 방지: 기동 전 한 번 더 health check
         if self.is_running():
             logger.info("[daemon] 이미 실행 중입니다.")
             return True
@@ -100,6 +101,7 @@ class DaemonManager:
             stderr=log_file,
             start_new_session=True,
         )
+        log_file.close()
 
         self._write_pid(proc.pid)
         logger.info(f"[daemon] 프로세스 기동 완료. PID={proc.pid}")
@@ -169,13 +171,14 @@ class DaemonManager:
         if not self.pid_path.exists():
             return None
         try:
-            return int(self.pid_path.read_text().strip())
-        except (ValueError, OSError):
+            first_line = self.pid_path.read_text().strip().splitlines()[0]
+            return int(first_line.split()[0])
+        except (ValueError, OSError, IndexError):
             return None
 
     def _write_pid(self, pid: int) -> None:
-        """PID를 파일에 기록한다."""
-        self.pid_path.write_text(str(pid))
+        """PID와 기동 시각(epoch timestamp)을 파일에 기록한다."""
+        self.pid_path.write_text(f"{pid} {int(time.time())}")
 
     def _remove_pid(self) -> None:
         """PID 파일을 제거한다."""
@@ -190,8 +193,11 @@ class DaemonManager:
         try:
             os.kill(pid, 0)
             return True
-        except (ProcessLookupError, PermissionError):
+        except ProcessLookupError:
             return False
+        except PermissionError:
+            # 프로세스가 존재하지만 권한이 없는 경우 → 살아 있음으로 간주
+            return True
 
     def _wait_until_healthy(self) -> bool:
         """health check가 통과할 때까지 최대 30초 대기한다."""

@@ -8,7 +8,7 @@ Issue #415: LangGraph runtime 기반 및 planner/executor adapter 구성.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Annotated, Any, Dict, List, Optional, Sequence
 
@@ -59,7 +59,7 @@ class ToolPlan:
     goal: str
     reason: str
     tools: List[str]
-    tool_summaries: List[str] = None  # type: ignore[assignment]
+    tool_summaries: Optional[List[str]] = field(default=None)
     adapter_mode: str = "regex"  # "regex" | "llm"
 
     def __post_init__(self) -> None:

@@ -791,7 +791,7 @@ class vLLMEngineManager:
             return
 
         tool_registry = self._build_tool_registry()
-        planner = RegexPlannerAdapter()
+        planner = RegexPlannerAdapter(registry=tool_registry)
         executor = RegistryExecutorAdapter(
             tool_registry=tool_registry,
             session_store=self.session_store,

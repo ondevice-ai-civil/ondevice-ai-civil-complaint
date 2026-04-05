@@ -139,7 +139,8 @@ def main() -> None:
             results.append(r)
             print(f"  Run {i}: {r['total_ms']:.1f}ms", file=sys.stderr)
 
-    totals = [r["total_ms"] for r in results]  # TemporaryDirectory 종료 후 results는 여전히 접근 가능
+    # TemporaryDirectory 종료 후에도 results 리스트는 여전히 접근 가능
+    totals = [r["total_ms"] for r in results]
 
     stats = {
         "repeat": args.repeat,

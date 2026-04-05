@@ -58,10 +58,13 @@ def mock_bm25():
     return indexer
 
 
+_EMBED_DIM = 1024  # multilingual-e5-large 임베딩 차원
+
+
 @pytest.fixture
 def mock_embed_model():
     model = MagicMock()
-    model.encode.return_value = np.random.rand(1, 1024).astype("float32")
+    model.encode.return_value = np.random.rand(1, _EMBED_DIM).astype("float32")
     return model
 
 
@@ -307,9 +310,53 @@ class TestEmbedQuery:
 
     def test_embed_query_returns_vector(self, engine):
         """1차원 벡터를 반환한다."""
-        engine.embed_model.encode.return_value = np.random.rand(1, 1024).astype("float32")
+        engine.embed_model.encode.return_value = np.random.rand(1, _EMBED_DIM).astype("float32")
         result = engine._embed_query("테스트")
         assert result.ndim == 1
+
+    def test_embed_query_cache_hit_calls_encode_once(self, engine):
+        """동일 쿼리를 두 번 호출해도 encode는 1회만 호출된다."""
+        engine.embed_model.encode.return_value = np.random.rand(1, _EMBED_DIM).astype("float32")
+        engine._embed_query("캐시 테스트")
+        engine._embed_query("캐시 테스트")
+        engine.embed_model.encode.assert_called_once()
+
+    def test_embed_query_cache_hit_returns_same_vector(self, engine):
+        """캐시 히트 시 동일한 벡터 객체를 반환한다."""
+        engine.embed_model.encode.return_value = np.random.rand(1, _EMBED_DIM).astype("float32")
+        first = engine._embed_query("동일 벡터 확인")
+        second = engine._embed_query("동일 벡터 확인")
+        np.testing.assert_array_equal(first, second)
+
+    def test_embed_query_lru_eviction_removes_least_recently_used(self, engine):
+        """캐시가 64개를 초과하면 가장 오래 사용되지 않은 항목이 제거된다."""
+        engine.embed_model.encode.side_effect = lambda texts, **kw: np.random.rand(
+            len(texts), _EMBED_DIM
+        ).astype("float32")
+
+        # q0 ~ q63 을 채워서 캐시를 꽉 채운다 (64개)
+        for i in range(64):
+            engine._embed_query(f"query_{i}")
+
+        # q0 에 접근하여 LRU 순서를 최신으로 갱신
+        engine._embed_query("query_0")
+
+        # q64 를 추가 → 캐시 크기 초과 → LRU인 q1이 제거되어야 한다
+        engine._embed_query("query_64")
+
+        assert "query_0" in engine._embed_cache, "최근 접근한 query_0은 캐시에 남아야 한다"
+        assert "query_1" not in engine._embed_cache, "가장 오래된 query_1은 제거되어야 한다"
+        assert "query_64" in engine._embed_cache, "새로 추가된 query_64는 캐시에 있어야 한다"
+        assert len(engine._embed_cache) == 64
+
+    def test_embed_query_cache_max_size_is_64(self, engine):
+        """캐시는 최대 64개를 초과하지 않는다."""
+        engine.embed_model.encode.side_effect = lambda texts, **kw: np.random.rand(
+            len(texts), _EMBED_DIM
+        ).astype("float32")
+        for i in range(80):
+            engine._embed_query(f"q_{i}")
+        assert len(engine._embed_cache) == 64
 
 
 # ---------------------------------------------------------------------------

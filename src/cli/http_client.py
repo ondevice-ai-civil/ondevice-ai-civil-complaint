@@ -9,7 +9,8 @@ run / approve / cancel 등 핵심 엔드포인트에 접근한다.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+import json
+from typing import Any, Dict, Generator, Iterator, Optional
 
 import httpx
 from loguru import logger
@@ -93,6 +94,63 @@ class GovOnClient:
         body = {"thread_id": thread_id, "approved": approved}
         logger.debug(f"[http_client] approve: thread_id={thread_id} approved={approved}")
         return self._post("/v2/agent/approve", body=body, timeout=self._DEFAULT_TIMEOUT)
+
+    def stream(
+        self,
+        query: str,
+        session_id: Optional[str] = None,
+    ) -> Generator[Dict[str, Any], None, None]:
+        """POST /v2/agent/stream — SSE 스트리밍으로 노드별 이벤트를 수신한다.
+
+        Parameters
+        ----------
+        query : str
+            사용자 입력 쿼리.
+        session_id : str | None
+            기존 세션을 이어받을 경우 session ID.
+
+        Yields
+        ------
+        dict
+            파싱된 SSE 이벤트 dict. 최소 ``node``와 ``status`` 키를 포함한다.
+
+        Raises
+        ------
+        ConnectionError
+            daemon에 연결할 수 없을 때.
+        httpx.HTTPStatusError
+            HTTP 오류 응답 시.
+        """
+        body: Dict[str, Any] = {"query": query}
+        if session_id is not None:
+            body["session_id"] = session_id
+
+        url = f"{self._base_url}/v2/agent/stream"
+        logger.debug(f"[http_client] stream: session_id={session_id} query_len={len(query)}")
+
+        try:
+            with httpx.Client(timeout=self._RUN_TIMEOUT) as client:
+                with client.stream("POST", url, json=body) as resp:
+                    resp.raise_for_status()
+                    for line in resp.iter_lines():
+                        line = line.strip()
+                        if not line:
+                            continue
+                        if line.startswith("data:"):
+                            data_str = line[len("data:"):].strip()
+                            if not data_str:
+                                continue
+                            try:
+                                event = json.loads(data_str)
+                                yield event
+                            except json.JSONDecodeError:
+                                logger.warning(f"[http_client] SSE JSON 파싱 실패: {data_str!r}")
+                                continue
+        except httpx.ConnectError as exc:
+            raise ConnectionError(f"daemon이 실행 중이 아닙니다. ({self._base_url})") from exc
+        except httpx.HTTPStatusError as exc:
+            logger.error(f"[http_client] HTTP {exc.response.status_code}: {url}")
+            raise
 
     def cancel(self, thread_id: str) -> Dict[str, Any]:
         """POST /v2/agent/cancel — 실행 중인 세션 취소.

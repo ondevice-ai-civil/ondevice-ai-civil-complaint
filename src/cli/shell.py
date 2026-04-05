@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 
 # ---------------------------------------------------------------------------
 # Optional dependencies — graceful degradation
@@ -27,7 +28,14 @@ except ImportError:  # pragma: no cover
 # ---------------------------------------------------------------------------
 from src.cli.approval_ui import show_approval_prompt
 from src.cli.commands import handle_command, is_command
-from src.cli.renderer import render_error, render_result, render_session_info, render_status
+from src.cli.renderer import (
+    StreamingStatusDisplay,
+    get_node_message,
+    render_error,
+    render_result,
+    render_session_info,
+    render_status,
+)
 
 # ---------------------------------------------------------------------------
 # Stub imports for daemon / http_client (other agents implement these).
@@ -64,6 +72,10 @@ except ImportError:  # pragma: no cover
         def run(self, query: str, session_id: str | None = None) -> dict:
             raise RuntimeError("GovOnClient not available. Install the full GovOn package.")
 
+        def stream(self, query: str, session_id: str | None = None):
+            raise RuntimeError("GovOnClient not available. Install the full GovOn package.")
+            yield  # make it a generator
+
         def approve(self, thread_id: str, approved: bool) -> dict:
             raise RuntimeError("GovOnClient not available. Install the full GovOn package.")
 
@@ -88,6 +100,9 @@ def _get_input(session: "PromptSession | None") -> str:  # type: ignore[name-def
     return input(_PROMPT_TEXT)
 
 
+_LONG_WAIT_THRESHOLD_SEC = 30
+
+
 def _process_query(
     client: "GovOnClient",
     query: str,
@@ -95,10 +110,123 @@ def _process_query(
 ) -> tuple[str | None, bool]:
     """Send *query* to the backend and handle approval flow.
 
+    Attempts to use the streaming endpoint (/v2/agent/stream) for per-node
+    progress display. Falls back to the blocking run() call when the streaming
+    endpoint is unavailable.
+
     Returns (new_session_id, should_continue).
     `should_continue` is False only when an unrecoverable error is returned
     that suggests the daemon is down.
     """
+    # --- Try streaming path first ---
+    try:
+        return _process_query_streaming(client, query, session_id)
+    except (AttributeError, NotImplementedError):
+        # client.stream() is not available (stub or older server)
+        pass
+    except Exception:
+        # Streaming endpoint unavailable — fall back silently
+        pass
+
+    # --- Fallback: blocking run() with simple spinner ---
+    return _process_query_blocking(client, query, session_id)
+
+
+def _process_query_streaming(
+    client: "GovOnClient",
+    query: str,
+    session_id: str | None,
+) -> tuple[str | None, bool]:
+    """Streaming path: calls client.stream() and shows per-node progress."""
+    final_response: dict = {}
+    approval_event: dict | None = None
+    new_session_id: str | None = None
+    last_event_time = time.monotonic()
+    warned_long_wait = False
+
+    with StreamingStatusDisplay("처리 중…") as status_display:
+        for event in client.stream(query, session_id):
+            last_event_time = time.monotonic()
+            warned_long_wait = False
+
+            node: str = event.get("node", "")
+            event_status: str = event.get("status", "")
+
+            if node == "error" or event_status == "error":
+                render_error(event.get("error", "알 수 없는 오류가 발생했습니다."))
+                return session_id, True
+
+            if event_status == "awaiting_approval":
+                approval_event = event
+                break
+
+            # Update spinner with node-specific message
+            if node:
+                msg = get_node_message(node)
+                status_display.update(msg)
+
+            # Collect session/thread id from any event
+            if not new_session_id:
+                new_session_id = event.get("session_id") or event.get("thread_id")
+
+            # Collect final result if present
+            if event_status == "completed" or event.get("final_text") or event.get("text"):
+                final_response = event
+
+            # Long-wait warning check (checked on each event receipt)
+            elapsed = time.monotonic() - last_event_time
+            if elapsed >= _LONG_WAIT_THRESHOLD_SEC and not warned_long_wait:
+                status_display.update("응답 대기 중… (30초 초과)")
+                warned_long_wait = True
+
+    # Handle approval
+    if approval_event is not None:
+        if not new_session_id:
+            new_session_id = approval_event.get("session_id") or approval_event.get("thread_id")
+        approval_request: dict = approval_event.get("approval_request") or {}
+        approved = show_approval_prompt(approval_request)
+        thread_id: str = approval_event.get("thread_id") or ""
+
+        if not approved:
+            try:
+                client.approve(thread_id, approved=False)
+            except Exception:  # pragma: no cover
+                pass
+            return new_session_id or session_id, True
+
+        render_status("승인됨 — 계속 진행 중…")
+        try:
+            approved_response = client.approve(thread_id, approved=True)
+        except Exception as exc:  # pragma: no cover
+            render_error(f"승인 요청 실패: {exc}")
+            return new_session_id or session_id, True
+
+        render_result(approved_response)
+        return (
+            approved_response.get("session_id")
+            or approved_response.get("thread_id")
+            or new_session_id
+            or session_id,
+            True,
+        )
+
+    # Handle completed result from streaming events
+    if final_response:
+        _sid = final_response.get("session_id") or final_response.get("thread_id") or new_session_id
+        render_result(final_response)
+        return _sid or session_id, True
+
+    # No useful response received
+    render_result({"text": ""})
+    return new_session_id or session_id, True
+
+
+def _process_query_blocking(
+    client: "GovOnClient",
+    query: str,
+    session_id: str | None,
+) -> tuple[str | None, bool]:
+    """Blocking fallback path: calls client.run() with a simple spinner."""
     render_status("처리 중…")
 
     try:

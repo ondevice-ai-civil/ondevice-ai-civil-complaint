@@ -146,6 +146,7 @@ class vLLMEngineManager:
         self.agent_loop: Optional[AgentLoop] = None
         self.graph = None  # LangGraph CompiledGraph (v2 엔드포인트용)
         self._checkpointer_ctx = None  # AsyncSqliteSaver 컨텍스트 매니저 (lifespan에서 관리)
+        self._sync_checkpointer_conn = None  # SqliteSaver용 sqlite3 connection (leak 방지)
         self._init_agent_loop()
         self._init_graph()
 
@@ -800,7 +801,14 @@ class vLLMEngineManager:
         # SqliteSaver는 프로세스 재시작 후에도 interrupt 상태를 복원하므로
         # MemorySaver와 달리 재시작-안전(restart-safe)하다.
         if checkpointer is None:
-            checkpointer = _build_sync_sqlite_checkpointer(self.session_store.db_path)
+            checkpointer, conn = _build_sync_sqlite_checkpointer(self.session_store.db_path)
+            # 이전 동기 connection이 있으면 닫아 leak을 방지한다.
+            if self._sync_checkpointer_conn is not None:
+                try:
+                    self._sync_checkpointer_conn.close()
+                except Exception:
+                    pass
+            self._sync_checkpointer_conn = conn
 
         self.graph = build_govon_graph(
             planner_adapter=planner,
@@ -811,7 +819,9 @@ class vLLMEngineManager:
         logger.info("LangGraph graph 초기화 완료")
 
 
-def _build_sync_sqlite_checkpointer(session_db_path: str) -> object:
+def _build_sync_sqlite_checkpointer(
+    session_db_path: str,
+) -> tuple:
     """SqliteSaver(동기) 또는 MemorySaver(fallback)를 반환한다.
 
     LangGraph checkpointer용 SQLite DB는 SessionStore의 sessions.sqlite3와
@@ -829,9 +839,11 @@ def _build_sync_sqlite_checkpointer(session_db_path: str) -> object:
 
     Returns
     -------
-    SqliteSaver | MemorySaver
-        SqliteSaver import에 성공하면 SqliteSaver 인스턴스를,
-        실패하면 MemorySaver 인스턴스를 반환한다.
+    tuple[SqliteSaver | MemorySaver, sqlite3.Connection | None]
+        (checkpointer, conn) 튜플.
+        SqliteSaver 사용 시 conn은 열린 sqlite3.Connection이며,
+        호출자가 적절한 시점에 close해야 한다.
+        MemorySaver fallback 시 conn은 None이다.
     """
     cp_db_path = str(Path(session_db_path).parent / "langgraph_checkpoints.db")
     try:
@@ -840,7 +852,7 @@ def _build_sync_sqlite_checkpointer(session_db_path: str) -> object:
         conn = __import__("sqlite3").connect(cp_db_path, check_same_thread=False)
         saver = SqliteSaver(conn)
         logger.info(f"LangGraph checkpointer: SqliteSaver ({cp_db_path})")
-        return saver
+        return saver, conn
     except ImportError:
         logger.warning(
             "langgraph-checkpoint-sqlite 미설치 — MemorySaver로 fallback합니다. "
@@ -848,7 +860,7 @@ def _build_sync_sqlite_checkpointer(session_db_path: str) -> object:
         )
         from langgraph.checkpoint.memory import MemorySaver
 
-        return MemorySaver()
+        return MemorySaver(), None
 
 
 manager = vLLMEngineManager()
@@ -871,6 +883,13 @@ async def lifespan(app: FastAPI):
         from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
         async with AsyncSqliteSaver.from_conn_string(async_cp_db) as async_saver:
+            # 동기 SqliteSaver가 보유하던 connection을 닫아 leak을 방지한다.
+            if manager._sync_checkpointer_conn is not None:
+                try:
+                    manager._sync_checkpointer_conn.close()
+                except Exception:
+                    pass
+                manager._sync_checkpointer_conn = None
             manager._checkpointer_ctx = async_saver
             manager._init_graph_with_async_checkpointer(async_saver)
             logger.info(f"LangGraph checkpointer: AsyncSqliteSaver ({async_cp_db})")

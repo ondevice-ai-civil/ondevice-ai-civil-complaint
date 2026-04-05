@@ -233,6 +233,7 @@ class SessionStore:
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._db_path)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
         return conn
 
     def _init_db(self) -> None:
@@ -264,14 +265,15 @@ class SessionStore:
     def _migrate_v1(self) -> None:
         """v1: 기본 스키마(sessions, messages, tool_runs, graph_runs, metadata) 생성."""
         with closing(self._connect()) as conn, conn:
-            conn.executescript("""
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS sessions (
                     session_id TEXT PRIMARY KEY,
                     created_at REAL NOT NULL,
                     updated_at REAL NOT NULL,
                     metadata_json TEXT NOT NULL DEFAULT '{}'
-                );
-
+                )
+            """)
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS messages (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     session_id TEXT NOT NULL,
@@ -280,8 +282,9 @@ class SessionStore:
                     timestamp REAL NOT NULL,
                     metadata_json TEXT NOT NULL DEFAULT '{}',
                     FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
-                );
-
+                )
+            """)
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS tool_runs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     session_id TEXT NOT NULL,
@@ -292,10 +295,13 @@ class SessionStore:
                     metadata_json TEXT NOT NULL DEFAULT '{}',
                     timestamp REAL NOT NULL,
                     FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
-                );
+                )
+            """)
+            conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_tool_runs_session_id
-                ON tool_runs(session_id);
-
+                ON tool_runs(session_id)
+            """)
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS graph_runs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     session_id TEXT NOT NULL,
@@ -310,14 +316,17 @@ class SessionStore:
                     started_at REAL NOT NULL,
                     completed_at REAL NOT NULL,
                     FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
-                );
-
+                )
+            """)
+            conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_graph_runs_session_id
-                ON graph_runs(session_id);
-
+                ON graph_runs(session_id)
+            """)
+            conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_graph_runs_session_request
-                ON graph_runs(session_id, request_id);
-
+                ON graph_runs(session_id, request_id)
+            """)
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS metadata (
                     owner_type TEXT NOT NULL,
                     owner_id TEXT NOT NULL,
@@ -325,7 +334,7 @@ class SessionStore:
                     value_json TEXT NOT NULL,
                     updated_at REAL NOT NULL,
                     PRIMARY KEY (owner_type, owner_id, key)
-                );
+                )
             """)
             conn.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (1)")
             logger.debug("SessionStore schema migration v1 완료")

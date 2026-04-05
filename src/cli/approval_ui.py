@@ -69,7 +69,7 @@ def _build_box_lines(approval_request: dict, selected: int) -> list[str]:
                 used += cw
             first = "".join(chunk)
             lines.append(_box_line(f"  {label}: {first}"))
-            rest = value[len(first):]
+            rest = value[len(first) :]
             while rest:
                 row: list[str] = []
                 used = 0
@@ -82,7 +82,7 @@ def _build_box_lines(approval_request: dict, selected: int) -> list[str]:
                     used += cw
                 seg = "".join(row)
                 lines.append(_box_line(f"    {seg}"))
-                rest = rest[len(seg):]
+                rest = rest[len(seg) :]
 
     _wrap("목표", goal)
     _wrap("이유", reason)
@@ -106,7 +106,7 @@ def _build_box_lines(approval_request: dict, selected: int) -> list[str]:
                     used2 += cw
                 first2 = "".join(chunk2)
                 lines.append(_box_line(f"{prefix}{first2}"))
-                rest2 = summary[len(first2):]
+                rest2 = summary[len(first2) :]
                 while rest2:
                     row2: list[str] = []
                     used2 = 0
@@ -119,7 +119,7 @@ def _build_box_lines(approval_request: dict, selected: int) -> list[str]:
                         used2 += cw
                     seg2 = "".join(row2)
                     lines.append(_box_line(f"       {seg2}"))
-                    rest2 = rest2[len(seg2):]
+                    rest2 = rest2[len(seg2) :]
 
     lines.append(_box_line())
     approve_bullet = "●" if selected == 0 else "○"

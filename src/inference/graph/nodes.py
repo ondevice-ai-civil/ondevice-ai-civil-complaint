@@ -414,20 +414,46 @@ def _extract_final_text(accumulated: Dict[str, Any], task_type: str) -> str:
         if isinstance(payload, dict) and payload.get("text"):
             return str(payload["text"])
 
-    # 3. 개별 결과 조합
+    # 3. 개별 결과 조합 — evidence 필드가 있으면 우선 사용
     parts: list[str] = []
 
-    rag_data = accumulated.get("rag_search", {})
-    if isinstance(rag_data, dict) and rag_data.get("results"):
-        lines = ["[로컬 문서 근거]"]
-        for item in rag_data["results"][:3]:
-            title = item.get("title", "")
-            content = str(item.get("content", ""))[:120]
-            lines.append(f"- {title}: {content}")
-        parts.append("\n".join(lines))
+    # evidence 필드 기반 출처 목록 생성 (source-specific branching 없이)
+    all_evidence_items: list[dict] = []
+    for key, payload in accumulated.items():
+        if key in ("session_context", "query"):
+            continue
+        if isinstance(payload, dict):
+            ev = payload.get("evidence")
+            if isinstance(ev, dict) and ev.get("items"):
+                all_evidence_items.extend(ev["items"])
 
-    api_data = accumulated.get("api_lookup", {})
-    if isinstance(api_data, dict) and api_data.get("context_text"):
-        parts.append(api_data["context_text"])
+    if all_evidence_items:
+        lines = ["[참조 근거]"]
+        for item in all_evidence_items[:5]:
+            source_type = item.get("source_type", "")
+            title = item.get("title", "")
+            excerpt = item.get("excerpt", "")[:120]
+            label = "[로컬]" if source_type == "rag" else "[외부]" if source_type == "api" else "[생성]"
+            if title:
+                lines.append(f"- {label} {title}: {excerpt}")
+            elif excerpt:
+                lines.append(f"- {label} {excerpt}")
+        if len(lines) > 1:
+            parts.append("\n".join(lines))
+
+    # evidence가 없는 경우 legacy fallback
+    if not parts:
+        rag_data = accumulated.get("rag_search", {})
+        if isinstance(rag_data, dict) and rag_data.get("results"):
+            lines = ["[로컬 문서 근거]"]
+            for item in rag_data["results"][:3]:
+                title = item.get("title", "")
+                content = str(item.get("content", ""))[:120]
+                lines.append(f"- {title}: {content}")
+            parts.append("\n".join(lines))
+
+        api_data = accumulated.get("api_lookup", {})
+        if isinstance(api_data, dict) and api_data.get("context_text"):
+            parts.append(api_data["context_text"])
 
     return "\n\n".join(parts) if parts else "요청을 처리할 수 없습니다."

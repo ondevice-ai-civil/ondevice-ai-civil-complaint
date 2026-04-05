@@ -8,6 +8,51 @@ from typing import Any, Dict, List, Optional
 
 
 @dataclass
+class EvidenceItem:
+    """RAG/API 출처 무관하게 동일한 구조로 evidence를 표현.
+
+    source_type: "rag" | "api" | "llm_generated"
+    """
+
+    source_type: str  # "rag" | "api" | "llm_generated"
+    title: str
+    excerpt: str  # 본문 발췌 (최대 500자)
+    link_or_path: str = ""  # URL(API) 또는 file_path(RAG)
+    page: Optional[int] = None
+    score: float = 0.0
+    provider_meta: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "source_type": self.source_type,
+            "title": self.title,
+            "excerpt": self.excerpt,
+            "link_or_path": self.link_or_path,
+            "page": self.page,
+            "score": self.score,
+            "provider_meta": self.provider_meta,
+        }
+
+
+@dataclass
+class EvidenceEnvelope:
+    """mixed evidence 결과 컨테이너."""
+
+    items: List[EvidenceItem] = field(default_factory=list)
+    summary_text: str = ""
+    status: str = "ok"  # "ok" | "empty" | "partial" | "error"
+    errors: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "items": [item.to_dict() for item in self.items],
+            "summary_text": self.summary_text,
+            "status": self.status,
+            "errors": self.errors,
+        }
+
+
+@dataclass
 class CapabilityMetadata:
     """planner·executor·session trace에서 공통으로 사용하는 capability 메타데이터."""
 
@@ -31,9 +76,10 @@ class LookupResult:
     error: Optional[str] = None
     empty_reason: Optional[str] = None  # "quota", "no_match", "provider_error"
     latency_ms: float = 0.0
+    evidence: Optional[EvidenceEnvelope] = None  # 정규화된 evidence (새 필드)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        d: Dict[str, Any] = {
             "success": self.success,
             "query": self.query,
             "count": len(self.results),
@@ -45,6 +91,9 @@ class LookupResult:
             "empty_reason": self.empty_reason,
             "latency_ms": round(self.latency_ms, 2),
         }
+        if self.evidence is not None:
+            d["evidence"] = self.evidence.to_dict()
+        return d
 
 
 class CapabilityBase(ABC):

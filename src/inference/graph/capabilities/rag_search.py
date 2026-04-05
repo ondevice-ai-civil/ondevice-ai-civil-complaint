@@ -16,7 +16,7 @@ from loguru import logger
 
 from src.inference.index_manager import IndexType
 
-from .base import CapabilityBase, CapabilityMetadata, LookupResult
+from .base import CapabilityBase, CapabilityMetadata, EvidenceEnvelope, EvidenceItem, LookupResult
 
 # ---------------------------------------------------------------------------
 # 상수
@@ -208,12 +208,31 @@ class RagSearchCapability(CapabilityBase):
                 provider=provider,
                 error=raw["error"],
                 empty_reason="provider_error",
+                evidence=EvidenceEnvelope(
+                    status="error",
+                    errors=[raw["error"]],
+                ),
             )
 
         raw_query = raw.get("query", params.query)
         raw_context_text = raw.get("context_text", "")
         raw_results = raw.get("results", [])
         normalized = [_normalize_result(r) for r in raw_results]
+
+        # EvidenceItem으로 정규화
+        evidence_items = []
+        for r in normalized:
+            evidence_items.append(
+                EvidenceItem(
+                    source_type="rag",
+                    title=r.get("title", ""),
+                    excerpt=r.get("excerpt", "")[:500],
+                    link_or_path=r.get("file_path", ""),
+                    page=r.get("page"),
+                    score=float(r.get("score", 0.0)),
+                    provider_meta={"provider": provider},
+                )
+            )
 
         if not normalized:
             return LookupResult(
@@ -222,6 +241,7 @@ class RagSearchCapability(CapabilityBase):
                 provider=provider,
                 empty_reason="no_match",
                 context_text=raw_context_text,
+                evidence=EvidenceEnvelope(items=[], status="empty"),
             )
 
         confident = [r for r in normalized if r["score"] >= params.min_confidence]
@@ -234,8 +254,13 @@ class RagSearchCapability(CapabilityBase):
                 context_text=raw_context_text,
                 provider=provider,
                 empty_reason="low_confidence",
+                evidence=EvidenceEnvelope(
+                    items=evidence_items,
+                    status="partial",
+                ),
             )
 
+        confident_evidence = [ei for ei in evidence_items if ei.score >= params.min_confidence]
         citations = [
             {
                 "source_type": r["source_type"],
@@ -254,4 +279,8 @@ class RagSearchCapability(CapabilityBase):
             context_text=raw_context_text,
             citations=citations,
             provider=provider,
+            evidence=EvidenceEnvelope(
+                items=confident_evidence,
+                status="ok",
+            ),
         )

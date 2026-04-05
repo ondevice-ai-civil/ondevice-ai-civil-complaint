@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 
 from loguru import logger
 
-from .base import CapabilityBase, CapabilityMetadata, LookupResult
+from .base import CapabilityBase, CapabilityMetadata, EvidenceEnvelope, EvidenceItem, LookupResult
 
 try:
     import httpx
@@ -106,6 +106,10 @@ class ApiLookupCapability(CapabilityBase):
                 provider=provider,
                 error=validation_error,
                 empty_reason="validation_error",
+                evidence=EvidenceEnvelope(
+                    status="error",
+                    errors=[validation_error],
+                ),
             )
 
         # action이 없으면 빈 결과 (경량 환경)
@@ -116,6 +120,7 @@ class ApiLookupCapability(CapabilityBase):
                 query=params.query,
                 provider=provider,
                 empty_reason="no_match",
+                evidence=EvidenceEnvelope(status="empty"),
             )
 
         # action에 파라미터 반영
@@ -129,13 +134,18 @@ class ApiLookupCapability(CapabilityBase):
                 timeout=self.metadata.timeout_sec,
             )
         except asyncio.TimeoutError:
+            timeout_msg = f"API 호출 타임아웃 ({self.metadata.timeout_sec}초 초과)"
             logger.warning(f"[api_lookup] 타임아웃 ({self.metadata.timeout_sec}s 초과)")
             return LookupResult(
                 success=False,
                 query=params.query,
                 provider=provider,
-                error=f"API 호출 타임아웃 ({self.metadata.timeout_sec}초 초과)",
+                error=timeout_msg,
                 empty_reason="provider_error",
+                evidence=EvidenceEnvelope(
+                    status="error",
+                    errors=[timeout_msg],
+                ),
             )
         except Exception as exc:
             if _HTTPX_AVAILABLE and isinstance(exc, httpx.HTTPError):
@@ -148,17 +158,26 @@ class ApiLookupCapability(CapabilityBase):
                 provider=provider,
                 error=str(exc),
                 empty_reason="provider_error",
+                evidence=EvidenceEnvelope(
+                    status="error",
+                    errors=[str(exc)],
+                ),
             )
 
         # 결과 변환
         results = payload.get("results")
         if results is None:
+            error_msg = "민원 분석 API 호출에 실패했습니다."
             return LookupResult(
                 success=False,
                 query=payload.get("query", params.query),
                 provider=provider,
-                error="민원 분석 API 호출에 실패했습니다.",
+                error=error_msg,
                 empty_reason="provider_error",
+                evidence=EvidenceEnvelope(
+                    status="error",
+                    errors=[error_msg],
+                ),
             )
 
         # citations를 dict 목록으로 정규화
@@ -176,7 +195,51 @@ class ApiLookupCapability(CapabilityBase):
                 query=payload.get("query", params.query),
                 provider=provider,
                 empty_reason="no_match",
+                evidence=EvidenceEnvelope(status="empty"),
             )
+
+        # EvidenceItem으로 정규화
+        evidence_items = []
+        for item in results:
+            if not isinstance(item, dict):
+                continue
+            title = item.get("title") or item.get("qnaTitle") or item.get("question", "")
+            excerpt = item.get("content") or item.get("qnaContent") or item.get("qnaAnswer", "")
+            link = item.get("url") or item.get("detailUrl", "")
+            evidence_items.append(
+                EvidenceItem(
+                    source_type="api",
+                    title=str(title),
+                    excerpt=str(excerpt)[:500],
+                    link_or_path=str(link),
+                    score=float(item.get("score", 0)),
+                    provider_meta={"provider": provider},
+                )
+            )
+        # citations도 EvidenceItem으로 변환 (중복 제거를 위해 link_or_path 기반 dedup)
+        seen_links: set[str] = {item.link_or_path for item in evidence_items}
+        for c in citations:
+            link = c.get("url") or c.get("detailUrl", "")
+            if link in seen_links:
+                continue
+            seen_links.add(str(link))
+            title = c.get("title") or c.get("qnaTitle") or c.get("question", "")
+            excerpt = c.get("content") or c.get("qnaContent") or c.get("qnaAnswer", "")
+            evidence_items.append(
+                EvidenceItem(
+                    source_type="api",
+                    title=str(title),
+                    excerpt=str(excerpt)[:500],
+                    link_or_path=str(link),
+                    score=float(c.get("score", 0)),
+                    provider_meta={"provider": provider},
+                )
+            )
+
+        envelope = EvidenceEnvelope(
+            items=evidence_items,
+            status="ok" if evidence_items else "empty",
+        )
 
         return LookupResult(
             success=True,
@@ -185,4 +248,5 @@ class ApiLookupCapability(CapabilityBase):
             context_text=payload.get("context_text", ""),
             citations=citations,
             provider=provider,
+            evidence=envelope,
         )

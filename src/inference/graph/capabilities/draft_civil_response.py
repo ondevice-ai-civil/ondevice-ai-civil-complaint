@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict
 
-from .base import CapabilityBase, CapabilityMetadata, LookupResult
+from .base import CapabilityBase, CapabilityMetadata, EvidenceEnvelope, EvidenceItem, LookupResult
 
 
 class DraftCivilResponseCapability(CapabilityBase):
@@ -50,9 +50,40 @@ class DraftCivilResponseCapability(CapabilityBase):
                 provider=self.metadata.provider,
                 error=raw["error"],
                 empty_reason="provider_error",
+                evidence=EvidenceEnvelope(
+                    status="error",
+                    errors=[raw["error"]],
+                ),
             )
 
         text = raw.get("text", "") if isinstance(raw, dict) else str(raw)
+
+        # draft에서 참조된 사례를 EvidenceItem으로 변환
+        evidence_items: list[EvidenceItem] = []
+        if isinstance(raw, dict):
+            # raw에 포함된 citations/references를 EvidenceItem으로 변환
+            for ref in raw.get("citations", []):
+                if not isinstance(ref, dict):
+                    continue
+                title = ref.get("title") or ref.get("qnaTitle") or ref.get("question", "")
+                excerpt = ref.get("content") or ref.get("qnaContent") or ref.get("qnaAnswer", "")
+                link = ref.get("url") or ref.get("detailUrl", "")
+                evidence_items.append(
+                    EvidenceItem(
+                        source_type="llm_generated",
+                        title=str(title),
+                        excerpt=str(excerpt)[:500],
+                        link_or_path=str(link),
+                        provider_meta={"provider": self.metadata.provider},
+                    )
+                )
+
+        envelope = EvidenceEnvelope(
+            items=evidence_items,
+            summary_text=text,
+            status="ok",
+        )
+
         return LookupResult(
             success=True,
             query=query,
@@ -60,4 +91,5 @@ class DraftCivilResponseCapability(CapabilityBase):
             provider=self.metadata.provider,
             # draft 결과는 results 대신 context_text에 담긴다
             results=[raw] if isinstance(raw, dict) else [],
+            evidence=envelope,
         )

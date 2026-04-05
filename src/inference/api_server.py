@@ -416,11 +416,78 @@ class vLLMEngineManager:
 
         return collected
 
+    @staticmethod
+    def _format_evidence_items(evidence_dict: Dict[str, Any]) -> str:
+        """EvidenceEnvelope dict를 소비하여 출처 목록 텍스트를 생성한다.
+
+        EvidenceItem이 있으면 source-specific branching 없이 단일 포매터로 처리한다.
+        """
+        items = evidence_dict.get("items", [])
+        if not items:
+            return ""
+
+        lines: list[str] = []
+        for idx, item in enumerate(items[:10], start=1):
+            source_type = item.get("source_type", "")
+            title = item.get("title", "")
+            link = item.get("link_or_path", "")
+            page = item.get("page")
+
+            if source_type == "rag":
+                loc = link or title or "로컬 문서"
+                if page:
+                    lines.append(f"[{idx}] {loc} (p.{page})")
+                else:
+                    lines.append(f"[{idx}] {loc}")
+            elif source_type == "api":
+                label = title or "외부 API 결과"
+                if link:
+                    lines.append(f"[{idx}] {label} - {link}")
+                else:
+                    lines.append(f"[{idx}] {label}")
+            else:
+                label = title or "생성 참조"
+                if link:
+                    lines.append(f"[{idx}] {label} - {link}")
+                else:
+                    lines.append(f"[{idx}] {label}")
+
+        return "\n".join(lines)
+
     def _summarize_evidence(
         self,
         search_results: List[SearchResult],
         api_lookup_data: Dict[str, Any],
     ) -> str:
+        # EvidenceEnvelope가 있으면 우선 사용
+        evidence = api_lookup_data.get("evidence")
+        if isinstance(evidence, dict) and evidence.get("items"):
+            lines = ["근거 요약"]
+            rag_items = [i for i in evidence["items"] if i.get("source_type") == "rag"]
+            api_items = [i for i in evidence["items"] if i.get("source_type") == "api"]
+            if rag_items:
+                titles = ", ".join(
+                    i["title"] for i in rag_items[:3] if i.get("title")
+                )
+                lines.append(
+                    f"- 로컬 문서 {len(rag_items)}건을 참고했습니다."
+                    + (f" 주요 문서: {titles}" if titles else "")
+                )
+            if api_items:
+                titles = ", ".join(
+                    i["title"] for i in api_items[:3] if i.get("title")
+                )
+                lines.append(
+                    f"- 외부 민원분석 API에서 유사 사례 {len(api_items)}건을 확인했습니다."
+                    + (f" 대표 사례: {titles}" if titles else "")
+                )
+            if len(lines) == 1:
+                lines.append(
+                    "- 내부 검색 결과를 충분히 확보하지 못해 일반 행정 응대 원칙 기준으로 작성했습니다."
+                )
+            return "\n".join(lines)
+
+        # Legacy 포매터 (EvidenceItem 없을 때)
         lines = ["근거 요약"]
 
         if search_results:
@@ -485,14 +552,43 @@ class vLLMEngineManager:
         lines = ["근거/출처"]
         cursor = 1
 
-        for item in rag_data.get("results", [])[:5]:
-            lines.append(self._rag_source_line(cursor, item))
-            cursor += 1
+        # EvidenceEnvelope가 있으면 단일 포매터로 우선 처리
+        rag_evidence = rag_data.get("evidence")
+        api_evidence = api_data.get("evidence")
 
-        api_items = api_data.get("citations") or api_data.get("results") or []
-        for item in api_items[:5]:
-            lines.append(self._api_source_line(cursor, item))
-            cursor += 1
+        if rag_evidence and isinstance(rag_evidence, dict) and rag_evidence.get("items"):
+            for item in rag_evidence["items"][:5]:
+                source_type = item.get("source_type", "rag")
+                if source_type == "rag":
+                    link = item.get("link_or_path", "")
+                    page = item.get("page")
+                    loc = link or item.get("title", "") or "로컬 문서"
+                    if page:
+                        lines.append(f"[{cursor}] {loc} (p.{page})")
+                    else:
+                        lines.append(f"[{cursor}] {loc}")
+                    cursor += 1
+        else:
+            # Legacy RAG 포매터
+            for item in rag_data.get("results", [])[:5]:
+                lines.append(self._rag_source_line(cursor, item))
+                cursor += 1
+
+        if api_evidence and isinstance(api_evidence, dict) and api_evidence.get("items"):
+            for item in api_evidence["items"][:5]:
+                title = item.get("title", "") or "외부 API 결과"
+                link = item.get("link_or_path", "")
+                if link:
+                    lines.append(f"[{cursor}] {title} - {link}")
+                else:
+                    lines.append(f"[{cursor}] {title}")
+                cursor += 1
+        else:
+            # Legacy API 포매터
+            api_items = api_data.get("citations") or api_data.get("results") or []
+            for item in api_items[:5]:
+                lines.append(self._api_source_line(cursor, item))
+                cursor += 1
 
         if cursor == 1:
             lines.append("- 검색 가능한 근거를 찾지 못했습니다.")

@@ -17,6 +17,18 @@ from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 
 
+def _merge_dicts(a: Dict[str, Any], b: Dict[str, Any]) -> Dict[str, Any]:
+    """두 dict를 병합하는 reducer.
+
+    LangGraph state에서 여러 노드가 동일 키에 값을 반환할 때 사용한다.
+    후행 dict(b)의 값이 선행 dict(a)를 덮어쓴다.
+    """
+    merged = dict(a) if a else {}
+    if b:
+        merged.update(b)
+    return merged
+
+
 class ApprovalStatus(str, Enum):
     """human-in-the-loop 승인 상태."""
 
@@ -106,3 +118,9 @@ class GovOnGraphState(TypedDict, total=False):
     error: Optional[str]
     interrupt_reason: Optional[str]  # "user_cancel" | "timeout" | None
     total_latency_ms: float
+
+    # --- 레이턴시 계측 ---
+    # 각 노드가 {"<node_name>": latency_ms} 형태로 반환하며,
+    # _merge_dicts reducer가 모든 노드의 값을 누적 병합한다.
+    # 예: {"session_load": 2.1, "planner": 45.3, "tool_execute": 312.5, ...}
+    node_latencies: Annotated[Dict[str, float], _merge_dicts]

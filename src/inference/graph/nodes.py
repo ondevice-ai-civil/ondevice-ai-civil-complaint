@@ -76,7 +76,7 @@ async def session_load_node(
     return {
         "session_id": session.session_id,
         "accumulated_context": accumulated_context,
-        "_node_latency_ms": _latency_ms,
+        "node_latencies": {"session_load": _latency_ms},
     }
 
 
@@ -119,7 +119,7 @@ async def planner_node(
         return {
             **validator.make_fallback_plan(e),
             "task_type": "",
-            "_node_latency_ms": _latency_ms,
+            "node_latencies": {"planner": _latency_ms},
         }
 
     logger.info(
@@ -147,7 +147,7 @@ async def planner_node(
             **context,
             "query_variants": query_variants,
         },
-        "_node_latency_ms": _latency_ms,
+        "node_latencies": {"planner": _latency_ms},
     }
 
 
@@ -243,14 +243,16 @@ async def tool_execute_node(
     Returns
     -------
     dict
-        `tool_results`, `accumulated_context`, `_node_latency_ms`,
-        `_tool_latencies`를 갱신한다.
+        `tool_results`, `accumulated_context`, `node_latencies`를 갱신한다.
+        `node_latencies`에는 `"tool_execute"` 키로 노드 전체 레이턴시,
+        `"tool:<tool_name>"` 키로 개별 도구 레이턴시가 포함된다.
     """
     _start = time.monotonic()
 
     # approval guard: 승인 없이 tool 실행 차단
     approval_status = state.get("approval_status", "")
     if approval_status != ApprovalStatus.APPROVED.value:
+        _latency_ms = round((time.monotonic() - _start) * 1000, 2)
         logger.warning(
             f"[tool_execute] 승인되지 않은 상태에서 실행 시도 차단: approval_status={approval_status!r}"
         )
@@ -258,8 +260,7 @@ async def tool_execute_node(
             "tool_results": {},
             "accumulated_context": dict(state.get("accumulated_context", {})),
             "error": f"tool 실행 차단: 승인 필요 (현재 상태: {approval_status!r})",
-            "_node_latency_ms": round((time.monotonic() - _start) * 1000, 2),
-            "_tool_latencies": {},
+            "node_latencies": {"tool_execute": _latency_ms},
         }
 
     planned_tools: list[str] = state.get("planned_tools", [])
@@ -271,8 +272,7 @@ async def tool_execute_node(
         return {
             "tool_results": {},
             "accumulated_context": accumulated,
-            "_node_latency_ms": round((time.monotonic() - _start) * 1000, 2),
-            "_tool_latencies": {},
+            "node_latencies": {"tool_execute": round((time.monotonic() - _start) * 1000, 2)},
         }
 
     tool_results: Dict[str, Any] = {}
@@ -312,7 +312,9 @@ async def tool_execute_node(
         for i, item in enumerate(results):
             if isinstance(item, Exception):
                 failed_tool = independent[i]
-                logger.error(f"[tool_execute] 병렬 실행 실패: tool={failed_tool} error={item}")
+                logger.opt(exception=item).error(
+                    f"[tool_execute] 병렬 실행 실패: tool={failed_tool}"
+                )
                 continue
             name, result, latency = item
             tool_results[name] = result
@@ -342,11 +344,16 @@ async def tool_execute_node(
         f"latency_ms={_latency_ms} per_tool={tool_latencies}"
     )
 
+    # node_latencies에 노드 전체 레이턴시와 개별 tool 레이턴시를 함께 기록한다.
+    # tool 레이턴시는 "tool:<tool_name>" 접두사로 구분한다.
+    merged_latencies: Dict[str, float] = {"tool_execute": _latency_ms}
+    for tool_name, tool_lat in tool_latencies.items():
+        merged_latencies[f"tool:{tool_name}"] = tool_lat
+
     return {
         "tool_results": tool_results,
         "accumulated_context": accumulated,
-        "_node_latency_ms": _latency_ms,
-        "_tool_latencies": tool_latencies,
+        "node_latencies": merged_latencies,
     }
 
 
@@ -379,7 +386,7 @@ async def synthesis_node(state: GovOnGraphState) -> dict:
     return {
         "final_text": final_text,
         "messages": [AIMessage(content=final_text)],
-        "_node_latency_ms": _latency_ms,
+        "node_latencies": {"synthesis": _latency_ms},
     }
 
 
@@ -475,7 +482,7 @@ async def persist_node(
         f"graph_run={request_id} saved latency_ms={_latency_ms}"
     )
 
-    return {"_node_latency_ms": _latency_ms}
+    return {"node_latencies": {"persist": _latency_ms}}
 
 
 def _extract_final_text(accumulated: Dict[str, Any], task_type: str) -> str:

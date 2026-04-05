@@ -103,10 +103,14 @@ def _run_single(run_id: int, db_dir: str) -> dict:
 
     total_ms = round((time.monotonic() - t0) * 1000, 2)
 
+    # node_latencies는 _merge_dicts reducer로 누적되어 최종 state에 포함된다.
+    node_latencies: dict = result.get("node_latencies") or {}
+
     return {
         "run_id": run_id,
         "total_ms": total_ms,
         "has_final_text": bool(result.get("final_text")),
+        "node_latencies": node_latencies,
     }
 
 
@@ -142,6 +146,25 @@ def main() -> None:
     # TemporaryDirectory 종료 후에도 results 리스트는 여전히 접근 가능
     totals = [r["total_ms"] for r in results]
 
+    # 노드별 레이턴시 통계 집계
+    all_node_keys: set[str] = set()
+    for r in results:
+        all_node_keys.update(r.get("node_latencies", {}).keys())
+
+    node_stats: dict = {}
+    for node_key in sorted(all_node_keys):
+        values = [
+            r["node_latencies"][node_key]
+            for r in results
+            if node_key in r.get("node_latencies", {})
+        ]
+        if values:
+            node_stats[node_key] = {
+                "p50": round(_percentile(values, 50), 2),
+                "p95": round(_percentile(values, 95), 2),
+                "mean": round(statistics.mean(values), 2),
+            }
+
     stats = {
         "repeat": args.repeat,
         "total_ms": {
@@ -151,6 +174,7 @@ def main() -> None:
             "mean": round(statistics.mean(totals), 2),
             "stdev": round(statistics.stdev(totals), 2) if len(totals) > 1 else 0,
         },
+        "node_latencies_ms": node_stats,
         "runs": results,
     }
 

@@ -204,4 +204,24 @@ print(f'Diff: {diff_pct:+.1f}%')
 
 ### 노드별 계측 활용
 
-각 노드는 `_node_latency_ms`를 반환하므로, 어느 노드에서 레이턴시 회귀가 발생했는지 정확히 추적할 수 있다. `tool_execute` 노드는 추가로 `_tool_latencies`에 도구별 개별 레이턴시를 기록한다.
+각 노드는 `node_latencies: Dict[str, float]` 형태로 레이턴시를 반환한다.
+LangGraph state의 `_merge_dicts` reducer가 모든 노드 결과를 하나의 dict로 누적 병합하므로
+graph 실행이 완료되면 최종 state에 아래와 같이 모든 노드의 레이턴시가 포함된다:
+
+```python
+state["node_latencies"]
+# {
+#   "session_load":    2.1,
+#   "planner":        45.3,
+#   "tool_execute":  312.5,
+#   "tool:rag_search": 198.7,
+#   "tool:api_lookup": 285.4,
+#   "synthesis":       1.8,
+#   "persist":         8.2,
+# }
+```
+
+`tool_execute` 노드는 노드 전체 레이턴시(`"tool_execute"` 키)와 함께
+개별 도구 레이턴시를 `"tool:<tool_name>"` 접두사 키로 함께 기록한다.
+벤치마크 출력(`bench_graph_latency.py`)의 `node_latencies_ms` 섹션에서
+노드별 p50/p95/mean을 확인할 수 있다.

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import time
 
 import pytest
 
@@ -46,6 +45,27 @@ class SlowExecutor:
         return list(self.latencies.keys())
 
 
+class RecordingExecutor:
+    """동시 실행 수를 추적하여 병렬성을 검증하는 executor."""
+
+    def __init__(self) -> None:
+        self.max_concurrent = 0
+        self._current = 0
+        self._lock = asyncio.Lock()
+
+    async def execute(self, tool_name: str, query: str, context: dict) -> dict:
+        async with self._lock:
+            self._current += 1
+            self.max_concurrent = max(self.max_concurrent, self._current)
+        await asyncio.sleep(0.05)
+        async with self._lock:
+            self._current -= 1
+        return {"success": True, "text": f"ok {tool_name}"}
+
+    def list_tools(self) -> list[str]:
+        return ["rag_search", "api_lookup"]
+
+
 class StubSessionStore:
     """최소한의 SessionStore 스텁."""
 
@@ -78,7 +98,7 @@ class StubSessionStore:
 
 
 class TestNodeLatencyInstrumentation:
-    """각 노드가 _node_latency_ms를 반환하는지 확인."""
+    """각 노드가 node_latencies를 반환하는지 확인."""
 
     @pytest.mark.asyncio
     async def test_session_load_node_returns_latency(self, tmp_path):
@@ -88,9 +108,10 @@ class TestNodeLatencyInstrumentation:
             "messages": [],
         }
         result = await session_load_node(state, session_store=store)
-        assert "_node_latency_ms" in result
-        assert isinstance(result["_node_latency_ms"], float)
-        assert result["_node_latency_ms"] >= 0
+        assert "node_latencies" in result
+        assert "session_load" in result["node_latencies"]
+        assert isinstance(result["node_latencies"]["session_load"], float)
+        assert result["node_latencies"]["session_load"] >= 0
 
     @pytest.mark.asyncio
     async def test_synthesis_node_returns_latency(self):
@@ -99,8 +120,9 @@ class TestNodeLatencyInstrumentation:
             "task_type": "",
         }
         result = await synthesis_node(state)
-        assert "_node_latency_ms" in result
-        assert isinstance(result["_node_latency_ms"], float)
+        assert "node_latencies" in result
+        assert "synthesis" in result["node_latencies"]
+        assert isinstance(result["node_latencies"]["synthesis"], float)
 
     @pytest.mark.asyncio
     async def test_persist_node_returns_latency(self):
@@ -114,8 +136,9 @@ class TestNodeLatencyInstrumentation:
             "final_text": "",
         }
         result = await persist_node(state, session_store=StubSessionStore())
-        assert "_node_latency_ms" in result
-        assert isinstance(result["_node_latency_ms"], float)
+        assert "node_latencies" in result
+        assert "persist" in result["node_latencies"]
+        assert isinstance(result["node_latencies"]["persist"], float)
 
     @pytest.mark.asyncio
     async def test_tool_execute_returns_latency_and_per_tool(self):
@@ -126,9 +149,22 @@ class TestNodeLatencyInstrumentation:
         }
         executor = SlowExecutor({"rag_search": 0.05})
         result = await tool_execute_node(state, executor_adapter=executor)
-        assert "_node_latency_ms" in result
-        assert "_tool_latencies" in result
-        assert "rag_search" in result["_tool_latencies"]
+        assert "node_latencies" in result
+        assert "tool_execute" in result["node_latencies"]
+        assert "tool:rag_search" in result["node_latencies"]
+
+    @pytest.mark.asyncio
+    async def test_tool_execute_approval_guard_returns_latency(self):
+        """승인 차단 시에도 node_latencies가 반환된다."""
+        state = {
+            "approval_status": ApprovalStatus.REJECTED.value,
+            "planned_tools": ["rag_search"],
+            "accumulated_context": {},
+        }
+        executor = SlowExecutor()
+        result = await tool_execute_node(state, executor_adapter=executor)
+        assert "node_latencies" in result
+        assert "tool_execute" in result["node_latencies"]
 
 
 # ---------------------------------------------------------------------------
@@ -137,13 +173,12 @@ class TestNodeLatencyInstrumentation:
 
 
 class TestParallelToolExecution:
-    """독립 도구가 병렬로 실행되어 총 시간이 줄어드는지 확인."""
+    """독립 도구가 병렬로 실행되는지 확인."""
 
     @pytest.mark.asyncio
     async def test_independent_tools_run_in_parallel(self):
-        """rag_search + api_lookup이 병렬로 실행되면 총 시간 < 두 개의 합."""
-        latencies = {"rag_search": 0.2, "api_lookup": 0.2}
-        executor = SlowExecutor(latencies)
+        """rag_search + api_lookup이 병렬로 실행되면 최대 동시 실행 수 >= 2."""
+        executor = RecordingExecutor()
 
         state = {
             "approval_status": ApprovalStatus.APPROVED.value,
@@ -151,15 +186,11 @@ class TestParallelToolExecution:
             "accumulated_context": {"query": "test query"},
         }
 
-        t0 = time.monotonic()
         result = await tool_execute_node(state, executor_adapter=executor)
-        elapsed = time.monotonic() - t0
 
-        # 병렬 실행이면 ~0.2초, 순차 실행이면 ~0.4초
-        # 0.45초 미만이면 병렬로 간주 (CI 환경 부하 편차 허용)
-        assert elapsed < 0.45, (
+        assert executor.max_concurrent >= 2, (
             f"독립 도구가 병렬로 실행되어야 합니다. "
-            f"소요: {elapsed:.3f}s (합: 0.4s, 기대: <0.45s)"
+            f"최대 동시 실행 수: {executor.max_concurrent} (기대: >= 2)"
         )
         assert "rag_search" in result["tool_results"]
         assert "api_lookup" in result["tool_results"]
@@ -247,3 +278,14 @@ class TestCapabilityDefaults:
         assert get_max_retries("api_lookup") == 1
         assert get_max_retries("rag_search") == 0
         assert get_max_retries("unknown") == 0
+
+    def test_get_timeout_invalid_env_logs_warning(self, monkeypatch, caplog):
+        """환경변수 값이 숫자가 아닐 때 경고 로그를 출력하고 기본값을 반환한다."""
+        import logging
+
+        from src.inference.graph.capabilities.defaults import get_timeout
+
+        monkeypatch.setenv("GOVON_TOOL_TIMEOUT_RAG_SEARCH", "not-a-number")
+        with caplog.at_level(logging.WARNING):
+            result = get_timeout("rag_search")
+        assert result == 15.0

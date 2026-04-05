@@ -42,6 +42,30 @@ _MAX_USER_LEN = 180
 _MAX_ASSISTANT_LEN = 220
 _MAX_TOOL_SUMMARY_LEN = 120
 
+# 지시대명사/참조 표현: 이전 turn을 가리키는 표현이 있으면 follow-up으로 간주
+_ANAPHORA_PATTERNS = tuple(
+    re.compile(pattern)
+    for pattern in (
+        r"그거",
+        r"이거",
+        r"저거",
+        r"이것",
+        r"그것",
+        r"저것",
+        r"위\s*(답변|내용|글|설명|항목)",
+        r"아래\s*(답변|내용|글|설명|항목)",
+        r"이\s*(답변|내용|글|설명)",
+        r"그\s*(답변|내용|글|설명)",
+        r"기존\s*(답변|내용|글|초안)",
+        r"방금",
+        r"앞서",
+        r"위에서",
+    )
+)
+
+# 자기완결 판정: 쿼리에 독립 명사가 이 수 이상이면 자기완결적으로 간주
+_SELF_CONTAINED_NOUN_MIN = 2
+
 
 def build_runtime_query_context(session: "SessionContext", current_query: str) -> Dict[str, Any]:
     """세션에서 query builder 입력용 구조화 컨텍스트를 추출한다."""
@@ -150,6 +174,18 @@ def resolve_tool_query(tool_name: str, context: Mapping[str, Any]) -> str:
     return normalize_text(context.get("query", ""))
 
 
+def is_self_contained_query(query: str) -> bool:
+    """쿼리가 이전 맥락 없이 독립적으로 이해 가능한지 판정한다.
+
+    지시대명사나 참조 표현이 없고, 독립 명사(공백 구분 토큰)가 충분히
+    포함된 쿼리는 자기완결적으로 간주한다.
+    """
+    if any(pattern.search(query) for pattern in _ANAPHORA_PATTERNS):
+        return False
+    tokens = [t for t in query.split() if len(t) >= 2]
+    return len(tokens) >= _SELF_CONTAINED_NOUN_MIN
+
+
 def should_use_follow_up_context(
     query: str,
     *,
@@ -157,9 +193,19 @@ def should_use_follow_up_context(
     previous_user: str,
     previous_assistant: str,
 ) -> bool:
-    """이전 user/assistant turn을 query에 섞어야 하는 follow-up인지 판단한다."""
+    """이전 user/assistant turn을 query에 섞어야 하는 follow-up인지 판단한다.
+
+    ``append_evidence`` 플랜이더라도 쿼리가 자기완결적이면 이전 맥락을
+    주입하지 않는다. 실제 후속 질문(지시대명사·참조 표현 포함 또는
+    _FOLLOW_UP_PATTERNS 매칭)인 경우에만 True를 반환한다.
+    """
     if not (previous_user or previous_assistant):
         return False
+
+    # 자기완결적 쿼리면 append_evidence 플랜이어도 이전 맥락 주입 안 함
+    if is_self_contained_query(query):
+        return False
+
     if "append_evidence" in tool_names:
         return True
     return any(pattern.search(query) for pattern in _FOLLOW_UP_PATTERNS)

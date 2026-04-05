@@ -245,9 +245,7 @@ class TestApprovalExecuteE2E:
 
         accumulated = result.get("accumulated_context", {})
         for tool_name in planned:
-            assert tool_name in accumulated, (
-                f"accumulated_context에 {tool_name} 결과가 없습니다"
-            )
+            assert tool_name in accumulated, f"accumulated_context에 {tool_name} 결과가 없습니다"
             entry = accumulated[tool_name]
             assert entry, f"accumulated_context[{tool_name}]이 비어있습니다"
 
@@ -361,7 +359,9 @@ class TestRejectIdleE2E:
 
         # 세션에 두 run이 모두 기록되어야 한다
         session = session_store.get_or_create(session_id)
-        assert len(session.recent_graph_runs) >= 2, "세션에 2개 이상의 graph_run이 기록되어야 합니다"
+        assert (
+            len(session.recent_graph_runs) >= 2
+        ), "세션에 2개 이상의 graph_run이 기록되어야 합니다"
 
 
 # ---------------------------------------------------------------------------
@@ -417,9 +417,9 @@ class TestEvidenceAugmentationE2E:
             assert tool_name in executed_names, f"{tool_name}이 실행되지 않았습니다"
 
         final_text = result.get("final_text", "")
-        assert "보강된 근거 텍스트" in final_text, (
-            f"final_text에 append_evidence 결과가 포함되어야 합니다. 실제: {final_text!r}"
-        )
+        assert (
+            "보강된 근거 텍스트" in final_text
+        ), f"final_text에 append_evidence 결과가 포함되어야 합니다. 실제: {final_text!r}"
 
     def test_evidence_accumulated_context_chains(self, make_graph):
         """append_evidence 실행 시 accumulated_context에 이전 tool 결과가 포함된다."""
@@ -463,18 +463,20 @@ class TestEvidenceAugmentationE2E:
 
         # executor.calls 순서 검증: rag_search -> api_lookup -> append_evidence
         executed_names = [call[0] for call in executor.calls]
-        assert executed_names.index("rag_search") < executed_names.index("append_evidence"), (
-            "rag_search는 append_evidence보다 먼저 실행되어야 합니다"
-        )
-        assert executed_names.index("api_lookup") < executed_names.index("append_evidence"), (
-            "api_lookup은 append_evidence보다 먼저 실행되어야 합니다"
-        )
+        assert executed_names.index("rag_search") < executed_names.index(
+            "append_evidence"
+        ), "rag_search는 append_evidence보다 먼저 실행되어야 합니다"
+        assert executed_names.index("api_lookup") < executed_names.index(
+            "append_evidence"
+        ), "api_lookup은 append_evidence보다 먼저 실행되어야 합니다"
 
         # accumulated_context에 이전 tool 결과가 포함되어 있어야 한다
         accumulated = result.get("accumulated_context", {})
         assert "rag_search" in accumulated, "accumulated_context에 rag_search 결과가 있어야 합니다"
         assert "api_lookup" in accumulated, "accumulated_context에 api_lookup 결과가 있어야 합니다"
-        assert "append_evidence" in accumulated, "accumulated_context에 append_evidence 결과가 있어야 합니다"
+        assert (
+            "append_evidence" in accumulated
+        ), "accumulated_context에 append_evidence 결과가 있어야 합니다"
 
     def test_draft_then_evidence_follow_up(self, make_graph, session_store):
         """두 번의 연속 graph run: 첫 번째 DRAFT_RESPONSE, 두 번째 APPEND_EVIDENCE."""
@@ -643,9 +645,9 @@ class TestSessionTraceConsistency:
         _approve(graph2, config2)
 
         session = session_store.get_or_create(session_id)
-        assert len(session.recent_graph_runs) >= 2, (
-            f"세션에 2개 이상의 graph_run이 기록되어야 합니다. 실제: {len(session.recent_graph_runs)}"
-        )
+        assert (
+            len(session.recent_graph_runs) >= 2
+        ), f"세션에 2개 이상의 graph_run이 기록되어야 합니다. 실제: {len(session.recent_graph_runs)}"
 
     def test_reject_graph_run_has_zero_executed_capabilities(self, make_graph, session_store):
         """거절 시 graph_run.executed_capabilities가 빈 리스트이고 status가 'rejected'이다."""
@@ -675,12 +677,12 @@ class TestSessionTraceConsistency:
         assert len(graph_runs) > 0, "거절 시에도 graph_run이 기록되어야 합니다"
 
         run = graph_runs[0]
-        assert run.executed_capabilities == [], (
-            f"거절 시 executed_capabilities가 빈 리스트여야 합니다. 실제: {run.executed_capabilities}"
-        )
-        assert run.status == "rejected", (
-            f"거절 시 status가 'rejected'여야 합니다. 실제: {run.status}"
-        )
+        assert (
+            run.executed_capabilities == []
+        ), f"거절 시 executed_capabilities가 빈 리스트여야 합니다. 실제: {run.executed_capabilities}"
+        assert (
+            run.status == "rejected"
+        ), f"거절 시 status가 'rejected'여야 합니다. 실제: {run.status}"
 
     def test_session_messages_reflect_graph_io(self, make_graph, session_store):
         """승인 후 세션에 사용자 메시지와 어시스턴트 메시지가 모두 기록된다."""
@@ -716,20 +718,20 @@ class TestSessionTraceConsistency:
         session = session_store.get_or_create(session_id)
         messages = session.recent_history
 
-        assert len(messages) >= 2, (
-            f"세션에 사용자와 어시스턴트 메시지가 모두 기록되어야 합니다. 실제: {len(messages)}"
-        )
+        assert (
+            len(messages) >= 2
+        ), f"세션에 사용자와 어시스턴트 메시지가 모두 기록되어야 합니다. 실제: {len(messages)}"
 
         roles = [msg.role for msg in messages]
         assert "user" in roles, "사용자 메시지가 기록되어야 합니다"
         assert "assistant" in roles, "어시스턴트 메시지가 기록되어야 합니다"
 
         user_msgs = [msg for msg in messages if msg.role == "user"]
-        assert any(user_query in msg.content for msg in user_msgs), (
-            "사용자 메시지에 원래 쿼리가 포함되어야 합니다"
-        )
+        assert any(
+            user_query in msg.content for msg in user_msgs
+        ), "사용자 메시지에 원래 쿼리가 포함되어야 합니다"
 
         assistant_msgs = [msg for msg in messages if msg.role == "assistant"]
-        assert any(msg.content for msg in assistant_msgs), (
-            "어시스턴트 메시지가 비어있지 않아야 합니다"
-        )
+        assert any(
+            msg.content for msg in assistant_msgs
+        ), "어시스턴트 메시지가 비어있지 않아야 합니다"

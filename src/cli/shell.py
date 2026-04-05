@@ -8,6 +8,7 @@ Entry point registered in pyproject.toml:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 import httpx
@@ -361,28 +362,42 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    daemon = DaemonManager()
+    # GOVON_RUNTIME_URL이 설정된 경우 원격 서버에 직접 연결하고 daemon을 관리하지 않는다.
+    runtime_url = os.environ.get("GOVON_RUNTIME_URL")
 
-    # --status
-    if args.status:
-        if daemon.is_running():
-            print("GovOn daemon: 실행 중")
-        else:
-            print("GovOn daemon: 중지됨")
-        sys.exit(0)
+    if runtime_url:
+        # 원격 런타임 모드: daemon 관리 없이 지정된 URL에 직접 연결
+        if args.status:
+            print(f"GovOn daemon: 원격 모드 (GOVON_RUNTIME_URL={runtime_url})")
+            sys.exit(0)
+        if args.stop:
+            print("오류: 원격 런타임 모드에서는 --stop을 사용할 수 없습니다.", file=sys.stderr)
+            sys.exit(1)
+        base_url = runtime_url.rstrip("/")
+    else:
+        # 로컬 daemon 모드
+        daemon = DaemonManager()
 
-    # --stop
-    if args.stop:
-        daemon.stop()
-        print("GovOn daemon이 중지되었습니다.")
-        sys.exit(0)
+        # --status
+        if args.status:
+            if daemon.is_running():
+                print("GovOn daemon: 실행 중")
+            else:
+                print("GovOn daemon: 중지됨")
+            sys.exit(0)
 
-    # Ensure daemon is up and get base URL
-    try:
-        base_url = daemon.ensure_running()
-    except Exception as exc:
-        print(f"오류: daemon을 시작할 수 없습니다 — {exc}", file=sys.stderr)
-        sys.exit(1)
+        # --stop
+        if args.stop:
+            daemon.stop()
+            print("GovOn daemon이 중지되었습니다.")
+            sys.exit(0)
+
+        # Ensure daemon is up and get base URL
+        try:
+            base_url = daemon.ensure_running()
+        except Exception as exc:
+            print(f"오류: daemon을 시작할 수 없습니다 — {exc}", file=sys.stderr)
+            sys.exit(1)
 
     client = GovOnClient(base_url)
 

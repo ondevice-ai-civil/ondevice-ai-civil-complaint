@@ -55,6 +55,12 @@ dependencies = [
     "numpy>=1.24.0",
     "scikit-learn>=1.3.0",
 
+    # HTTP client (required by cli/daemon.py and cli/http_client.py)
+    "httpx>=0.27.0",
+
+    # Schema validation (required by FastAPI schemas)
+    "pydantic>=2.0.0",
+
     # Utilities
     "tqdm>=4.66.0",
     "python-dotenv>=1.0.0",
@@ -97,6 +103,7 @@ inference = [
     "langgraph-checkpoint==4.0.1",
     "langgraph-checkpoint-sqlite==3.0.3",
     "langchain-core>=1.2.0,<2.0.0",
+    "langchain-openai>=0.3.0",
     "rich>=13.0.0",
     "prompt-toolkit>=3.0.0",
 ]
@@ -108,6 +115,7 @@ database = [
 ]
 
 cli = [
+    "httpx>=0.27.0",
     "prompt_toolkit>=3.0.0",
     "rich>=13.0.0",
 ]

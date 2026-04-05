@@ -4,6 +4,13 @@ Issue #144: CLI-daemon/LangGraph runtime 연동 및 session resume.
 
 uvicorn으로 백그라운드에서 GovOn API 서버를 기동하고,
 PID 파일로 프로세스 상태를 추적한다.
+
+.. note::
+   이 모듈은 **로컬 daemon 전용**입니다.
+   원격 서버에 연결할 때는 ``GOVON_RUNTIME_URL`` 환경변수를 설정하면
+   ``shell.py``의 ``main()``이 이 모듈을 완전히 건너뛰고 지정된 URL에
+   직접 연결합니다. Docker, 클라우드 배포, CI 환경에서는 해당 방식을
+   사용하는 것을 권장합니다.
 """
 
 from __future__ import annotations

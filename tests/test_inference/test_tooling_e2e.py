@@ -318,9 +318,9 @@ class TestDraftResponsePipeline:
 
         # api_action=None이면 유의미한 결과가 없으므로 fallback 메시지여야 한다
         final_text = result.get("final_text", "")
-        assert final_text == "요청을 처리할 수 없습니다.", (
-            f"api_action=None일 때 유의미한 결과가 없으므로 fallback이어야 합니다. 실제: {final_text!r}"
-        )
+        assert (
+            final_text == "요청을 처리할 수 없습니다."
+        ), f"api_action=None일 때 유의미한 결과가 없으므로 fallback이어야 합니다. 실제: {final_text!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -428,18 +428,18 @@ class TestEvidenceAugmentationPipeline:
         _approve(graph, config)
 
         # append_evidence execute_fn이 호출될 때 rag_search 결과가 누적 컨텍스트에 있어야 한다
-        assert "rag_search" in received_context, (
-            "append_evidence 호출 시 context에 rag_search 결과가 있어야 합니다"
-        )
-        assert isinstance(received_context["rag_search"], dict), (
-            "rag_search 결과는 dict이어야 합니다"
-        )
-        assert "api_lookup" in received_context, (
-            "append_evidence 호출 시 context에 api_lookup 결과가 있어야 합니다"
-        )
-        assert isinstance(received_context["api_lookup"], dict), (
-            "api_lookup 결과는 dict이어야 합니다"
-        )
+        assert (
+            "rag_search" in received_context
+        ), "append_evidence 호출 시 context에 rag_search 결과가 있어야 합니다"
+        assert isinstance(
+            received_context["rag_search"], dict
+        ), "rag_search 결과는 dict이어야 합니다"
+        assert (
+            "api_lookup" in received_context
+        ), "append_evidence 호출 시 context에 api_lookup 결과가 있어야 합니다"
+        assert isinstance(
+            received_context["api_lookup"], dict
+        ), "api_lookup 결과는 dict이어야 합니다"
 
     def test_evidence_with_empty_rag(self, make_tooling_graph):
         """rag 결과가 없을 때도 append_evidence 파이프라인이 완료된다.
@@ -852,12 +852,12 @@ class TestEmptyResultScenarios:
         final_text = result.get("final_text", "")
         # rag 결과가 있고 draft가 실패했으므로 rag 기반 출력이 있어야 한다
         # _extract_final_text는 evidence/draft가 없으면 [로컬 문서 근거] 포맷 사용
-        assert "[로컬 문서 근거]" in final_text, (
-            f"rag만 성공 시 '[로컬 문서 근거]' 포맷이어야 합니다. 실제: {final_text!r}"
-        )
-        assert "도로법" in final_text, (
-            f"rag 결과의 제목이 final_text에 포함되어야 합니다. 실제: {final_text!r}"
-        )
+        assert (
+            "[로컬 문서 근거]" in final_text
+        ), f"rag만 성공 시 '[로컬 문서 근거]' 포맷이어야 합니다. 실제: {final_text!r}"
+        assert (
+            "도로법" in final_text
+        ), f"rag 결과의 제목이 final_text에 포함되어야 합니다. 실제: {final_text!r}"
 
 
 # ---------------------------------------------------------------------------

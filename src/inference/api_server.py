@@ -122,9 +122,12 @@ if not SKIP_MODEL_LOAD:
 def _extract_content_by_type(result: dict, index_type: IndexType) -> str:
     extras = result.get("extras", {})
     if index_type == IndexType.CASE:
-        text = (extras.get("complaint_text", "") + "\n" + extras.get("answer_text", "")).strip()
-        if not text:
-            text = extras.get("chunk_text", "")
+        case_text = "\n".join(
+            part
+            for part in (extras.get("complaint_text", ""), extras.get("answer_text", ""))
+            if part
+        ).strip()
+        text = case_text or extras.get("content", "") or extras.get("chunk_text", "")
     elif index_type == IndexType.LAW:
         text = (
             extras.get("law_text", "") or extras.get("content", "") or extras.get("chunk_text", "")
@@ -163,6 +166,7 @@ class vLLMEngineManager:
         self.graph = None  # LangGraph CompiledGraph (v2 엔드포인트용)
         self.local_document_indexer: Optional[Any] = None
         self.local_document_sync_status: Optional[Dict[str, Any]] = None
+        self._local_document_sync_task: Optional[asyncio.Task] = None
         self._checkpointer_ctx = None  # AsyncSqliteSaver 컨텍스트 매니저 (lifespan에서 관리)
         self._sync_checkpointer_conn = None  # SqliteSaver용 sqlite3 connection (leak 방지)
         self._init_agent_loop()
@@ -225,15 +229,44 @@ class vLLMEngineManager:
             self.embed_model = self.retriever.model
 
         if self.index_manager and self.embed_model:
-            self.sync_local_documents()
             self.hybrid_engine = HybridSearchEngine(
                 index_manager=self.index_manager,
                 bm25_indexers=self.bm25_indexers,
                 embed_model=self.embed_model,
             )
             logger.info("HybridSearchEngine 초기화 완료")
+            self._schedule_local_document_sync()
         else:
             logger.warning("HybridSearchEngine 미초기화: index_manager 또는 embed_model 없음")
+
+    def _schedule_local_document_sync(self) -> None:
+        indexer = self._build_local_document_indexer()
+        if indexer is None:
+            return
+        if self._local_document_sync_task and not self._local_document_sync_task.done():
+            return
+
+        self.local_document_sync_status = {
+            "status": "syncing",
+            "root_dir": str(indexer.root_dir),
+            "source_name": indexer.source_name,
+        }
+        self._local_document_sync_task = asyncio.create_task(self._sync_local_documents_async())
+
+    async def _sync_local_documents_async(self) -> Optional[Dict[str, Any]]:
+        try:
+            return await asyncio.to_thread(self.sync_local_documents)
+        except Exception as exc:
+            logger.error(f"백그라운드 로컬 문서 인덱싱 실패: {exc}", exc_info=True)
+            if self.local_document_indexer is None:
+                return None
+            self.local_document_sync_status = {
+                "status": "error",
+                "root_dir": str(self.local_document_indexer.root_dir),
+                "source_name": self.local_document_indexer.source_name,
+                "error": str(exc),
+            }
+            return self.local_document_sync_status
 
     def _build_local_document_indexer(self) -> Optional[Any]:
         global SessionLocal, LocalDocumentIndexer

@@ -418,6 +418,35 @@ class TestLocalDocumentSync:
         assert result is None
         mock_indexer_cls.assert_not_called()
 
+    def test_schedule_local_document_sync_marks_syncing_and_creates_task(self):
+        fake_indexer = MagicMock()
+        fake_indexer.root_dir = "/tmp/local-docs"
+        fake_indexer.source_name = "local-docs:test"
+
+        with patch.object(self.mgr, "_build_local_document_indexer", return_value=fake_indexer):
+            with patch("src.inference.api_server.asyncio.create_task") as mock_create_task:
+                mock_create_task.return_value = MagicMock()
+                self.mgr._schedule_local_document_sync()
+
+        assert self.mgr.local_document_sync_status == {
+            "status": "syncing",
+            "root_dir": "/tmp/local-docs",
+            "source_name": "local-docs:test",
+        }
+        mock_create_task.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_sync_local_documents_async_uses_to_thread(self):
+        expected = {"status": "ok"}
+        with patch(
+            "src.inference.api_server.asyncio.to_thread", new_callable=AsyncMock
+        ) as mock_to_thread:
+            mock_to_thread.return_value = expected
+            result = await self.mgr._sync_local_documents_async()
+
+        mock_to_thread.assert_awaited_once_with(self.mgr.sync_local_documents)
+        assert result == expected
+
 
 class TestImportWithoutSqlalchemy:
     def test_api_server_imports_without_sqlalchemy_when_local_docs_disabled(self):

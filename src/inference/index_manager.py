@@ -7,6 +7,8 @@ MultiIndexManager: ADR-004 기반 다중 FAISS 인덱스 관리 모듈.
 
 import json
 import os
+import tempfile
+import threading
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -95,6 +97,7 @@ class MultiIndexManager:
         self.embedding_dim: int = embedding_dim
         self.indexes: Dict[IndexType, faiss.Index] = {}
         self.metadata: Dict[IndexType, List[DocumentMetadata]] = {}
+        self._lock = threading.RLock()
 
         os.makedirs(self.base_dir, exist_ok=True)
 
@@ -145,60 +148,97 @@ class MultiIndexManager:
 
         인덱스 파일이 존재하지 않으면 새 빈 인덱스를 생성한다.
         """
-        index_dir = os.path.join(self.base_dir, index_type.value)
-        index_path = os.path.join(index_dir, "index.faiss")
-        meta_path = os.path.join(index_dir, "metadata.json")
+        with self._lock:
+            index_dir = os.path.join(self.base_dir, index_type.value)
+            index_path = os.path.join(index_dir, "index.faiss")
+            meta_path = os.path.join(index_dir, "metadata.json")
 
-        if os.path.exists(index_path):
-            self.indexes[index_type] = faiss.read_index(index_path)
-            logger.info(
-                f"FAISS 인덱스 로드 완료: {index_path} "
-                f"(벡터 수: {self.indexes[index_type].ntotal})"
-            )
-        else:
-            logger.info(f"인덱스 파일 없음, 새 인덱스 생성: {index_type.value}")
-            self.indexes[index_type] = self._create_index(index_type)
+            if os.path.exists(index_path):
+                self.indexes[index_type] = faiss.read_index(index_path)
+                logger.info(
+                    f"FAISS 인덱스 로드 완료: {index_path} "
+                    f"(벡터 수: {self.indexes[index_type].ntotal})"
+                )
+            else:
+                logger.info(f"인덱스 파일 없음, 새 인덱스 생성: {index_type.value}")
+                self.indexes[index_type] = self._create_index(index_type)
 
-        if os.path.exists(meta_path):
-            with open(meta_path, "r", encoding="utf-8") as f:
-                raw_list = json.load(f)
-            self.metadata[index_type] = [DocumentMetadata.from_dict(item) for item in raw_list]
-            logger.info(
-                f"메타데이터 로드 완료: {meta_path} " f"(문서 수: {len(self.metadata[index_type])})"
-            )
-        else:
-            self.metadata[index_type] = []
+            if os.path.exists(meta_path):
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    raw_list = json.load(f)
+                self.metadata[index_type] = [DocumentMetadata.from_dict(item) for item in raw_list]
+                logger.info(
+                    f"메타데이터 로드 완료: {meta_path} "
+                    f"(문서 수: {len(self.metadata[index_type])})"
+                )
+            else:
+                self.metadata[index_type] = []
 
-        return self.indexes[index_type]
+            return self.indexes[index_type]
 
     def save_index(self, index_type: IndexType) -> None:
         """FAISS 인덱스 + 메타데이터 JSON을 저장하고 레지스트리를 갱신한다."""
-        if index_type not in self.indexes:
-            raise ValueError(f"인덱스가 로드되지 않았습니다: {index_type.value}")
+        with self._lock:
+            if index_type not in self.indexes:
+                raise ValueError(f"인덱스가 로드되지 않았습니다: {index_type.value}")
 
-        index_dir = os.path.join(self.base_dir, index_type.value)
-        os.makedirs(index_dir, exist_ok=True)
+            index_dir = os.path.join(self.base_dir, index_type.value)
+            os.makedirs(index_dir, exist_ok=True)
 
-        index_path = os.path.join(index_dir, "index.faiss")
-        meta_path = os.path.join(index_dir, "metadata.json")
+            index_path = os.path.join(index_dir, "index.faiss")
+            meta_path = os.path.join(index_dir, "metadata.json")
 
-        faiss.write_index(self.indexes[index_type], index_path)
-        logger.info(f"FAISS 인덱스 저장: {index_path}")
+            fd_index, temp_index_path = tempfile.mkstemp(
+                prefix=f"{index_type.value}-",
+                suffix=".faiss.tmp",
+                dir=index_dir,
+            )
+            os.close(fd_index)
+            fd_meta, temp_meta_path = tempfile.mkstemp(
+                prefix=f"{index_type.value}-",
+                suffix=".metadata.json.tmp",
+                dir=index_dir,
+            )
+            os.close(fd_meta)
 
-        meta_list = [m.to_dict() for m in self.metadata.get(index_type, [])]
-        with open(meta_path, "w", encoding="utf-8") as f:
-            json.dump(meta_list, f, ensure_ascii=False, indent=2)
-        logger.info(f"메타데이터 저장: {meta_path}")
+            try:
+                faiss.write_index(self.indexes[index_type], temp_index_path)
+                meta_list = [m.to_dict() for m in self.metadata.get(index_type, [])]
+                with open(temp_meta_path, "w", encoding="utf-8") as f:
+                    json.dump(meta_list, f, ensure_ascii=False, indent=2)
 
-        # 레지스트리 갱신
-        now_iso = datetime.now(timezone.utc).isoformat()
-        self._registry.setdefault("indexes", {})[index_type.value] = {
-            "doc_count": self.indexes[index_type].ntotal,
-            "index_class": type(self.indexes[index_type]).__name__,
-            "embedding_dim": self.embedding_dim,
-            "last_updated": now_iso,
-        }
-        self._save_registry()
+                os.replace(temp_index_path, index_path)
+                os.replace(temp_meta_path, meta_path)
+            finally:
+                for temp_path in (temp_index_path, temp_meta_path):
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+
+            logger.info(f"FAISS 인덱스 저장: {index_path}")
+            logger.info(f"메타데이터 저장: {meta_path}")
+
+            # 레지스트리 갱신
+            now_iso = datetime.now(timezone.utc).isoformat()
+            self._registry.setdefault("indexes", {})[index_type.value] = {
+                "doc_count": self.indexes[index_type].ntotal,
+                "index_class": type(self.indexes[index_type]).__name__,
+                "embedding_dim": self.embedding_dim,
+                "last_updated": now_iso,
+            }
+            self._save_registry()
+
+    def replace_index(
+        self,
+        index_type: IndexType,
+        vectors: np.ndarray,
+        metadata: List[DocumentMetadata],
+    ) -> None:
+        """새 벡터/메타데이터 스냅샷으로 인덱스를 원자적으로 교체한다."""
+        with self._lock:
+            new_index, new_metadata = self._build_index_state(index_type, vectors, metadata)
+            self.indexes[index_type] = new_index
+            self.metadata[index_type] = new_metadata
+            logger.info(f"인덱스 교체 완료: type={index_type.value}, 문서 수={len(new_metadata)}")
 
     # ------------------------------------------------------------------
     # 검색
@@ -226,42 +266,43 @@ class MultiIndexManager:
         List[Dict[str, Any]]
             ``score`` 와 메타데이터 필드를 포함하는 딕셔너리 리스트.
         """
-        if index_type not in self.indexes:
-            # 아직 로드되지 않은 인덱스이면 로드 시도
-            self.load_index(index_type)
+        with self._lock:
+            if index_type not in self.indexes:
+                # 아직 로드되지 않은 인덱스이면 로드 시도
+                self.load_index(index_type)
 
-        index = self.indexes[index_type]
-        if index.ntotal == 0:
-            logger.warning(f"인덱스가 비어 있습니다: {index_type.value}")
-            return []
+            index = self.indexes[index_type]
+            if index.ntotal == 0:
+                logger.warning(f"인덱스가 비어 있습니다: {index_type.value}")
+                return []
 
-        # 쿼리 벡터 shape 보정
-        qv = np.asarray(query_vector, dtype=np.float32)
-        if qv.ndim == 1:
-            qv = qv.reshape(1, -1)
+            # 쿼리 벡터 shape 보정
+            qv = np.asarray(query_vector, dtype=np.float32)
+            if qv.ndim == 1:
+                qv = qv.reshape(1, -1)
 
-        # IVFFlat 인덱스인 경우 nprobe 설정
-        if hasattr(index, "nprobe"):
-            index.nprobe = _IVF_NPROBE
+            # IVFFlat 인덱스인 경우 nprobe 설정
+            if hasattr(index, "nprobe"):
+                index.nprobe = _IVF_NPROBE
 
-        actual_k = min(top_k, index.ntotal)
-        distances, indices = index.search(qv, actual_k)
+            actual_k = min(top_k, index.ntotal)
+            distances, indices = index.search(qv, actual_k)
 
-        meta_list = self.metadata.get(index_type, [])
-        results: List[Dict[str, Any]] = []
-        for dist, idx in zip(distances[0], indices[0]):
-            if idx == -1:
-                continue
-            if idx < len(meta_list):
-                item = meta_list[idx].to_dict()
-                item["score"] = float(dist)
-                results.append(item)
-            else:
-                logger.warning(
-                    f"메타데이터 인덱스 범위 초과: idx={idx}, " f"meta_len={len(meta_list)}"
-                )
+            meta_list = self.metadata.get(index_type, [])
+            results: List[Dict[str, Any]] = []
+            for dist, idx in zip(distances[0], indices[0]):
+                if idx == -1:
+                    continue
+                if idx < len(meta_list):
+                    item = meta_list[idx].to_dict()
+                    item["score"] = float(dist)
+                    results.append(item)
+                else:
+                    logger.warning(
+                        f"메타데이터 인덱스 범위 초과: idx={idx}, " f"meta_len={len(meta_list)}"
+                    )
 
-        return results
+            return results
 
     # ------------------------------------------------------------------
     # 문서 추가
@@ -284,43 +325,45 @@ class MultiIndexManager:
         metadata : List[DocumentMetadata]
             각 벡터에 대응하는 메타데이터 리스트.
         """
-        if vectors.shape[0] != len(metadata):
-            raise ValueError(
-                f"벡터 수({vectors.shape[0]})와 "
-                f"메타데이터 수({len(metadata)})가 일치하지 않습니다."
-            )
-        if vectors.shape[1] != self.embedding_dim:
-            raise ValueError(
-                f"벡터 차원({vectors.shape[1]})이 "
-                f"설정 차원({self.embedding_dim})과 일치하지 않습니다."
-            )
+        with self._lock:
+            if vectors.shape[0] != len(metadata):
+                raise ValueError(
+                    f"벡터 수({vectors.shape[0]})와 "
+                    f"메타데이터 수({len(metadata)})가 일치하지 않습니다."
+                )
+            if vectors.shape[1] != self.embedding_dim:
+                raise ValueError(
+                    f"벡터 차원({vectors.shape[1]})이 "
+                    f"설정 차원({self.embedding_dim})과 일치하지 않습니다."
+                )
 
-        # 인덱스가 아직 없으면 생성
-        if index_type not in self.indexes:
-            self.indexes[index_type] = self._create_index(index_type)
-            self.metadata[index_type] = []
+            # 인덱스가 아직 없으면 생성
+            if index_type not in self.indexes:
+                self.indexes[index_type] = self._create_index(index_type)
+                self.metadata[index_type] = []
 
-        vecs = np.asarray(vectors, dtype=np.float32)
+            vecs = np.asarray(vectors, dtype=np.float32)
 
-        # IVFFlat 인덱스에 추가할 때는 train 여부 확인
-        index = self.indexes[index_type]
-        if hasattr(index, "is_trained") and not index.is_trained:
-            logger.warning(
-                f"IVFFlat 인덱스가 학습되지 않았습니다. "
-                f"Flat 인덱스로 폴백합니다: {index_type.value}"
-            )
-            self.indexes[index_type] = self._create_index(index_type)
+            # IVFFlat 인덱스에 추가할 때는 train 여부 확인
             index = self.indexes[index_type]
+            if hasattr(index, "is_trained") and not index.is_trained:
+                logger.warning(
+                    f"IVFFlat 인덱스가 학습되지 않았습니다. "
+                    f"Flat 인덱스로 폴백합니다: {index_type.value}"
+                )
+                self.indexes[index_type] = self._create_index(index_type)
+                index = self.indexes[index_type]
 
-        index.add(vecs)
-        self.metadata[index_type].extend(metadata)
+            index.add(vecs)
+            self.metadata[index_type].extend(metadata)
 
-        logger.info(
-            f"문서 추가 완료: type={index_type.value}, " f"추가={len(metadata)}, 총={index.ntotal}"
-        )
+            logger.info(
+                f"문서 추가 완료: type={index_type.value}, "
+                f"추가={len(metadata)}, 총={index.ntotal}"
+            )
 
-        # IVFFlat 자동 전환 체크
-        self._maybe_upgrade_to_ivf(index_type)
+            # IVFFlat 자동 전환 체크
+            self._maybe_upgrade_to_ivf(index_type)
 
     # ------------------------------------------------------------------
     # IVFFlat 자동 전환
@@ -334,44 +377,15 @@ class MultiIndexManager:
         - 이미 IVFFlat 이면 스킵
         - 기존 벡터를 모두 보존한다.
         """
-        index = self.indexes.get(index_type)
-        if index is None:
-            return
+        with self._lock:
+            index = self.indexes.get(index_type)
+            if index is None:
+                return
 
-        # 이미 IVF 계열이면 스킵
-        if isinstance(index, faiss.IndexIVFFlat):
-            return
-
-        if index.ntotal < _IVF_THRESHOLD:
-            return
-
-        logger.info(
-            f"IVFFlat 전환 시작: type={index_type.value}, "
-            f"문서 수={index.ntotal}, nlist={_IVF_NLIST}"
-        )
-
-        # 기존 벡터 추출
-        n = index.ntotal
-        vectors = (
-            faiss.rev_swig_ptr(index.get_xb(), n * self.embedding_dim)
-            .reshape(n, self.embedding_dim)
-            .copy()
-        )
-
-        # IVFFlat 인덱스 생성
-        quantizer = faiss.IndexFlatIP(self.embedding_dim)
-        ivf_index = faiss.IndexIVFFlat(
-            quantizer, self.embedding_dim, _IVF_NLIST, faiss.METRIC_INNER_PRODUCT
-        )
-        ivf_index.nprobe = _IVF_NPROBE
-
-        # 학습 및 벡터 재추가
-        logger.info(f"IVFFlat 학습 중 (벡터 수: {n})...")
-        ivf_index.train(vectors)
-        ivf_index.add(vectors)
-
-        self.indexes[index_type] = ivf_index
-        logger.info(f"IVFFlat 전환 완료: type={index_type.value}, " f"ntotal={ivf_index.ntotal}")
+            upgraded = self._build_ivf_index(index_type, index)
+            if upgraded is not index:
+                self.indexes[index_type] = upgraded
+                logger.info(f"IVFFlat 전환 완료: type={index_type.value}, ntotal={upgraded.ntotal}")
 
     # ------------------------------------------------------------------
     # 통계
@@ -379,33 +393,92 @@ class MultiIndexManager:
 
     def get_index_stats(self) -> Dict[str, Any]:
         """각 인덱스의 문서 수, 마지막 갱신 등 통계를 반환한다."""
-        stats: Dict[str, Any] = {
-            "base_dir": self.base_dir,
-            "embedding_dim": self.embedding_dim,
-            "indexes": {},
-        }
+        with self._lock:
+            stats: Dict[str, Any] = {
+                "base_dir": self.base_dir,
+                "embedding_dim": self.embedding_dim,
+                "indexes": {},
+            }
 
-        registry_indexes = self._registry.get("indexes", {})
+            registry_indexes = self._registry.get("indexes", {})
 
-        for index_type in IndexType:
-            entry: Dict[str, Any] = {}
-            if index_type in self.indexes:
-                idx = self.indexes[index_type]
-                entry["loaded"] = True
-                entry["doc_count"] = idx.ntotal
-                entry["index_class"] = type(idx).__name__
-                entry["metadata_count"] = len(self.metadata.get(index_type, []))
-            else:
-                entry["loaded"] = False
-                entry["doc_count"] = 0
+            for index_type in IndexType:
+                entry: Dict[str, Any] = {}
+                if index_type in self.indexes:
+                    idx = self.indexes[index_type]
+                    entry["loaded"] = True
+                    entry["doc_count"] = idx.ntotal
+                    entry["index_class"] = type(idx).__name__
+                    entry["metadata_count"] = len(self.metadata.get(index_type, []))
+                else:
+                    entry["loaded"] = False
+                    entry["doc_count"] = 0
 
-            # 레지스트리 정보 병합
-            if index_type.value in registry_indexes:
-                reg = registry_indexes[index_type.value]
-                entry["last_updated"] = reg.get("last_updated")
-            else:
-                entry["last_updated"] = None
+                # 레지스트리 정보 병합
+                if index_type.value in registry_indexes:
+                    reg = registry_indexes[index_type.value]
+                    entry["last_updated"] = reg.get("last_updated")
+                else:
+                    entry["last_updated"] = None
 
-            stats["indexes"][index_type.value] = entry
+                stats["indexes"][index_type.value] = entry
 
-        return stats
+            return stats
+
+    def _build_index_state(
+        self,
+        index_type: IndexType,
+        vectors: np.ndarray,
+        metadata: List[DocumentMetadata],
+    ) -> tuple[faiss.Index, List[DocumentMetadata]]:
+        if metadata:
+            if vectors.shape[0] != len(metadata):
+                raise ValueError(
+                    f"벡터 수({vectors.shape[0]})와 "
+                    f"메타데이터 수({len(metadata)})가 일치하지 않습니다."
+                )
+            if vectors.shape[1] != self.embedding_dim:
+                raise ValueError(
+                    f"벡터 차원({vectors.shape[1]})이 "
+                    f"설정 차원({self.embedding_dim})과 일치하지 않습니다."
+                )
+            vecs = np.asarray(vectors, dtype=np.float32)
+        else:
+            vecs = np.empty((0, self.embedding_dim), dtype=np.float32)
+
+        index = self._create_index(index_type)
+        if vecs.shape[0] > 0:
+            index.add(vecs)
+            index = self._build_ivf_index(index_type, index)
+        return index, list(metadata)
+
+    def _build_ivf_index(self, index_type: IndexType, index: faiss.Index) -> faiss.Index:
+        # 이미 IVF 계열이면 스킵
+        if isinstance(index, faiss.IndexIVFFlat):
+            return index
+
+        if index.ntotal < _IVF_THRESHOLD:
+            return index
+
+        logger.info(
+            f"IVFFlat 전환 시작: type={index_type.value}, "
+            f"문서 수={index.ntotal}, nlist={_IVF_NLIST}"
+        )
+
+        n = index.ntotal
+        vectors = (
+            faiss.rev_swig_ptr(index.get_xb(), n * self.embedding_dim)
+            .reshape(n, self.embedding_dim)
+            .copy()
+        )
+
+        quantizer = faiss.IndexFlatIP(self.embedding_dim)
+        ivf_index = faiss.IndexIVFFlat(
+            quantizer, self.embedding_dim, _IVF_NLIST, faiss.METRIC_INNER_PRODUCT
+        )
+        ivf_index.nprobe = _IVF_NPROBE
+
+        logger.info(f"IVFFlat 학습 중 (벡터 수: {n})...")
+        ivf_index.train(vectors)
+        ivf_index.add(vectors)
+        return ivf_index

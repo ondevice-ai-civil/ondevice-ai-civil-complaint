@@ -369,9 +369,12 @@ class TestParsePdf:
     def test_process_pdf_with_mock(self, processor: DocumentProcessor, tmp_pdf: Path):
         import src.inference.document_processor as dp
 
-        with patch.dict(
-            dp._PARSERS,
-            {".pdf": lambda fp: "법령 제1조 내용입니다.\n\n법령 제2조 내용입니다."},
+        with (
+            patch.dict(
+                dp._PARSERS,
+                {".pdf": lambda fp: "법령 제1조 내용입니다.\n\n법령 제2조 내용입니다."},
+            ),
+            patch.dict(dp._PAGE_PARSERS, {".pdf": None}, clear=False),
         ):
             results = processor.process(str(tmp_pdf), IndexType.LAW, source="법제처")
 
@@ -380,12 +383,17 @@ class TestParsePdf:
         assert results[0].source == "법제처"
 
     def test_process_pdf_preserves_page_metadata(self, processor: DocumentProcessor, tmp_pdf: Path):
-        with patch(
-            "src.inference.document_processor._parse_pdf_pages",
-            return_value=[
-                (1, "제1조 도로 점검 기준"),
-                (2, "제2조 도로 보수 절차"),
-            ],
+        import src.inference.document_processor as dp
+
+        with patch.dict(
+            dp._PAGE_PARSERS,
+            {
+                ".pdf": lambda fp: [
+                    (1, "제1조 도로 점검 기준"),
+                    (2, "제2조 도로 보수 절차"),
+                ]
+            },
+            clear=False,
         ):
             results = processor.process(str(tmp_pdf), IndexType.LAW, source="법제처")
 

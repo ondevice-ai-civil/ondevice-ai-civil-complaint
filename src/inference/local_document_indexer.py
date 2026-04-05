@@ -17,12 +17,12 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
 import numpy as np
 from loguru import logger
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from src.inference.db.crud import create_document_source, create_index_version, deactivate_versions
 from src.inference.db.models import DocumentSource
@@ -36,6 +36,9 @@ _LAYOUT_DIRS: Dict[IndexType, str] = {
     IndexType.NOTICE: "notice",
 }
 
+if set(_LAYOUT_DIRS) != set(IndexType):
+    raise ValueError("_LAYOUT_DIRS와 IndexType enum이 동기화되어야 합니다.")
+
 
 @dataclass(frozen=True)
 class ScannedDocument:
@@ -43,7 +46,14 @@ class ScannedDocument:
     path: Path
     relative_path: str
     source_id: str
-    fingerprint: str
+    stat_signature: str
+
+
+@dataclass(frozen=True)
+class PreparedIndexSnapshot:
+    index_type: IndexType
+    vectors: np.ndarray
+    metadata: List[DocumentMetadata]
 
 
 @dataclass
@@ -66,7 +76,7 @@ class LocalDocumentIndexer:
         root_dir: str | os.PathLike[str],
         index_manager: MultiIndexManager,
         embed_model: Any,
-        session_factory: Callable[[], Session],
+        session_factory: sessionmaker[Session],
         processor: DocumentProcessor | None = None,
     ) -> None:
         self.root_dir = Path(root_dir).expanduser().resolve()
@@ -74,10 +84,8 @@ class LocalDocumentIndexer:
         self.embed_model = embed_model
         self.session_factory = session_factory
         self.processor = processor or DocumentProcessor()
-        root_hash = hashlib.sha1(
-            str(self.root_dir).encode("utf-8"),
-            usedforsecurity=False,
-        ).hexdigest()[:12]
+        self.ensure_layout()
+        root_hash = hashlib.sha256(str(self.root_dir).encode("utf-8")).hexdigest()[:12]
         self.source_name = f"local-docs:{root_hash}"
 
     def ensure_layout(self) -> None:
@@ -115,7 +123,7 @@ class LocalDocumentIndexer:
                         path=path,
                         relative_path=relative_path,
                         source_id=self._build_source_id(index_type, relative_path),
-                        fingerprint=self._fingerprint(path),
+                        stat_signature=self._build_stat_signature(path),
                     )
                 )
 
@@ -123,63 +131,80 @@ class LocalDocumentIndexer:
 
     def sync(self) -> IndexSyncSummary:
         """scan-based incremental indexing을 수행한다."""
-        self.ensure_layout()
         scanned, skipped = self.scan_files()
         scanned_map = {(doc.index_type.value, doc.source_id): doc for doc in scanned}
         summary = IndexSyncSummary(
             scanned_files=len(scanned),
             skipped_files=sorted(skipped),
         )
+        prepared_snapshots: List[PreparedIndexSnapshot] = []
 
         with self.session_factory() as db:
-            existing_groups = self._load_existing_groups(db)
-            affected_types: set[IndexType] = set()
+            try:
+                existing_groups = self._load_existing_groups(db)
+                affected_types: set[IndexType] = set()
 
-            for key, rows in existing_groups.items():
-                if key in scanned_map:
-                    continue
-                for row in rows:
-                    db.delete(row)
-                summary.removed_files += 1
-                affected_types.add(IndexType(rows[0].source_type))
-
-            for key, scanned_doc in scanned_map.items():
-                existing_rows = existing_groups.get(key)
-                existing_fingerprint = self._group_fingerprint(existing_rows)
-                if existing_rows and existing_fingerprint == scanned_doc.fingerprint:
-                    summary.unchanged_files += 1
-                    continue
-
-                try:
-                    processed = self._process_document(scanned_doc)
-                except Exception as exc:
-                    logger.error(f"로컬 문서 처리 실패: {scanned_doc.path} — {exc}")
-                    summary.failed_files.append((str(scanned_doc.path), str(exc)))
-                    continue
-
-                if existing_rows:
-                    for row in existing_rows:
+                for key, rows in existing_groups.items():
+                    if key in scanned_map:
+                        continue
+                    for row in rows:
                         db.delete(row)
-                    db.flush()
+                    summary.removed_files += 1
+                    affected_types.add(IndexType(rows[0].source_type))
 
-                for meta in processed:
-                    content = meta.extras.get("chunk_text", "") if meta.extras else ""
-                    kwargs = self._to_document_source_kwargs(meta, content)
-                    create_document_source(db, **kwargs)
+                for key, scanned_doc in scanned_map.items():
+                    existing_rows = existing_groups.get(key)
+                    existing_fingerprint = self._group_fingerprint(existing_rows)
 
-                summary.indexed_files += 1
-                summary.indexed_chunks += len(processed)
-                affected_types.add(scanned_doc.index_type)
+                    try:
+                        fingerprint = self._resolve_fingerprint(scanned_doc, existing_fingerprint)
+                        if existing_rows and fingerprint is None:
+                            summary.unchanged_files += 1
+                            continue
 
-            for index_type in sorted(affected_types, key=lambda item: item.value):
-                self._rebuild_index_from_snapshot(db, index_type)
-                summary.rebuilt_index_types.append(index_type.value)
+                        processed = self._process_document(scanned_doc, fingerprint=fingerprint)
+                    except Exception as exc:
+                        logger.error(f"로컬 문서 처리 실패: {scanned_doc.path} — {exc}")
+                        summary.failed_files.append((str(scanned_doc.path), str(exc)))
+                        continue
 
-            db.commit()
+                    if existing_rows:
+                        for row in existing_rows:
+                            db.delete(row)
+                        db.flush()
+
+                    for meta in processed:
+                        content = meta.extras.get("chunk_text", "") if meta.extras else ""
+                        kwargs = self._to_document_source_kwargs(meta, content)
+                        create_document_source(db, **kwargs)
+
+                    summary.indexed_files += 1
+                    summary.indexed_chunks += len(processed)
+                    affected_types.add(scanned_doc.index_type)
+
+                for index_type in sorted(affected_types, key=lambda item: item.value):
+                    prepared_snapshots.append(self._prepare_index_snapshot(db, index_type))
+                    summary.rebuilt_index_types.append(index_type.value)
+
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
+
+        for snapshot in prepared_snapshots:
+            self.index_manager.replace_index(
+                snapshot.index_type, snapshot.vectors, snapshot.metadata
+            )
+            self.index_manager.save_index(snapshot.index_type)
 
         return summary
 
-    def _process_document(self, scanned_doc: ScannedDocument) -> List[DocumentMetadata]:
+    def _process_document(
+        self,
+        scanned_doc: ScannedDocument,
+        *,
+        fingerprint: str,
+    ) -> List[DocumentMetadata]:
         return self.processor.process(
             str(scanned_doc.path),
             scanned_doc.index_type,
@@ -188,7 +213,7 @@ class LocalDocumentIndexer:
             document_id=scanned_doc.source_id,
             extras={
                 "relative_path": scanned_doc.relative_path,
-                "file_fingerprint": scanned_doc.fingerprint,
+                "file_fingerprint": fingerprint,
             },
         )
 
@@ -224,16 +249,51 @@ class LocalDocumentIndexer:
         return hashlib.sha256(raw).hexdigest()[:24]
 
     @staticmethod
-    def _fingerprint(path: Path) -> str:
+    def _build_stat_signature(path: Path) -> str:
         stat = path.stat()
+        return f"{stat.st_size}:{stat.st_mtime_ns}"
+
+    @staticmethod
+    def _fingerprint(path: Path, stat_signature: str | None = None) -> str:
+        signature = stat_signature or LocalDocumentIndexer._build_stat_signature(path)
         digest = hashlib.sha256()
-        digest.update(f"{stat.st_size}:{stat.st_mtime_ns}".encode("utf-8"))
+        digest.update(signature.encode("utf-8"))
         with path.open("rb") as handle:
             for chunk in iter(lambda: handle.read(1024 * 1024), b""):
                 digest.update(chunk)
-        return digest.hexdigest()
+        return f"{signature}:{digest.hexdigest()}"
 
-    def _rebuild_index_from_snapshot(self, db: Session, index_type: IndexType) -> None:
+    @staticmethod
+    def _matches_stat_signature(
+        existing_fingerprint: str | None,
+        stat_signature: str,
+    ) -> bool:
+        return bool(existing_fingerprint and existing_fingerprint.startswith(f"{stat_signature}:"))
+
+    def _resolve_fingerprint(
+        self,
+        scanned_doc: ScannedDocument,
+        existing_fingerprint: str | None,
+    ) -> str | None:
+        if self._matches_stat_signature(existing_fingerprint, scanned_doc.stat_signature):
+            return None
+
+        fingerprint = self._fingerprint(scanned_doc.path, scanned_doc.stat_signature)
+        if existing_fingerprint == fingerprint:
+            return None
+        return fingerprint
+
+    def _prepare_index_snapshot(
+        self,
+        db: Session,
+        index_type: IndexType,
+    ) -> PreparedIndexSnapshot:
+        """DB의 active snapshot을 기준으로 인덱스 재빌드용 데이터를 준비한다.
+
+        index_type별 FAISS 인덱스는 source_name이 아니라 active DB snapshot 전체를
+        source of truth로 사용한다. 로컬 문서 sync도 같은 type의 기존 문서를 보존한 채
+        최신 스냅샷으로 재구성한다.
+        """
         stmt = (
             select(DocumentSource)
             .where(
@@ -244,19 +304,18 @@ class LocalDocumentIndexer:
         )
         rows = list(db.scalars(stmt).all())
 
-        self.index_manager.indexes[index_type] = self.index_manager._create_index(index_type)
-        self.index_manager.metadata[index_type] = []
-
         if rows:
             contents = [row.content for row in rows]
             vectors = self._encode_passages(contents)
             metadata = [self._row_to_metadata(row) for row in rows]
-            self.index_manager.add_documents(index_type, vectors, metadata)
             for position, row in enumerate(rows):
                 row.faiss_index_id = position
+        else:
+            vectors = np.empty((0, self.index_manager.embedding_dim), dtype=np.float32)
+            metadata = []
 
-        self.index_manager.save_index(index_type)
         self._record_index_version(db, index_type, len(rows))
+        return PreparedIndexSnapshot(index_type=index_type, vectors=vectors, metadata=metadata)
 
     def _row_to_metadata(self, row: DocumentSource) -> DocumentMetadata:
         extras = dict(row.metadata_ or {})

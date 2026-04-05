@@ -1,6 +1,6 @@
 import hashlib
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -177,12 +177,17 @@ class TestLocalDocumentIndexerSync:
         pdf_path = root_dir / "law" / "road-law.pdf"
         pdf_path.touch()
 
-        with patch(
-            "src.inference.document_processor._parse_pdf_pages",
-            return_value=[
-                (1, "제1조 도로 점검 기준"),
-                (2, "제2조 도로 보수 절차"),
-            ],
+        import src.inference.document_processor as dp
+
+        with patch.dict(
+            dp._PAGE_PARSERS,
+            {
+                ".pdf": lambda fp: [
+                    (1, "제1조 도로 점검 기준"),
+                    (2, "제2조 도로 보수 절차"),
+                ]
+            },
+            clear=False,
         ):
             summary = service.sync()
 
@@ -200,3 +205,35 @@ class TestLocalDocumentIndexerSync:
             assert [doc.metadata_.get("page") for doc in docs] == [1, 2]
 
         assert [meta.extras.get("page") for meta in manager.metadata[IndexType.LAW]] == [1, 2]
+
+    def test_commit_failure_does_not_replace_or_save_faiss(self, tmp_path, db_engine):
+        service, SessionFactory, manager, root_dir = _make_service(tmp_path, db_engine)
+        service.ensure_layout()
+        (root_dir / "case" / "road.txt").write_text("도로 포장 파손 보수 절차", encoding="utf-8")
+
+        class _FailingCommitSession:
+            def __init__(self, session):
+                self._session = session
+
+            def __enter__(self):
+                self._session.__enter__()
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return self._session.__exit__(exc_type, exc, tb)
+
+            def __getattr__(self, name):
+                return getattr(self._session, name)
+
+            def commit(self):
+                raise RuntimeError("commit failed")
+
+        service.session_factory = lambda: _FailingCommitSession(SessionFactory())
+
+        with patch.object(manager, "replace_index", MagicMock()) as mock_replace:
+            with patch.object(manager, "save_index", MagicMock()) as mock_save:
+                with pytest.raises(RuntimeError, match="commit failed"):
+                    service.sync()
+
+        mock_replace.assert_not_called()
+        mock_save.assert_not_called()

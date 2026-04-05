@@ -130,6 +130,10 @@ _PARSERS = {
     ".txt": _parse_txt,
 }
 
+_PAGE_PARSERS = {
+    ".pdf": _parse_pdf_pages,
+}
+
 
 # ---------------------------------------------------------------------------
 # 텍스트 정제
@@ -392,6 +396,15 @@ class DocumentProcessor:
     ) -> List[DocumentMetadata]:
         """파일을 파싱 → 정제 → 청킹하여 DocumentMetadata 리스트를 반환한다.
 
+        Parameters
+        ----------
+        file_path : str
+            파싱할 원본 문서 경로.
+        doc_type : IndexType
+            문서의 semantic type.
+        document_id : Optional[str]
+            원본 문서 단위의 안정 ID. 지정되면 생성되는 모든 chunk가 같은 doc_id를 공유한다.
+
         Returns
         -------
         List[DocumentMetadata]
@@ -410,8 +423,9 @@ class DocumentProcessor:
         logger.info(f"문서 파싱 시작: {file_path} (type={doc_type.value})")
 
         units: List[Tuple[Optional[int], str]] = []
-        if ext == ".pdf" and _PARSERS.get(ext) is _parse_pdf:
-            for page_number, page_text in _parse_pdf_pages(file_path):
+        page_parser = _PAGE_PARSERS.get(ext)
+        if page_parser is not None:
+            for page_number, page_text in page_parser(file_path):
                 cleaned_page = _clean_text(page_text)
                 if cleaned_page:
                     units.append((page_number, cleaned_page))

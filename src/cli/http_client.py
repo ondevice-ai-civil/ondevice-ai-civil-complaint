@@ -91,9 +91,12 @@ class GovOnClient:
         dict
             서버 응답.
         """
-        body = {"thread_id": thread_id, "approved": approved}
         logger.debug(f"[http_client] approve: thread_id={thread_id} approved={approved}")
-        return self._post("/v2/agent/approve", body=body, timeout=self._DEFAULT_TIMEOUT)
+        return self._post_params(
+            "/v2/agent/approve",
+            params={"thread_id": thread_id, "approved": str(approved).lower()},
+            timeout=self._DEFAULT_TIMEOUT,
+        )
 
     def stream(
         self,
@@ -166,9 +169,12 @@ class GovOnClient:
         dict
             서버 응답.
         """
-        body = {"thread_id": thread_id}
         logger.debug(f"[http_client] cancel: thread_id={thread_id}")
-        return self._post("/v2/agent/cancel", body=body, timeout=self._DEFAULT_TIMEOUT)
+        return self._post_params(
+            "/v2/agent/cancel",
+            params={"thread_id": thread_id},
+            timeout=self._DEFAULT_TIMEOUT,
+        )
 
     # ------------------------------------------------------------------
     # 내부 헬퍼
@@ -198,6 +204,30 @@ class GovOnClient:
         try:
             with httpx.Client(timeout=timeout) as client:
                 resp = client.post(url, json=body)
+                resp.raise_for_status()
+                return resp.json()
+        except httpx.ConnectError as exc:
+            raise ConnectionError(f"daemon이 실행 중이 아닙니다. ({self._base_url})") from exc
+        except httpx.HTTPStatusError as exc:
+            logger.error(f"[http_client] HTTP {exc.response.status_code}: {url}")
+            raise
+
+    def _post_params(
+        self,
+        path: str,
+        *,
+        params: Dict[str, Any],
+        timeout: float,
+    ) -> Dict[str, Any]:
+        """쿼리 파라미터를 사용하는 POST 요청 헬퍼.
+
+        `/v2/agent/approve`, `/v2/agent/cancel` 등 FastAPI 엔드포인트가
+        쿼리 파라미터를 기대할 때 사용한다.
+        """
+        url = f"{self._base_url}{path}"
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                resp = client.post(url, params=params)
                 resp.raise_for_status()
                 return resp.json()
         except httpx.ConnectError as exc:

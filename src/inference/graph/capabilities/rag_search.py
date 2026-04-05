@@ -59,12 +59,14 @@ class RagSearchParams:
         else:
             source_types = list(_DEFAULT_SOURCE_TYPES)
 
-        min_confidence = float(
-            context.get("rag_min_confidence")
-            or context.get("min_confidence")
-            or context.get("score_threshold")
-            or default_min_confidence
-        )
+        raw = context.get("rag_min_confidence")
+        if raw is None:
+            raw = context.get("min_confidence")
+        if raw is None:
+            raw = context.get("score_threshold")
+        if raw is None:
+            raw = default_min_confidence
+        min_confidence = float(raw)
 
         return cls(
             query=query.strip(),
@@ -93,7 +95,8 @@ class RagSearchParams:
 def _normalize_result(raw: Dict[str, Any]) -> Dict[str, Any]:
     """raw SearchResult dict에 공통 스키마 필드를 보강한다.
 
-    추가 필드: excerpt, file_path, page. 기존 필드는 그대로 유지.
+    추가 필드: excerpt, file_path, page, score, source_type, doc_id, title.
+    기존 필드는 그대로 유지.
     """
     content = raw.get("content", "")
     metadata = raw.get("metadata", {})
@@ -101,6 +104,10 @@ def _normalize_result(raw: Dict[str, Any]) -> Dict[str, Any]:
     result["excerpt"] = content[:500] if content else ""
     result["file_path"] = metadata.get("file_path", "")
     result["page"] = metadata.get("page", raw.get("chunk_index", 0))
+    result["score"] = raw.get("score", 0.0)
+    result["source_type"] = raw.get("source_type", "")
+    result["doc_id"] = raw.get("doc_id", "")
+    result["title"] = raw.get("title", "")
     return result
 
 

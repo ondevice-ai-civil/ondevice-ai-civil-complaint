@@ -103,9 +103,7 @@ def mock_registry_fns():
     """build_mvp_registry에 주입할 mock 함수 모음."""
     return {
         "rag_search_fn": _make_async_fn({"text": "rag_result", "results": []}),
-        "draft_civil_response_fn": _make_async_fn(
-            {"text": "민원 답변 초안입니다.", "results": []}
-        ),
+        "draft_civil_response_fn": _make_async_fn({"text": "민원 답변 초안입니다.", "results": []}),
         "append_evidence_fn": _make_async_fn(
             {
                 "text": "근거 보강 결과입니다.",
@@ -843,7 +841,9 @@ class TestExecutorAdapterIntegration:
         error_fns = {
             "rag_search_fn": _make_async_fn({"results": []}),
             "draft_civil_response_fn": _make_async_fn({"error": "LLM 오류 발생"}),
-            "append_evidence_fn": _make_async_fn({"text": "", "api_citations": [], "rag_results": []}),
+            "append_evidence_fn": _make_async_fn(
+                {"text": "", "api_citations": [], "rag_results": []}
+            ),
         }
         registry = build_mvp_registry(
             rag_search_fn=error_fns["rag_search_fn"],

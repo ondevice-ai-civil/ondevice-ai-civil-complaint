@@ -62,9 +62,7 @@ def get_timeout(capability_name: str) -> float:
                 f"GOVON_TOOL_TIMEOUT_{capability_name.upper()} 값이 양수가 아닙니다: {env_val}"
             )
         except ValueError:
-            logger.warning(
-                f"{env_key} 값을 숫자로 파싱할 수 없습니다: {env_val!r}"
-            )
+            logger.warning(f"{env_key} 값을 숫자로 파싱할 수 없습니다: {env_val!r}")
 
     defaults = _DEFAULTS.get(capability_name)
     return defaults.timeout_sec if defaults else 10.0

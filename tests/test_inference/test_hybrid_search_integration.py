@@ -60,8 +60,13 @@ def _isolate_heavy_deps():
     vllm_mock = mock.MagicMock()
     vllm_mock.AsyncLLM = mock.MagicMock()
     vllm_mock.SamplingParams = mock.MagicMock()
-    for key in ("vllm", "vllm.engine", "vllm.engine.arg_utils",
-                "vllm.engine.async_llm_engine", "vllm.sampling_params"):
+    for key in (
+        "vllm",
+        "vllm.engine",
+        "vllm.engine.arg_utils",
+        "vllm.engine.async_llm_engine",
+        "vllm.sampling_params",
+    ):
         if _is_mock_or_absent(originals[key]):
             sys.modules[key] = vllm_mock
 

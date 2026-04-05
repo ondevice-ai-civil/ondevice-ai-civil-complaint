@@ -28,7 +28,6 @@ from src.inference.graph.capabilities.base import (
     LookupResult,
 )
 
-
 # ---------------------------------------------------------------------------
 # 1. EvidenceItem / EvidenceEnvelope 직렬화
 # ---------------------------------------------------------------------------
@@ -187,9 +186,7 @@ class TestRagSearchCapabilityEvidence:
     async def test_error_result_has_error_envelope(self):
         from src.inference.graph.capabilities.rag_search import RagSearchCapability
 
-        execute_fn = AsyncMock(
-            return_value={"error": "DB 연결 실패", "query": "검색어"}
-        )
+        execute_fn = AsyncMock(return_value={"error": "DB 연결 실패", "query": "검색어"})
         cap = RagSearchCapability(execute_fn)
         result = await cap.execute("검색어", {}, MagicMock())
 
@@ -344,9 +341,7 @@ class TestAppendEvidenceCapabilityEvidence:
             AppendEvidenceCapability,
         )
 
-        execute_fn = AsyncMock(
-            return_value={"text": "", "rag_results": [], "api_citations": []}
-        )
+        execute_fn = AsyncMock(return_value={"text": "", "rag_results": [], "api_citations": []})
         cap = AppendEvidenceCapability(execute_fn)
         result = await cap.execute("질문", {}, MagicMock())
 
@@ -376,9 +371,7 @@ class TestAppendEvidenceCapabilityEvidence:
         execute_fn = AsyncMock(
             return_value={
                 "text": "일부 결과",
-                "rag_results": [
-                    {"title": "doc", "content": "내용", "score": 0.5, "metadata": {}}
-                ],
+                "rag_results": [{"title": "doc", "content": "내용", "score": 0.5, "metadata": {}}],
                 "api_citations": [],
                 "errors": ["API provider timeout"],
             }
@@ -403,9 +396,7 @@ class TestDraftCivilResponseCapabilityEvidence:
             DraftCivilResponseCapability,
         )
 
-        execute_fn = AsyncMock(
-            return_value={"text": "민원 답변 초안입니다.", "citations": []}
-        )
+        execute_fn = AsyncMock(return_value={"text": "민원 답변 초안입니다.", "citations": []})
         cap = DraftCivilResponseCapability(execute_fn)
         result = await cap.execute("민원 내용", {}, MagicMock())
 
@@ -521,9 +512,7 @@ class TestExtractFinalTextEvidenceConsumption:
             "query": "테스트",
             "rag_search": {
                 "success": True,
-                "results": [
-                    {"title": "레거시 문서", "content": "레거시 내용", "score": 0.8}
-                ],
+                "results": [{"title": "레거시 문서", "content": "레거시 내용", "score": 0.8}],
             },
         }
         text = _extract_final_text(accumulated, "search")

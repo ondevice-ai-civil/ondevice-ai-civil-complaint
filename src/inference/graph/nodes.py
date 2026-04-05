@@ -433,7 +433,9 @@ def _extract_final_text(accumulated: Dict[str, Any], task_type: str) -> str:
             source_type = item.get("source_type", "")
             title = item.get("title", "")
             excerpt = item.get("excerpt", "")[:120]
-            label = "[로컬]" if source_type == "rag" else "[외부]" if source_type == "api" else "[생성]"
+            label = (
+                "[로컬]" if source_type == "rag" else "[외부]" if source_type == "api" else "[생성]"
+            )
             if title:
                 lines.append(f"- {label} {title}: {excerpt}")
             elif excerpt:

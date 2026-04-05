@@ -21,7 +21,6 @@ from src.inference.graph.nodes import (
 )
 from src.inference.graph.state import ApprovalStatus
 
-
 # ---------------------------------------------------------------------------
 # Helper stubs
 # ---------------------------------------------------------------------------
@@ -51,6 +50,10 @@ class StubSessionStore:
 
     class _Session:
         session_id = "test-session"
+        recent_history = []
+        recent_tool_runs = []
+        recent_graph_runs = []
+        conversations = []
 
         def add_turn(self, role, content):
             pass
@@ -162,11 +165,13 @@ class TestParallelToolExecution:
     @pytest.mark.asyncio
     async def test_dependent_tools_run_after_independent(self):
         """draft_civil_response는 independent 도구 이후 순차 실행된다."""
-        executor = SlowExecutor({
-            "rag_search": 0.05,
-            "api_lookup": 0.05,
-            "draft_civil_response": 0.05,
-        })
+        executor = SlowExecutor(
+            {
+                "rag_search": 0.05,
+                "api_lookup": 0.05,
+                "draft_civil_response": 0.05,
+            }
+        )
 
         state = {
             "approval_status": ApprovalStatus.APPROVED.value,

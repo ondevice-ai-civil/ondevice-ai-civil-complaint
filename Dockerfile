@@ -1,7 +1,7 @@
 # Dockerfile for GovOn Backend
 
 # Use NVIDIA CUDA base image with Python 3.10
-FROM nvidia/cuda:13.2.0-devel-ubuntu22.04
+FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
 
 LABEL org.opencontainers.image.source="https://github.com/GovOn-Org/GovOn"
 LABEL org.opencontainers.image.description="GovOn AI Civil Complaint Analysis System"
@@ -45,6 +45,11 @@ RUN mkdir -p models/faiss_index data/processed
 
 # Expose port
 EXPOSE 8000
+
+# Non-root user for security
+RUN groupadd -r govon && useradd -r -g govon -d /app govon
+RUN chown -R govon:govon /app
+USER govon
 
 # Command to run the application
 CMD ["python3.10", "-m", "src.inference.api_server"]

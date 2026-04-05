@@ -37,7 +37,7 @@ class DaemonManager:
     """
 
     GOVON_HOME = Path.home() / ".govon"
-    _HEALTH_CHECK_TIMEOUT = 30  # 최대 대기 초
+    _HEALTH_CHECK_TIMEOUT = 120  # 최대 대기 초
     _HEALTH_CHECK_INTERVAL = 1  # 재시도 간격 (초)
 
     def __init__(self) -> None:
@@ -87,8 +87,6 @@ class DaemonManager:
             logger.info("[daemon] 이미 실행 중입니다.")
             return True
 
-        log_file = open(self.log_path, "a")  # noqa: WPS515
-
         cmd = [
             sys.executable,
             "-m",
@@ -102,13 +100,13 @@ class DaemonManager:
 
         logger.info(f"[daemon] 기동 명령: {' '.join(cmd)}")
 
-        proc = subprocess.Popen(
-            cmd,
-            stdout=log_file,
-            stderr=log_file,
-            start_new_session=True,
-        )
-        log_file.close()
+        with open(self.log_path, "a") as log_file:
+            proc = subprocess.Popen(
+                cmd,
+                stdout=log_file,
+                stderr=log_file,
+                start_new_session=True,
+            )
 
         self._write_pid(proc.pid)
         logger.info(f"[daemon] 프로세스 기동 완료. PID={proc.pid}")
@@ -207,7 +205,7 @@ class DaemonManager:
             return True
 
     def _wait_until_healthy(self) -> bool:
-        """health check가 통과할 때까지 최대 30초 대기한다."""
+        """health check가 통과할 때까지 최대 120초 대기한다."""
         deadline = time.monotonic() + self._HEALTH_CHECK_TIMEOUT
         while time.monotonic() < deadline:
             try:
@@ -220,5 +218,5 @@ class DaemonManager:
                 pass
             time.sleep(self._HEALTH_CHECK_INTERVAL)
 
-        logger.error("[daemon] health check timeout (30초).")
+        logger.error("[daemon] health check timeout (120초).")
         return False

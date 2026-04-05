@@ -41,14 +41,14 @@ jobs:
             .cache
 
           cat > /tmp/govon-offline.env <<'EOF'
-          API_KEY=offline-ci-key
-          BM25_INDEX_HMAC_KEY=offline-ci-hmac-key
-          CORS_ORIGINS=http://127.0.0.1:3000
-          EOF
+API_KEY=offline-ci-key
+BM25_INDEX_HMAC_KEY=offline-ci-hmac-key
+CORS_ORIGINS=http://127.0.0.1:3000
+EOF
 
           cat > /tmp/govon-prod.env <<'EOF'
-          API_KEY=prod-ci-key
-          EOF
+API_KEY=prod-ci-key
+EOF
 
       - name: Compose 설정 검증
         run: |
@@ -126,16 +126,16 @@ jobs:
             .cache
 
           cat > /tmp/govon-gpu.env <<'EOF'
-          API_KEY=gpu-smoke-key
-          BM25_INDEX_HMAC_KEY=gpu-smoke-hmac-key
-          CORS_ORIGINS=http://127.0.0.1:3000
-          HOST_PORT=18001
-          USE_RAG_PIPELINE=false
-          SKIP_MODEL_LOAD=false
-          GPU_UTILIZATION=0.5
-          MAX_MODEL_LEN=2048
-          MODEL_PATH=umyunsang/GovOn-EXAONE-AWQ-v2
-          EOF
+API_KEY=gpu-smoke-key
+BM25_INDEX_HMAC_KEY=gpu-smoke-hmac-key
+CORS_ORIGINS=http://127.0.0.1:3000
+HOST_PORT=18001
+USE_RAG_PIPELINE=false
+SKIP_MODEL_LOAD=false
+GPU_UTILIZATION=0.5
+MAX_MODEL_LEN=2048
+MODEL_PATH=umyunsang/GovOn-EXAONE-AWQ-v2
+EOF
 
       - name: 호스트 GPU 인식 확인
         run: nvidia-smi

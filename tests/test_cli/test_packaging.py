@@ -80,9 +80,9 @@ class TestRuntimeUrlEnvSkipsDaemon(unittest.TestCase):
                         pass
 
                     # GovOnClient가 remote_url.rstrip("/")로 초기화되어야 한다
-                    if mock_client_cls.call_args is not None:
-                        actual_url = mock_client_cls.call_args[0][0]
-                        self.assertEqual(actual_url, remote_url.rstrip("/"))
+                    mock_client_cls.assert_called_once()
+                    actual_url = mock_client_cls.call_args[0][0]
+                    self.assertEqual(actual_url, remote_url.rstrip("/"))
         finally:
             sys.argv = original_argv
 

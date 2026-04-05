@@ -54,7 +54,7 @@ _check_python() {
         exit 1
     fi
     PYTHON_CMD="$(command -v python3 || command -v python)"
-    _info "Python: $($PYTHON_CMD --version 2>&1)"
+    _info "Python: $("$PYTHON_CMD" --version 2>&1)"
 }
 
 _check_govon() {
@@ -133,6 +133,14 @@ cmd_start() {
     local daemon_pid=$!
     echo "$daemon_pid $(date +%s)" > "$PID_FILE"
     _info "daemon PID=$daemon_pid 기록 완료."
+
+    # 빠른 실패 감지: 2초 후 프로세스가 이미 종료되었는지 확인
+    sleep 2
+    if ! kill -0 "$daemon_pid" 2>/dev/null; then
+        _error "daemon이 기동 직후 종료되었습니다. 로그를 확인하세요: $LOG_FILE"
+        rm -f "$PID_FILE"
+        exit 1
+    fi
 
     # health check 대기 (최대 30초)
     local elapsed=0

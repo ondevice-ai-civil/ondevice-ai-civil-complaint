@@ -58,9 +58,6 @@ dependencies = [
     # HTTP client (required by cli/daemon.py and cli/http_client.py)
     "httpx>=0.27.0",
 
-    # Schema validation (required by FastAPI schemas)
-    "pydantic>=2.0.0",
-
     # Utilities
     "tqdm>=4.66.0",
     "python-dotenv>=1.0.0",
@@ -95,10 +92,11 @@ inference = [
     "vllm>=0.14.1",
     "fastapi>=0.100.0",
     "uvicorn>=0.23.0",
+    # Schema validation — FastAPI 전용; core dependencies에서 제거
+    "pydantic>=2.0.0",
     "rank-bm25>=0.2.2",
     "sentence-transformers>=3.0.0",
     "faiss-cpu>=1.7.4",
-    "httpx>=0.27.0",
     "langgraph==1.1.4",
     "langgraph-checkpoint==4.0.1",
     "langgraph-checkpoint-sqlite==3.0.3",
@@ -115,7 +113,7 @@ database = [
 ]
 
 cli = [
-    "httpx>=0.27.0",
+    # httpx는 core dependencies에 포함되므로 중복 제거
     "prompt_toolkit>=3.0.0",
     "rich>=13.0.0",
 ]

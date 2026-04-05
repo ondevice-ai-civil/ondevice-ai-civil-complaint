@@ -366,6 +366,12 @@ def main() -> None:
     runtime_url = os.environ.get("GOVON_RUNTIME_URL")
 
     if runtime_url:
+        if not runtime_url.startswith(("http://", "https://")):
+            print(
+                f"오류: GOVON_RUNTIME_URL은 http:// 또는 https://로 시작해야 합니다: {runtime_url}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
         # 원격 런타임 모드: daemon 관리 없이 지정된 URL에 직접 연결
         if args.status:
             print(f"GovOn daemon: 원격 모드 (GOVON_RUNTIME_URL={runtime_url})")

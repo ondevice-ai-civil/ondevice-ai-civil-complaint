@@ -5,7 +5,11 @@ vLLMEngineManager의 내부 메서드와 모듈 레벨 유틸리티 함수를 �
 GPU/모델 의존성 없이 실행 가능.
 """
 
+import os
+import subprocess
 import sys
+import textwrap
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -389,13 +393,14 @@ class TestLocalDocumentSync:
         with patch(
             "src.inference.api_server.runtime_config.paths.local_docs_root", "/tmp/local-docs"
         ):
-            with patch("src.inference.api_server.LocalDocumentIndexer") as mock_indexer_cls:
-                mock_indexer = mock_indexer_cls.return_value
-                mock_indexer.root_dir = "/tmp/local-docs"
-                mock_indexer.source_name = "local-docs:test"
-                mock_indexer.sync.return_value = summary
+            with patch("src.inference.api_server.SessionLocal", MagicMock()):
+                with patch("src.inference.api_server.LocalDocumentIndexer") as mock_indexer_cls:
+                    mock_indexer = mock_indexer_cls.return_value
+                    mock_indexer.root_dir = "/tmp/local-docs"
+                    mock_indexer.source_name = "local-docs:test"
+                    mock_indexer.sync.return_value = summary
 
-                result = self.mgr.sync_local_documents()
+                    result = self.mgr.sync_local_documents()
 
         mock_indexer_cls.assert_called_once()
         assert result["status"] == "ok"
@@ -412,3 +417,55 @@ class TestLocalDocumentSync:
 
         assert result is None
         mock_indexer_cls.assert_not_called()
+
+
+class TestImportWithoutSqlalchemy:
+    def test_api_server_imports_without_sqlalchemy_when_local_docs_disabled(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        script = textwrap.dedent("""
+            import builtins
+            import sys
+            from unittest.mock import MagicMock
+
+            original_import = builtins.__import__
+
+            def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
+                if name == "sqlalchemy" or name.startswith("sqlalchemy."):
+                    raise ModuleNotFoundError("No module named 'sqlalchemy'")
+                return original_import(name, globals, locals, fromlist, level)
+
+            builtins.__import__ = guarded_import
+
+            _vllm_mock = MagicMock()
+            _vllm_mock.AsyncLLM = MagicMock()
+            _vllm_mock.SamplingParams = MagicMock()
+            sys.modules.setdefault("vllm", _vllm_mock)
+            sys.modules.setdefault("vllm.engine", _vllm_mock)
+            sys.modules.setdefault("vllm.engine.arg_utils", _vllm_mock)
+            sys.modules.setdefault("vllm.engine.async_llm_engine", _vllm_mock)
+            sys.modules.setdefault("vllm.sampling_params", _vllm_mock)
+            sys.modules.setdefault("sentence_transformers", MagicMock())
+            sys.modules.setdefault("transformers", MagicMock())
+            sys.modules.setdefault("transformers.modeling_rope_utils", MagicMock())
+            sys.modules.setdefault("transformers.utils", MagicMock())
+            sys.modules.setdefault("transformers.utils.generic", MagicMock())
+            sys.modules.setdefault("faiss", MagicMock())
+            sys.modules.setdefault("torch", MagicMock())
+
+            import src.inference.api_server  # noqa: F401
+            """)
+        env = {
+            **os.environ,
+            "SKIP_MODEL_LOAD": "true",
+            "LOCAL_DOCS_ROOT": "",
+            "PYTHONPATH": str(repo_root),
+        }
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=repo_root,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 0, result.stderr

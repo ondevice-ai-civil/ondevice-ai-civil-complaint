@@ -32,11 +32,9 @@ SKIP_MODEL_LOAD = os.getenv("SKIP_MODEL_LOAD", "false").lower() in ("true", "1",
 from .agent_loop import AgentLoop, AgentTrace
 from .agent_manager import AgentManager
 from .bm25_indexer import BM25Indexer
-from .db.database import SessionLocal
 from .feature_flags import FeatureFlags
 from .hybrid_search import HybridSearchEngine, SearchMode
 from .index_manager import IndexType, MultiIndexManager
-from .local_document_indexer import LocalDocumentIndexer
 from .retriever import CivilComplaintRetriever
 from .runtime_config import RuntimeConfig
 from .schemas import (
@@ -55,6 +53,9 @@ from .schemas import (
 )
 from .session_context import SessionContext, SessionStore
 from .tool_router import ToolType, tool_name
+
+SessionLocal = None
+LocalDocumentIndexer = None
 
 
 async def _noop_tool(query: str, context: dict, session: Any) -> dict:
@@ -161,7 +162,7 @@ class vLLMEngineManager:
         self.agent_manager = AgentManager(AGENTS_DIR)
         self.agent_loop: Optional[AgentLoop] = None
         self.graph = None  # LangGraph CompiledGraph (v2 엔드포인트용)
-        self.local_document_indexer: Optional[LocalDocumentIndexer] = None
+        self.local_document_indexer: Optional[Any] = None
         self.local_document_sync_status: Optional[Dict[str, Any]] = None
         self._checkpointer_ctx = None  # AsyncSqliteSaver 컨텍스트 매니저 (lifespan에서 관리)
         self._sync_checkpointer_conn = None  # SqliteSaver용 sqlite3 connection (leak 방지)
@@ -235,7 +236,9 @@ class vLLMEngineManager:
         else:
             logger.warning("HybridSearchEngine 미초기화: index_manager 또는 embed_model 없음")
 
-    def _build_local_document_indexer(self) -> Optional[LocalDocumentIndexer]:
+    def _build_local_document_indexer(self) -> Optional[Any]:
+        global SessionLocal, LocalDocumentIndexer
+
         root_dir = runtime_config.paths.local_docs_root
         if not root_dir:
             return None
@@ -245,6 +248,17 @@ class vLLMEngineManager:
             )
             return None
         if self.local_document_indexer is None:
+            if SessionLocal is None:
+                from .db.database import SessionLocal as _SessionLocal
+
+                SessionLocal = _SessionLocal
+            if LocalDocumentIndexer is None:
+                from .local_document_indexer import (
+                    LocalDocumentIndexer as _LocalDocumentIndexer,
+                )
+
+                LocalDocumentIndexer = _LocalDocumentIndexer
+
             self.local_document_indexer = LocalDocumentIndexer(
                 root_dir=root_dir,
                 index_manager=self.index_manager,

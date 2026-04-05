@@ -31,7 +31,6 @@ from src.inference.graph.nodes import _collect_evidence_items, _extract_final_te
 from src.inference.graph.planner_adapter import LLMPlannerAdapter, RegexPlannerAdapter
 from src.inference.session_context import SessionStore
 
-
 # ---------------------------------------------------------------------------
 # 공통 픽스처
 # ---------------------------------------------------------------------------

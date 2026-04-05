@@ -68,8 +68,10 @@ class BenchExecutorAdapter(ExecutorAdapter):
 # ---------------------------------------------------------------------------
 
 
-def _run_single(run_id: int, db_path: str) -> dict:
+def _run_single(run_id: int, db_dir: str) -> dict:
     """단일 graph 실행 후 레이턴시를 반환한다."""
+    # run마다 별도 DB를 사용하여 측정 편향 방지
+    db_path = os.path.join(db_dir, f"bench_sessions_{run_id}.sqlite3")
     session_store = SessionStore(db_path=db_path)
     planner = RegexPlannerAdapter()
     executor = BenchExecutorAdapter()
@@ -130,16 +132,14 @@ def main() -> None:
 
     import tempfile
 
-    db_dir = tempfile.mkdtemp(prefix="govon_bench_")
-    db_path = os.path.join(db_dir, "bench_sessions.sqlite3")
+    with tempfile.TemporaryDirectory(prefix="govon_bench_") as db_dir:
+        results = []
+        for i in range(args.repeat):
+            r = _run_single(i, db_dir)
+            results.append(r)
+            print(f"  Run {i}: {r['total_ms']:.1f}ms", file=sys.stderr)
 
-    results = []
-    for i in range(args.repeat):
-        r = _run_single(i, db_path)
-        results.append(r)
-        print(f"  Run {i}: {r['total_ms']:.1f}ms", file=sys.stderr)
-
-    totals = [r["total_ms"] for r in results]
+    totals = [r["total_ms"] for r in results]  # TemporaryDirectory 종료 후 results는 여전히 접근 가능
 
     stats = {
         "repeat": args.repeat,

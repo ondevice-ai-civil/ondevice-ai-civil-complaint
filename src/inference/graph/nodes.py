@@ -224,8 +224,14 @@ async def tool_execute_node(
 ) -> dict:
     """Tool executor 노드.
 
-    ExecutorAdapter를 통해 `planned_tools`를 순차 실행하고
+    ExecutorAdapter를 통해 `planned_tools`를 두 단계로 실행하고
     결과를 `accumulated_context`에 누적한다.
+
+    실행 전략:
+    - Phase 1 (병렬): `rag_search`, `api_lookup` 등 INDEPENDENT_TOOLS는
+      `asyncio.gather()`로 동시에 실행한다.
+    - Phase 2 (순차): 나머지 의존 도구(draft_civil_response 등)는 Phase 1
+      결과가 누적된 accumulated_context를 사용하여 순서대로 실행한다.
 
     Parameters
     ----------
@@ -237,7 +243,8 @@ async def tool_execute_node(
     Returns
     -------
     dict
-        `tool_results`와 `accumulated_context`를 갱신한다.
+        `tool_results`, `accumulated_context`, `_node_latency_ms`,
+        `_tool_latencies`를 갱신한다.
     """
     _start = time.monotonic()
 
@@ -251,6 +258,8 @@ async def tool_execute_node(
             "tool_results": {},
             "accumulated_context": dict(state.get("accumulated_context", {})),
             "error": f"tool 실행 차단: 승인 필요 (현재 상태: {approval_status!r})",
+            "_node_latency_ms": round((time.monotonic() - _start) * 1000, 2),
+            "_tool_latencies": {},
         }
 
     planned_tools: list[str] = state.get("planned_tools", [])
@@ -259,18 +268,29 @@ async def tool_execute_node(
     # planned_tools가 비어있는 경우 (validation 실패 fallback 등)
     if not planned_tools:
         logger.warning("[tool_execute] planned_tools가 비어있어 실행 건너뜀")
-        return {"tool_results": {}, "accumulated_context": accumulated}
+        return {
+            "tool_results": {},
+            "accumulated_context": accumulated,
+            "_node_latency_ms": round((time.monotonic() - _start) * 1000, 2),
+            "_tool_latencies": {},
+        }
 
     tool_results: Dict[str, Any] = {}
     tool_latencies: Dict[str, float] = {}
 
     # --- 독립 도구와 의존 도구를 분리하여 병렬/순차 실행 ---
+    # 새로운 독립 capability를 추가할 때는 이 집합에도 등록해야 한다.
+    # 독립 도구란 다른 도구의 실행 결과(accumulated_context)에 의존하지 않아
+    # 병렬 실행이 안전한 capability를 의미한다.
     INDEPENDENT_TOOLS = {"rag_search", "api_lookup"}
 
     independent = [t for t in planned_tools if t in INDEPENDENT_TOOLS]
     dependent = [t for t in planned_tools if t not in INDEPENDENT_TOOLS]
 
     # Phase 1: 독립 도구 병렬 실행
+    # 주의: _run_tool 클로저 내에서 accumulated는 읽기 전용으로 취급해야 한다.
+    # 병렬 실행 중 accumulated를 변경하면 race condition이 발생할 수 있다.
+    # accumulated 갱신은 gather() 완료 후 메인 루프에서 순서대로 수행한다.
     if independent:
 
         async def _run_tool(name: str) -> tuple[str, Dict[str, Any], float]:
@@ -289,9 +309,10 @@ async def tool_execute_node(
             *[_run_tool(name) for name in independent],
             return_exceptions=True,
         )
-        for item in results:
+        for i, item in enumerate(results):
             if isinstance(item, Exception):
-                logger.error(f"[tool_execute] 병렬 실행 실패: {item}")
+                failed_tool = independent[i]
+                logger.error(f"[tool_execute] 병렬 실행 실패: tool={failed_tool} error={item}")
                 continue
             name, result, latency = item
             tool_results[name] = result
@@ -382,7 +403,7 @@ async def persist_node(
     Returns
     -------
     dict
-        side effect로 DB에 저장하고, 빈 dict를 반환한다.
+        side effect로 DB에 저장하고, `_node_latency_ms`를 반환한다.
     """
     _start = time.monotonic()
 

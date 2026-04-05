@@ -102,9 +102,6 @@ class GovOnGraphState(TypedDict, total=False):
     # --- synthesis 출력 ---
     final_text: str  # 최종 사용자 응답 텍스트
 
-    # --- 레이턴시 계측 ---
-    node_latencies: Dict[str, float]  # {node_name: latency_ms, ...}
-
     # --- 메타데이터 ---
     error: Optional[str]
     interrupt_reason: Optional[str]  # "user_cancel" | "timeout" | None

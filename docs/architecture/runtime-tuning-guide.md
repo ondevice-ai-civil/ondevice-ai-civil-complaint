@@ -60,36 +60,48 @@ export GOVON_TOOL_TIMEOUT_APPEND_EVIDENCE=20  # 15 → 20초
 
 코드 위치: `src/inference/graph/capabilities/defaults.py`
 
-### 3.2 LRU 캐시 크기 (hybrid_search)
+### 3.2 임베딩 캐시 크기 (hybrid_search)
 
-`src/inference/hybrid_search.py`의 `@lru_cache` 데코레이터 크기를 조정한다:
+`src/inference/hybrid_search.py`의 `HybridSearchEngine._embed_cache`는 `OrderedDict`
+기반 LRU 캐시(기본 최대 64개)로 동작한다. 생성자에서 직접 제어하는 상수는 없으며,
+`_embed_query()` 내부의 `if len(self._embed_cache) >= 64:` 조건을 수정해 크기를 조정한다:
 
 ```python
-# 기본: maxsize=128
-# 높은 트래픽 환경: maxsize=512
-# 메모리 제한 환경: maxsize=64
+# 기본: 64
+# 높은 트래픽 환경: 256
+# 메모리 제한 환경: 32
+if len(self._embed_cache) >= 64:   # 이 값을 변경
+    self._embed_cache.popitem(last=False)
 ```
 
 ### 3.3 RRF 가중치
 
-Reciprocal Rank Fusion 가중치는 `hybrid_search.py`에서 조정:
+Reciprocal Rank Fusion 가중치는 `hybrid_search.py`의 `DEFAULT_RRF_WEIGHTS` dict와
+`HybridSearchEngine` 생성자의 `rrf_k` 파라미터로 조정한다:
 
 ```python
-RRF_K = 60          # 기본값: 60 (높을수록 순위 차이 완화)
-BM25_WEIGHT = 0.4   # BM25 기여도
-FAISS_WEIGHT = 0.6  # 벡터 검색 기여도
+# rrf_k: RRF smoothing 파라미터 (기본값: 60, 높을수록 순위 차이 완화)
+engine = HybridSearchEngine(..., rrf_k=60)
+
+# DEFAULT_RRF_WEIGHTS: 데이터 타입별 dense/sparse 가중치
+DEFAULT_RRF_WEIGHTS = {
+    IndexType.CASE:   RRFWeightConfig(dense_weight=1.0, sparse_weight=0.7),
+    IndexType.LAW:    RRFWeightConfig(dense_weight=0.9, sparse_weight=1.2),
+    IndexType.MANUAL: RRFWeightConfig(dense_weight=0.8, sparse_weight=0.8),
+    IndexType.NOTICE: RRFWeightConfig(dense_weight=0.6, sparse_weight=0.6),
+}
 ```
 
-### 3.4 BM25/FAISS top_k
+### 3.4 top_k
+
+`top_k`는 전역 상수가 아닌 `HybridSearchEngine.search()` 호출 시 per-call 파라미터로 전달된다:
 
 ```python
-BM25_TOP_K = 20     # BM25 후보 수 (기본 20)
-FAISS_TOP_K = 20    # FAISS 후보 수 (기본 20)
-FINAL_TOP_K = 5     # 최종 반환 수 (기본 5)
+results, mode = await engine.search(query, index_type, top_k=5)
 ```
 
-- top_k를 늘리면 recall이 증가하지만 레이턴시도 증가
-- BM25_TOP_K > 50이면 성능 저하가 뚜렷함
+- `top_k`를 늘리면 recall이 증가하지만 레이턴시도 증가
+- BM25 후보가 50개를 초과하면 성능 저하가 뚜렷함 (BM25Indexer 내부 제한)
 
 ## 4. 장애 대응
 

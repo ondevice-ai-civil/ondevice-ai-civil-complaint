@@ -12,6 +12,8 @@ import os
 from dataclasses import dataclass
 from typing import Dict
 
+from loguru import logger
+
 
 @dataclass(frozen=True)
 class CapabilityDefaults:
@@ -53,7 +55,12 @@ def get_timeout(capability_name: str) -> float:
     env_val = os.environ.get(env_key)
     if env_val is not None:
         try:
-            return float(env_val)
+            val = float(env_val)
+            if val > 0:
+                return val
+            logger.warning(
+                f"GOVON_TOOL_TIMEOUT_{capability_name.upper()} 값이 양수가 아닙니다: {env_val}"
+            )
         except ValueError:
             pass
 

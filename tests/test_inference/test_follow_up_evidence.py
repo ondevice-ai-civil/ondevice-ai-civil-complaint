@@ -170,11 +170,7 @@ def test_collect_evidence_items_max_10():
         {"source_type": "rag", "title": f"doc{i}", "excerpt": "", "score": float(i)}
         for i in range(15)
     ]
-    accumulated = {
-        "rag_search": {
-            "evidence": {"status": "ok", "items": many_items, "errors": []}
-        }
-    }
+    accumulated = {"rag_search": {"evidence": {"status": "ok", "items": many_items, "errors": []}}}
 
     items = _collect_evidence_items(accumulated)
     assert len(items) == 10

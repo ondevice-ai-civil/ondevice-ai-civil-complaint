@@ -288,7 +288,9 @@ async def synthesis_node(state: GovOnGraphState) -> dict:
     final_text = _extract_final_text(accumulated, task_type)
     evidence_items = _collect_evidence_items(accumulated)
 
-    logger.info(f"[synthesis] final_text_len={len(final_text)} evidence_items={len(evidence_items)}")
+    logger.info(
+        f"[synthesis] final_text_len={len(final_text)} evidence_items={len(evidence_items)}"
+    )
 
     return {
         "final_text": final_text,
@@ -402,8 +404,14 @@ def _collect_evidence_items(accumulated: Dict[str, Any]) -> list[dict]:
     list[dict]
         EvidenceItem.to_dict() 형태의 dict 리스트.
     """
-    _SKIP_KEYS = {"session_context", "query", "query_variants", "previous_user_query",
-                  "previous_assistant_response", "recent_tool_summary"}
+    _SKIP_KEYS = {
+        "session_context",
+        "query",
+        "query_variants",
+        "previous_user_query",
+        "previous_assistant_response",
+        "recent_tool_summary",
+    }
     items: list[dict] = []
     for key, payload in accumulated.items():
         if key in _SKIP_KEYS:
@@ -543,9 +551,7 @@ def _build_evidence_section(accumulated: Dict[str, Any]) -> str:
         source_type = item.get("source_type", "")
         title = item.get("title", "")
         excerpt = item.get("excerpt", "")[:120]
-        label = (
-            "[로컬]" if source_type == "rag" else "[외부]" if source_type == "api" else "[생성]"
-        )
+        label = "[로컬]" if source_type == "rag" else "[외부]" if source_type == "api" else "[생성]"
         if title:
             lines.append(f"- {label} {title}: {excerpt}")
         elif excerpt:

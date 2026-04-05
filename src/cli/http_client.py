@@ -123,9 +123,7 @@ class GovOnClient:
                 resp.raise_for_status()
                 return resp.json()
         except httpx.ConnectError as exc:
-            raise ConnectionError(
-                f"daemon이 실행 중이 아닙니다. ({self._base_url})"
-            ) from exc
+            raise ConnectionError(f"daemon이 실행 중이 아닙니다. ({self._base_url})") from exc
         except httpx.HTTPStatusError as exc:
             logger.error(f"[http_client] HTTP {exc.response.status_code}: {url}")
             raise
@@ -144,9 +142,7 @@ class GovOnClient:
                 resp.raise_for_status()
                 return resp.json()
         except httpx.ConnectError as exc:
-            raise ConnectionError(
-                f"daemon이 실행 중이 아닙니다. ({self._base_url})"
-            ) from exc
+            raise ConnectionError(f"daemon이 실행 중이 아닙니다. ({self._base_url})") from exc
         except httpx.HTTPStatusError as exc:
             logger.error(f"[http_client] HTTP {exc.response.status_code}: {url}")
             raise

@@ -156,8 +156,7 @@ class DaemonManager:
             success = self.start()
             if not success:
                 raise RuntimeError(
-                    "GovOn daemon 기동에 실패했습니다. "
-                    f"로그를 확인하세요: {self.log_path}"
+                    "GovOn daemon 기동에 실패했습니다. " f"로그를 확인하세요: {self.log_path}"
                 )
         return self.get_base_url()
 

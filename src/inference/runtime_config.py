@@ -174,6 +174,7 @@ class PathConfig:
     index_path: str = ""
     faiss_index_dir: str = ""
     bm25_index_dir: str = ""
+    local_docs_root: str = ""
     agents_dir: str = ""
     log_dir: str = ""
     cache_dir: str = ""
@@ -186,6 +187,7 @@ class PathConfig:
             index_path=os.getenv("INDEX_PATH", "models/faiss_index/complaints.index"),
             faiss_index_dir=os.getenv("FAISS_INDEX_DIR", "models/faiss_index"),
             bm25_index_dir=os.getenv("BM25_INDEX_DIR", "models/bm25_index"),
+            local_docs_root=os.getenv("LOCAL_DOCS_ROOT", ""),
             agents_dir=os.getenv("AGENTS_DIR", os.path.join(project_root, "agents")),
             log_dir=os.getenv("LOG_DIR", os.path.join(project_root, "logs")),
             cache_dir=os.getenv("CACHE_DIR", os.path.join(project_root, ".cache")),
@@ -324,6 +326,7 @@ class RuntimeConfig:
         logger.info(f"  Healthcheck   : {self.healthcheck.endpoint}")
         logger.info(f"  Data Path     : {self.paths.data_path}")
         logger.info(f"  Index Path    : {self.paths.index_path}")
+        logger.info(f"  Local Docs    : {self.paths.local_docs_root or '(disabled)'}")
         logger.info(f"  Log Dir       : {self.paths.log_dir}")
         logger.info("=" * 60)
 

@@ -48,6 +48,7 @@ with patch("src.inference.vllm_stabilizer.apply_transformers_patch"):
     )
 
 from src.inference.index_manager import IndexType
+from src.inference.local_document_indexer import IndexSyncSummary
 from src.inference.schemas import SearchResult
 
 # ---------------------------------------------------------------------------
@@ -284,6 +285,12 @@ class TestExtractContentByType:
         content = _extract_content_by_type(result_dict, IndexType.LAW)
         assert content == "일반 내용"
 
+    def test_chunk_text_fallback(self):
+        """타입별 전용 필드가 없으면 chunk_text로 폴백한다."""
+        result_dict = {"title": "매뉴얼", "extras": {"chunk_text": "청크 본문"}}
+        content = _extract_content_by_type(result_dict, IndexType.MANUAL)
+        assert content == "청크 본문"
+
 
 # ---------------------------------------------------------------------------
 # _rate_limit 테스트
@@ -361,3 +368,47 @@ class TestGetFeatureFlags:
 
         flags = get_feature_flags(mock_request)
         assert flags.use_rag_pipeline is False
+
+
+class TestLocalDocumentSync:
+    def setup_method(self):
+        self.mgr = vLLMEngineManager()
+        self.mgr.index_manager = MagicMock()
+        self.mgr.embed_model = MagicMock()
+
+    def test_sync_local_documents_builds_indexer_and_stores_summary(self):
+        summary = IndexSyncSummary(
+            scanned_files=3,
+            indexed_files=2,
+            unchanged_files=1,
+            removed_files=0,
+            indexed_chunks=4,
+            rebuilt_index_types=["case"],
+        )
+
+        with patch(
+            "src.inference.api_server.runtime_config.paths.local_docs_root", "/tmp/local-docs"
+        ):
+            with patch("src.inference.api_server.LocalDocumentIndexer") as mock_indexer_cls:
+                mock_indexer = mock_indexer_cls.return_value
+                mock_indexer.root_dir = "/tmp/local-docs"
+                mock_indexer.source_name = "local-docs:test"
+                mock_indexer.sync.return_value = summary
+
+                result = self.mgr.sync_local_documents()
+
+        mock_indexer_cls.assert_called_once()
+        assert result["status"] == "ok"
+        assert result["root_dir"] == "/tmp/local-docs"
+        assert result["scanned_files"] == 3
+        assert result["indexed_files"] == 2
+        assert result["rebuilt_index_types"] == ["case"]
+        assert self.mgr.local_document_sync_status == result
+
+    def test_sync_local_documents_returns_none_without_root(self):
+        with patch("src.inference.api_server.runtime_config.paths.local_docs_root", ""):
+            with patch("src.inference.api_server.LocalDocumentIndexer") as mock_indexer_cls:
+                result = self.mgr.sync_local_documents()
+
+        assert result is None
+        mock_indexer_cls.assert_not_called()

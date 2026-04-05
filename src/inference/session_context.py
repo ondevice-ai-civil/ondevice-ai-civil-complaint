@@ -7,6 +7,14 @@ GovOn Shell MVP의 세션 모델은 다음을 저장한다.
 - task loop 단위 실행 로그
 
 초안 버전, 선택 근거 목록 같은 무거운 상태는 제품 기본 저장 범위에서 제외한다.
+
+Schema versioning
+-----------------
+_init_db()는 schema_version 테이블을 통해 순차 migration을 관리한다.
+현재 최신 버전: SCHEMA_VERSION = 2
+
+Migration history:
+  v1 → v2: tool_runs에 graph_run_request_id 컬럼 추가 (이전에는 ad-hoc ALTER TABLE)
 """
 
 from __future__ import annotations
@@ -22,6 +30,10 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from loguru import logger
+
+
+SCHEMA_VERSION = 2
+"""현재 SessionStore SQLite 스키마 버전."""
 
 
 def _default_session_db_path() -> str:
@@ -225,7 +237,33 @@ class SessionStore:
         return conn
 
     def _init_db(self) -> None:
+        """데이터베이스를 초기화하고 순차 schema migration을 실행한다.
+
+        schema_version 테이블을 통해 현재 버전을 추적하며,
+        버전 번호 순서대로 migration 함수를 적용한다.
+        각 migration은 원자적(atomic)으로 실행된다.
+        """
         Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
+        with closing(self._connect()) as conn, conn:
+            # schema_version 테이블: 버전 추적의 단일 소스
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS schema_version (
+                    version INTEGER PRIMARY KEY
+                )
+            """)
+            row = conn.execute("SELECT MAX(version) AS v FROM schema_version").fetchone()
+            current_version = row["v"] if row and row["v"] is not None else 0
+
+        # 버전 1: 기본 스키마 생성
+        if current_version < 1:
+            self._migrate_v1()
+
+        # 버전 2: tool_runs.graph_run_request_id 컬럼 추가
+        if current_version < 2:
+            self._migrate_v2()
+
+    def _migrate_v1(self) -> None:
+        """v1: 기본 스키마(sessions, messages, tool_runs, graph_runs, metadata) 생성."""
         with closing(self._connect()) as conn, conn:
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS sessions (
@@ -248,7 +286,6 @@ class SessionStore:
                 CREATE TABLE IF NOT EXISTS tool_runs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     session_id TEXT NOT NULL,
-                    graph_run_request_id TEXT,
                     tool TEXT NOT NULL,
                     success INTEGER NOT NULL,
                     latency_ms REAL NOT NULL DEFAULT 0,
@@ -259,9 +296,6 @@ class SessionStore:
                 );
                 CREATE INDEX IF NOT EXISTS idx_tool_runs_session_id
                 ON tool_runs(session_id);
-
-                CREATE INDEX IF NOT EXISTS idx_tool_runs_session_graph_run
-                ON tool_runs(session_id, graph_run_request_id);
 
                 CREATE TABLE IF NOT EXISTS graph_runs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -293,12 +327,30 @@ class SessionStore:
                     updated_at REAL NOT NULL,
                     PRIMARY KEY (owner_type, owner_id, key)
                 );
-                """)
-            tool_run_columns = {
+            """)
+            conn.execute(
+                "INSERT OR IGNORE INTO schema_version(version) VALUES (1)"
+            )
+            logger.debug("SessionStore schema migration v1 완료")
+
+    def _migrate_v2(self) -> None:
+        """v2: tool_runs에 graph_run_request_id 컬럼 및 복합 인덱스 추가."""
+        with closing(self._connect()) as conn, conn:
+            existing_columns = {
                 row["name"] for row in conn.execute("PRAGMA table_info(tool_runs)").fetchall()
             }
-            if "graph_run_request_id" not in tool_run_columns:
-                conn.execute("ALTER TABLE tool_runs ADD COLUMN graph_run_request_id TEXT")
+            if "graph_run_request_id" not in existing_columns:
+                conn.execute(
+                    "ALTER TABLE tool_runs ADD COLUMN graph_run_request_id TEXT"
+                )
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_tool_runs_session_graph_run
+                ON tool_runs(session_id, graph_run_request_id)
+            """)
+            conn.execute(
+                "INSERT OR IGNORE INTO schema_version(version) VALUES (2)"
+            )
+            logger.debug("SessionStore schema migration v2 완료")
 
     def _ensure_session(self, session_id: str, created_at: Optional[float] = None) -> None:
         now = time.time()
@@ -653,3 +705,29 @@ class SessionStore:
         with closing(self._connect()) as conn, conn:
             row = conn.execute("SELECT COUNT(*) AS cnt FROM sessions").fetchone()
         return int(row["cnt"] if row else 0)
+
+    def cleanup_old_sessions(self, max_age_days: int) -> int:
+        """sessions.updated_at 기준으로 오래된 세션을 삭제한다.
+
+        자동 호출되지 않으며, 운영자가 명시적으로 호출해야 한다.
+        ON DELETE CASCADE가 설정된 테이블(messages, tool_runs, graph_runs, metadata)은
+        세션 삭제 시 함께 정리된다.
+
+        Parameters
+        ----------
+        max_age_days : int
+            이 일수보다 오래된 세션(updated_at 기준)을 삭제한다.
+
+        Returns
+        -------
+        int
+            삭제된 세션 수.
+        """
+        cutoff = time.time() - max_age_days * 86400
+        with closing(self._connect()) as conn, conn:
+            deleted = conn.execute(
+                "DELETE FROM sessions WHERE updated_at < ?", (cutoff,)
+            ).rowcount
+        if deleted:
+            logger.info(f"SessionStore: {deleted}개 세션 정리 (max_age_days={max_age_days})")
+        return deleted

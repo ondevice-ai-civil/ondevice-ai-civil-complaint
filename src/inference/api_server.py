@@ -145,6 +145,7 @@ class vLLMEngineManager:
         self.agent_manager = AgentManager(AGENTS_DIR)
         self.agent_loop: Optional[AgentLoop] = None
         self.graph = None  # LangGraph CompiledGraph (v2 엔드포인트용)
+        self._checkpointer_ctx = None  # AsyncSqliteSaver 컨텍스트 매니저 (lifespan에서 관리)
         self._init_agent_loop()
         self._init_graph()
 
@@ -761,13 +762,26 @@ class vLLMEngineManager:
         except Exception:
             return None
 
-    def _init_graph(self) -> None:
+    def _init_graph_with_async_checkpointer(
+        self, checkpointer: object
+    ) -> None:
+        """lifespan에서 AsyncSqliteSaver가 준비된 후 graph를 재구성한다."""
+        self._init_graph(checkpointer=checkpointer)
+
+    def _init_graph(self, checkpointer: Optional[object] = None) -> None:
         """LangGraph StateGraph를 초기화한다.
 
         MVP에서는 RegexPlannerAdapter(정규식 기반 fallback)와
         RegistryExecutorAdapter(기존 tool_registry 재사용)를 사용한다.
-        checkpoint는 MemorySaver를 기본으로 사용하며,
-        GOVON_HOME 환경변수로 AsyncSqliteSaver 경로를 설정할 수 있다.
+
+        Parameters
+        ----------
+        checkpointer : optional
+            외부에서 주입할 LangGraph checkpointer.
+            None이면 SqliteSaver(동기 sqlite3)를 시도하고,
+            import 실패 시 MemorySaver로 fallback한다.
+            SqliteSaver DB 경로는 SessionStore DB와 같은 디렉터리에
+            ``langgraph_checkpoints.db``로 생성된다 (관심사 분리).
         """
         try:
             from src.inference.graph.builder import build_govon_graph
@@ -784,9 +798,11 @@ class vLLMEngineManager:
             session_store=self.session_store,
         )
 
-        # MVP: MemorySaver 사용 (AsyncSqliteSaver는 async context manager가 필요하므로
-        # daemon startup의 lifespan event에서 별도 처리)
-        checkpointer = None
+        # checkpointer가 외부에서 주입되지 않으면 SqliteSaver를 시도한다.
+        # SqliteSaver는 프로세스 재시작 후에도 interrupt 상태를 복원하므로
+        # MemorySaver와 달리 재시작-안전(restart-safe)하다.
+        if checkpointer is None:
+            checkpointer = _build_sync_sqlite_checkpointer(self.session_store.db_path)
 
         self.graph = build_govon_graph(
             planner_adapter=planner,
@@ -797,13 +813,78 @@ class vLLMEngineManager:
         logger.info("LangGraph graph 초기화 완료")
 
 
+def _build_sync_sqlite_checkpointer(session_db_path: str) -> object:
+    """SqliteSaver(동기) 또는 MemorySaver(fallback)를 반환한다.
+
+    LangGraph checkpointer용 SQLite DB는 SessionStore의 sessions.sqlite3와
+    같은 디렉터리에 별도 파일 ``langgraph_checkpoints.db``로 생성한다.
+    두 DB를 분리함으로써 관심사(세션 메타 vs. graph 체크포인트)를 명확히 구분한다.
+
+    SqliteSaver는 프로세스 재시작 후에도 interrupt 상태를 SQLite에서 복원하므로
+    MemorySaver와 달리 재시작-안전(restart-safe)하다.
+
+    Parameters
+    ----------
+    session_db_path : str
+        SessionStore가 사용 중인 sessions.sqlite3 파일 경로.
+        이 경로의 부모 디렉터리에 langgraph_checkpoints.db를 생성한다.
+
+    Returns
+    -------
+    SqliteSaver | MemorySaver
+        SqliteSaver import에 성공하면 SqliteSaver 인스턴스를,
+        실패하면 MemorySaver 인스턴스를 반환한다.
+    """
+    cp_db_path = str(Path(session_db_path).parent / "langgraph_checkpoints.db")
+    try:
+        from langgraph.checkpoint.sqlite import SqliteSaver
+
+        conn = __import__("sqlite3").connect(cp_db_path, check_same_thread=False)
+        saver = SqliteSaver(conn)
+        logger.info(f"LangGraph checkpointer: SqliteSaver ({cp_db_path})")
+        return saver
+    except ImportError:
+        logger.warning(
+            "langgraph-checkpoint-sqlite 미설치 — MemorySaver로 fallback합니다. "
+            "프로세스 재시작 시 interrupt 상태가 소멸됩니다."
+        )
+        from langgraph.checkpoint.memory import MemorySaver
+
+        return MemorySaver()
+
+
 manager = vLLMEngineManager()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """FastAPI lifespan: 모델/인덱스 초기화 및 AsyncSqliteSaver 업그레이드.
+
+    startup 단계에서 AsyncSqliteSaver가 사용 가능하면 graph를 재구성한다.
+    AsyncSqliteSaver는 async 컨텍스트 매니저로 관리하며, shutdown 시 정리한다.
+    AsyncSqliteSaver import 실패 시 _init_graph에서 이미 설정된
+    SqliteSaver(또는 MemorySaver fallback)를 그대로 유지한다.
+    """
     await manager.initialize()
-    yield
+
+    # AsyncSqliteSaver로 graph 재구성 시도 (더 높은 async 성능)
+    async_cp_db = str(
+        Path(manager.session_store.db_path).parent / "langgraph_checkpoints.db"
+    )
+    try:
+        from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+
+        async with AsyncSqliteSaver.from_conn_string(async_cp_db) as async_saver:
+            manager._checkpointer_ctx = async_saver
+            manager._init_graph_with_async_checkpointer(async_saver)
+            logger.info(f"LangGraph checkpointer: AsyncSqliteSaver ({async_cp_db})")
+            yield
+        manager._checkpointer_ctx = None
+    except ImportError:
+        logger.info(
+            "AsyncSqliteSaver 미설치 — SqliteSaver(동기) 또는 MemorySaver로 실행합니다."
+        )
+        yield
 
 
 app = FastAPI(
@@ -1139,6 +1220,25 @@ async def v2_agent_run(
 
     클라이언트는 반환된 `thread_id`를 저장해두고
     `/v2/agent/approve`로 승인/거절을 전달해야 한다.
+
+    Session Resume Contract
+    -----------------------
+    동일 session_id로 재요청하는 경우 다음 규칙을 따른다:
+
+    1. **interrupt 대기 중**: graph가 approval_wait에서 interrupt 상태이면
+       현재 checkpoint에서 resume하지 않고 새 메시지를 *추가하여* 이어서 실행한다.
+       (재요청은 새 graph_run으로 처리한다.)
+       승인/거절은 반드시 `/v2/agent/approve`를 통해 처리해야 한다.
+
+    2. **완료된 graph**: graph가 END에 도달한 상태(state.next == [])이면
+       동일 thread_id에 새 graph_run을 시작한다. LangGraph checkpointer가
+       동일 thread_id에서 이전 상태를 누적하므로 대화 히스토리가 보존된다.
+
+    3. **프로세스 재시작 후**: SqliteSaver 사용 시 DB에서 checkpoint가 복원되므로
+       interrupt 상태가 유지된다. 클라이언트는 기존 thread_id로 `/v2/agent/approve`
+       를 다시 호출하면 중단된 지점에서 resume할 수 있다.
+
+    Note: session_id == thread_id. 두 값은 항상 동일하게 유지된다.
     """
     if not manager.graph:
         raise HTTPException(status_code=503, detail="LangGraph graph가 초기화되지 않았습니다.")
@@ -1146,7 +1246,7 @@ async def v2_agent_run(
     from langchain_core.messages import HumanMessage
 
     thread_id = request.session_id or str(uuid.uuid4())
-    session_id = thread_id  # thread_id를 session_id로 확정
+    session_id = thread_id  # thread_id를 session_id로 확정 (session_id == thread_id 불변)
     request_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
     initial_state = {

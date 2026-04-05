@@ -95,7 +95,7 @@ def _parse_sse_events(sse_text: str) -> list[dict]:
     for line in sse_text.splitlines():
         line = line.strip()
         if line.startswith("data:"):
-            data_str = line[len("data:"):].strip()
+            data_str = line[len("data:") :].strip()
             if data_str:
                 try:
                     events.append(json.loads(data_str))
@@ -262,9 +262,7 @@ class TestV2StreamFlow:
 
         # approval_wait 또는 __interrupt__ 중 하나가 있어야 한다
         has_approval_node = "approval_wait" in node_names or "__interrupt__" in node_names
-        assert has_approval_node, (
-            f"approval_wait 또는 __interrupt__ 이벤트 없음: {node_names}"
-        )
+        assert has_approval_node, f"approval_wait 또는 __interrupt__ 이벤트 없음: {node_names}"
 
         # 순서 검증: session_load < planner < (approval_wait or __interrupt__)
         idx_session = node_names.index("session_load")
@@ -302,9 +300,9 @@ class TestV2StreamFlow:
         # 스트림이 끝난 뒤 interrupt 관련 노드가 있어야 한다
         interrupt_nodes = {"approval_wait", "__interrupt__"}
         node_names = {e.get("node") for e in events}
-        assert node_names & interrupt_nodes, (
-            f"interrupt 관련 이벤트 없음 (기대: approval_wait 또는 __interrupt__): {node_names}"
-        )
+        assert (
+            node_names & interrupt_nodes
+        ), f"interrupt 관련 이벤트 없음 (기대: approval_wait 또는 __interrupt__): {node_names}"
 
     def test_stream_then_approve_completes(self, setup_real_graph):
         """stream(session_id 지정) → thread_id 획득 → approve(True) → completed.
@@ -367,9 +365,9 @@ class TestV2SessionResume:
         run1_data = run1_resp.json()
         assert run1_data["status"] == "awaiting_approval"
         thread_id_1 = run1_data["thread_id"]
-        assert thread_id_1 == session_id, (
-            f"thread_id가 session_id와 다름: thread_id={thread_id_1}, session_id={session_id}"
-        )
+        assert (
+            thread_id_1 == session_id
+        ), f"thread_id가 session_id와 다름: thread_id={thread_id_1}, session_id={session_id}"
         session_id_1 = run1_data["session_id"]
 
         # 1차 approve로 graph 완료
@@ -388,12 +386,12 @@ class TestV2SessionResume:
         thread_id_2 = run2_data["thread_id"]
         session_id_2 = run2_data["session_id"]
 
-        assert session_id_1 == session_id_2, (
-            f"session_id가 달라짐: {session_id_1} != {session_id_2}"
-        )
-        assert thread_id_1 == thread_id_2, (
-            f"동일 session_id에서 thread_id가 달라짐: {thread_id_1} != {thread_id_2}"
-        )
+        assert (
+            session_id_1 == session_id_2
+        ), f"session_id가 달라짐: {session_id_1} != {session_id_2}"
+        assert (
+            thread_id_1 == thread_id_2
+        ), f"동일 session_id에서 thread_id가 달라짐: {thread_id_1} != {thread_id_2}"
 
     def test_session_id_none_generates_unique_threads(self, setup_real_graph):
         """session_id 없이 두 번 실행하면 서로 다른 thread_id가 생성된다."""
@@ -421,9 +419,9 @@ class TestV2SessionResume:
         assert run2_resp.status_code == 200
         thread_id_2 = run2_resp.json()["thread_id"]
 
-        assert thread_id_1 != thread_id_2, (
-            f"session_id 없이 실행했는데 thread_id가 같음: {thread_id_1}"
-        )
+        assert (
+            thread_id_1 != thread_id_2
+        ), f"session_id 없이 실행했는데 thread_id가 같음: {thread_id_1}"
 
 
 # ---------------------------------------------------------------------------
@@ -467,12 +465,10 @@ class TestHttpClientCompatibility:
         # params가 사용되었는지 확인 (json body가 아닌 query params)
         assert captured_calls, "httpx.Client.post()가 호출되지 않음"
         call_kwargs = captured_calls[0]
-        assert "params" in call_kwargs, (
-            f"approve()가 params를 사용하지 않음. kwargs: {call_kwargs}"
-        )
-        assert "json" not in call_kwargs, (
-            f"approve()가 여전히 json body를 사용함. kwargs: {call_kwargs}"
-        )
+        assert "params" in call_kwargs, f"approve()가 params를 사용하지 않음. kwargs: {call_kwargs}"
+        assert (
+            "json" not in call_kwargs
+        ), f"approve()가 여전히 json body를 사용함. kwargs: {call_kwargs}"
         params = call_kwargs["params"]
         assert params.get("thread_id") == "test-thread-123"
         assert params.get("approved") in ("true", True), f"approved 파라미터 오류: {params}"
@@ -509,11 +505,9 @@ class TestHttpClientCompatibility:
         # params가 사용되었는지 확인 (json body가 아닌 query params)
         assert captured_calls, "httpx.Client.post()가 호출되지 않음"
         call_kwargs = captured_calls[0]
-        assert "params" in call_kwargs, (
-            f"cancel()이 params를 사용하지 않음. kwargs: {call_kwargs}"
-        )
-        assert "json" not in call_kwargs, (
-            f"cancel()이 여전히 json body를 사용함. kwargs: {call_kwargs}"
-        )
+        assert "params" in call_kwargs, f"cancel()이 params를 사용하지 않음. kwargs: {call_kwargs}"
+        assert (
+            "json" not in call_kwargs
+        ), f"cancel()이 여전히 json body를 사용함. kwargs: {call_kwargs}"
         params = call_kwargs["params"]
         assert params.get("thread_id") == "test-thread-456"

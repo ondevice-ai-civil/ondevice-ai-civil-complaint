@@ -6,6 +6,8 @@ Falls back to a plain input() prompt if prompt_toolkit is not installed.
 
 from __future__ import annotations
 
+import unicodedata
+
 _PT_AVAILABLE = False
 try:
     from prompt_toolkit import Application
@@ -22,9 +24,19 @@ except ImportError:  # pragma: no cover
 _BOX_WIDTH = 55
 
 
+def _display_width(s: str) -> int:
+    """Return the display width of *s*, counting wide (CJK) chars as 2."""
+    w = 0
+    for ch in s:
+        eaw = unicodedata.east_asian_width(ch)
+        w += 2 if eaw in ("W", "F") else 1
+    return w
+
+
 def _box_line(content: str = "", width: int = _BOX_WIDTH) -> str:
-    """Return a single box line padded to *width* (inner characters)."""
-    inner = content.ljust(width)
+    """Return a single box line padded to *width* display columns."""
+    pad = width - _display_width(content)
+    inner = content + " " * max(pad, 0)
     return f"│ {inner} │"
 
 
@@ -35,21 +47,42 @@ def _build_box_lines(approval_request: dict, selected: int) -> list[str]:
     tool_summaries: list[str] = approval_request.get("tool_summaries") or []
 
     w = _BOX_WIDTH
-    top = "┌─ 작업 승인 요청 " + "─" * (w - len("─ 작업 승인 요청 ") + 2) + "┐"
+    _header = "─ 작업 승인 요청 "
+    top = "┌" + _header + "─" * (w - _display_width(_header) + 2) + "┐"
     bot = "└" + "─" * (w + 2) + "┘"
 
     lines: list[str] = [top, _box_line()]
 
     def _wrap(label: str, value: str) -> None:
-        available = w - len(label) - 2  # "  label: " prefix overhead
-        if len(value) <= available:
+        available = w - _display_width(label) - 2  # "  label: " prefix overhead
+        if _display_width(value) <= available:
             lines.append(_box_line(f"  {label}: {value}"))
         else:
-            lines.append(_box_line(f"  {label}: {value[:available]}"))
-            rest = value[available:]
+            # Truncate value to fit within available display columns
+            chunk: list[str] = []
+            used = 0
+            for ch in value:
+                cw = 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+                if used + cw > available:
+                    break
+                chunk.append(ch)
+                used += cw
+            first = "".join(chunk)
+            lines.append(_box_line(f"  {label}: {first}"))
+            rest = value[len(first):]
             while rest:
-                lines.append(_box_line(f"    {rest[:w - 4]}"))
-                rest = rest[w - 4 :]
+                row: list[str] = []
+                used = 0
+                col_limit = w - 4
+                for ch in rest:
+                    cw = 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+                    if used + cw > col_limit:
+                        break
+                    row.append(ch)
+                    used += cw
+                seg = "".join(row)
+                lines.append(_box_line(f"    {seg}"))
+                rest = rest[len(seg):]
 
     _wrap("목표", goal)
     _wrap("이유", reason)
@@ -59,15 +92,34 @@ def _build_box_lines(approval_request: dict, selected: int) -> list[str]:
         lines.append(_box_line("  수행할 작업:"))
         for idx, summary in enumerate(tool_summaries, 1):
             prefix = f"    {idx}. "
-            avail = w - len(prefix)
-            if len(summary) <= avail:
+            avail = w - _display_width(prefix)
+            if _display_width(summary) <= avail:
                 lines.append(_box_line(f"{prefix}{summary}"))
             else:
-                lines.append(_box_line(f"{prefix}{summary[:avail]}"))
-                rest = summary[avail:]
-                while rest:
-                    lines.append(_box_line(f"       {rest[:w - 7]}"))
-                    rest = rest[w - 7 :]
+                chunk2: list[str] = []
+                used2 = 0
+                for ch in summary:
+                    cw = 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+                    if used2 + cw > avail:
+                        break
+                    chunk2.append(ch)
+                    used2 += cw
+                first2 = "".join(chunk2)
+                lines.append(_box_line(f"{prefix}{first2}"))
+                rest2 = summary[len(first2):]
+                while rest2:
+                    row2: list[str] = []
+                    used2 = 0
+                    col_limit2 = w - 7
+                    for ch in rest2:
+                        cw = 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+                        if used2 + cw > col_limit2:
+                            break
+                        row2.append(ch)
+                        used2 += cw
+                    seg2 = "".join(row2)
+                    lines.append(_box_line(f"       {seg2}"))
+                    rest2 = rest2[len(seg2):]
 
     lines.append(_box_line())
     approve_bullet = "●" if selected == 0 else "○"
@@ -127,7 +179,8 @@ def _pt_prompt(approval_request: dict) -> bool:
     layout = Layout(HSplit([window]))
 
     def _refresh_control():
-        control.text = get_text()
+        control.text = get_text  # keep as callable
+        app.invalidate()
 
     app: Application = Application(layout=layout, key_bindings=kb, full_screen=False)
     app.run()

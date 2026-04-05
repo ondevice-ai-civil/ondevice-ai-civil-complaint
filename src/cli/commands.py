@@ -1,7 +1,5 @@
 """Slash command parser and handler for GovOn CLI."""
 
-import os
-
 COMMANDS: dict[str, str] = {
     "/help": "사용 가능한 명령과 도움말을 표시합니다.",
     "/clear": "터미널 화면을 초기화합니다.",
@@ -42,10 +40,7 @@ def handle_command(text: str) -> str | None:
         return _HELP_TEXT
 
     if cmd == "/clear":
-        if os.name == "nt":
-            os.system("cls")
-        else:
-            os.system("clear")
+        print("\033[2J\033[H", end="", flush=True)
         return None
 
     if cmd == "/exit":

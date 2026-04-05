@@ -115,7 +115,12 @@ def _process_query(
         approved = show_approval_prompt(approval_request)
 
         if not approved:
-            # 거절: 아무 텍스트 없이 프롬프트 복귀
+            # 거절: 서버에 통보 후 프롬프트 복귀
+            _thread_id: str = response.get("thread_id") or ""
+            try:
+                client.approve(_thread_id, approved=False)
+            except Exception:  # pragma: no cover
+                pass
             return new_session_id or session_id, True
 
         thread_id: str = response.get("thread_id") or ""

@@ -31,7 +31,6 @@ from typing import Any, Callable, Dict, List, Optional
 
 from loguru import logger
 
-
 SCHEMA_VERSION = 2
 """현재 SessionStore SQLite 스키마 버전."""
 
@@ -328,9 +327,7 @@ class SessionStore:
                     PRIMARY KEY (owner_type, owner_id, key)
                 );
             """)
-            conn.execute(
-                "INSERT OR IGNORE INTO schema_version(version) VALUES (1)"
-            )
+            conn.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (1)")
             logger.debug("SessionStore schema migration v1 완료")
 
     def _migrate_v2(self) -> None:
@@ -340,16 +337,12 @@ class SessionStore:
                 row["name"] for row in conn.execute("PRAGMA table_info(tool_runs)").fetchall()
             }
             if "graph_run_request_id" not in existing_columns:
-                conn.execute(
-                    "ALTER TABLE tool_runs ADD COLUMN graph_run_request_id TEXT"
-                )
+                conn.execute("ALTER TABLE tool_runs ADD COLUMN graph_run_request_id TEXT")
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_tool_runs_session_graph_run
                 ON tool_runs(session_id, graph_run_request_id)
             """)
-            conn.execute(
-                "INSERT OR IGNORE INTO schema_version(version) VALUES (2)"
-            )
+            conn.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (2)")
             logger.debug("SessionStore schema migration v2 완료")
 
     def _ensure_session(self, session_id: str, created_at: Optional[float] = None) -> None:
@@ -725,9 +718,7 @@ class SessionStore:
         """
         cutoff = time.time() - max_age_days * 86400
         with closing(self._connect()) as conn, conn:
-            deleted = conn.execute(
-                "DELETE FROM sessions WHERE updated_at < ?", (cutoff,)
-            ).rowcount
+            deleted = conn.execute("DELETE FROM sessions WHERE updated_at < ?", (cutoff,)).rowcount
         if deleted:
             logger.info(f"SessionStore: {deleted}개 세션 정리 (max_age_days={max_age_days})")
         return deleted

@@ -130,9 +130,9 @@ class TestRestartSafeGraphCheckpoint:
 
         # 새 graph 인스턴스에서 이전 interrupt 상태가 복원되어야 한다
         state_restored = graph2.get_state(config)
-        assert state_restored.next, (
-            "새 SqliteSaver 인스턴스(같은 DB)에서 interrupt 상태가 복원되어야 합니다"
-        )
+        assert (
+            state_restored.next
+        ), "새 SqliteSaver 인스턴스(같은 DB)에서 interrupt 상태가 복원되어야 합니다"
 
         # --- 3단계: resume → 완료 검증 ---
         from langgraph.types import Command
@@ -384,9 +384,9 @@ class TestSchemaMigration:
 
         # graph_run_request_id 컬럼이 추가되어야 한다
         cols = {r[1] for r in conn2.execute("PRAGMA table_info(tool_runs)").fetchall()}
-        assert "graph_run_request_id" in cols, (
-            "migration v2: tool_runs.graph_run_request_id 컬럼이 없습니다"
-        )
+        assert (
+            "graph_run_request_id" in cols
+        ), "migration v2: tool_runs.graph_run_request_id 컬럼이 없습니다"
         conn2.close()
 
         # 정상 동작 확인

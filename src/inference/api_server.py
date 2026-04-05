@@ -762,9 +762,7 @@ class vLLMEngineManager:
         except Exception:
             return None
 
-    def _init_graph_with_async_checkpointer(
-        self, checkpointer: object
-    ) -> None:
+    def _init_graph_with_async_checkpointer(self, checkpointer: object) -> None:
         """lifespan에서 AsyncSqliteSaver가 준비된 후 graph를 재구성한다."""
         self._init_graph(checkpointer=checkpointer)
 
@@ -868,9 +866,7 @@ async def lifespan(app: FastAPI):
     await manager.initialize()
 
     # AsyncSqliteSaver로 graph 재구성 시도 (더 높은 async 성능)
-    async_cp_db = str(
-        Path(manager.session_store.db_path).parent / "langgraph_checkpoints.db"
-    )
+    async_cp_db = str(Path(manager.session_store.db_path).parent / "langgraph_checkpoints.db")
     try:
         from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
@@ -881,9 +877,7 @@ async def lifespan(app: FastAPI):
             yield
         manager._checkpointer_ctx = None
     except ImportError:
-        logger.info(
-            "AsyncSqliteSaver 미설치 — SqliteSaver(동기) 또는 MemorySaver로 실행합니다."
-        )
+        logger.info("AsyncSqliteSaver 미설치 — SqliteSaver(동기) 또는 MemorySaver로 실행합니다.")
         yield
 
 

@@ -168,10 +168,16 @@ class LLMPlannerAdapter(PlannerAdapter):
         messages: Sequence[AnyMessage],
         context: Dict[str, Any],
     ) -> str:
-        """LLM에 전달할 사용자 프롬프트를 구성한다."""
+        """LLM에 전달할 사용자 프롬프트를 구성한다.
+
+        이전 답변(previous_assistant_response)이 있으면 포함하여
+        "이 답변에 근거를 붙여줘" 같은 follow-up intent를 LLM이 정확히 분류하도록 한다.
+        """
         parts = []
         if context.get("session_context"):
             parts.append(f"[세션 맥락]\n{context['session_context']}")
+        if context.get("previous_assistant_response"):
+            parts.append(f"[이전 답변]\n{context['previous_assistant_response']}")
         user_query = messages[-1].content if messages else ""
         parts.append(f"[사용자 요청]\n{user_query}")
         return "\n\n".join(parts)

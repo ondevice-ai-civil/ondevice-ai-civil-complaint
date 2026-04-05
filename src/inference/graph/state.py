@@ -101,6 +101,7 @@ class GovOnGraphState(TypedDict, total=False):
 
     # --- synthesis 출력 ---
     final_text: str  # 최종 사용자 응답 텍스트
+    evidence_items: List[Dict[str, Any]]  # EvidenceItem dict 리스트 (CLI 렌더링용)
 
     # --- 메타데이터 ---
     error: Optional[str]

@@ -280,17 +280,19 @@ async def synthesis_node(state: GovOnGraphState) -> dict:
     Returns
     -------
     dict
-        `final_text`와 `messages`(AIMessage 추가)를 갱신한다.
+        `final_text`, `evidence_items`, `messages`(AIMessage 추가)를 갱신한다.
     """
     accumulated = state.get("accumulated_context", {})
     task_type = state.get("task_type", "")
 
     final_text = _extract_final_text(accumulated, task_type)
+    evidence_items = _collect_evidence_items(accumulated)
 
-    logger.info(f"[synthesis] final_text_len={len(final_text)}")
+    logger.info(f"[synthesis] final_text_len={len(final_text)} evidence_items={len(evidence_items)}")
 
     return {
         "final_text": final_text,
+        "evidence_items": evidence_items,
         "messages": [AIMessage(content=final_text)],
     }
 
@@ -384,11 +386,48 @@ async def persist_node(
     return {}
 
 
+def _collect_evidence_items(accumulated: Dict[str, Any]) -> list[dict]:
+    """accumulated 컨텍스트에서 모든 EvidenceItem dict를 수집한다.
+
+    각 tool 결과의 evidence.items 필드를 탐색하여 하나의 리스트로 합산한다.
+    최대 10개까지 반환하며, score 내림차순으로 정렬한다.
+
+    Parameters
+    ----------
+    accumulated : Dict[str, Any]
+        tool 결과가 누적된 컨텍스트 dict.
+
+    Returns
+    -------
+    list[dict]
+        EvidenceItem.to_dict() 형태의 dict 리스트.
+    """
+    _SKIP_KEYS = {"session_context", "query", "query_variants", "previous_user_query",
+                  "previous_assistant_response", "recent_tool_summary"}
+    items: list[dict] = []
+    for key, payload in accumulated.items():
+        if key in _SKIP_KEYS:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        ev = payload.get("evidence")
+        if isinstance(ev, dict) and ev.get("items"):
+            for item in ev["items"]:
+                if isinstance(item, dict):
+                    items.append(item)
+    # score 내림차순, 최대 10개
+    items.sort(key=lambda x: float(x.get("score", 0.0)), reverse=True)
+    return items[:10]
+
+
 def _extract_final_text(accumulated: Dict[str, Any], task_type: str) -> str:
     """tool 결과를 종합하여 최종 텍스트를 생성한다.
 
     기존 AgentLoop._extract_final_text()를 계승하되,
     task_type을 기반으로 분기한다.
+
+    append_evidence 타입일 때는 기존 답변(previous_assistant_response)을
+    evidence 섹션 앞에 prepend하여 답변을 보강한다.
 
     Parameters
     ----------
@@ -402,6 +441,17 @@ def _extract_final_text(accumulated: Dict[str, Any], task_type: str) -> str:
     str
         최종 응답 텍스트.
     """
+    # append_evidence: 기존 답변 위에 근거 섹션을 추가한다
+    if task_type == "append_evidence":
+        previous_draft = str(accumulated.get("previous_assistant_response", "")).strip()
+        evidence_section = _build_evidence_section(accumulated)
+        if previous_draft and evidence_section:
+            return f"{previous_draft}\n\n{evidence_section}"
+        if evidence_section:
+            return evidence_section
+        if previous_draft:
+            return previous_draft
+
     # 1. append_evidence 또는 draft_civil_response의 직접 텍스트가 있으면 사용
     for key in ("append_evidence", "draft_civil_response"):
         payload = accumulated.get(key, {})
@@ -460,3 +510,45 @@ def _extract_final_text(accumulated: Dict[str, Any], task_type: str) -> str:
             parts.append(api_data["context_text"])
 
     return "\n\n".join(parts) if parts else "요청을 처리할 수 없습니다."
+
+
+def _build_evidence_section(accumulated: Dict[str, Any]) -> str:
+    """accumulated에서 근거 섹션 텍스트를 구성한다.
+
+    append_evidence capability의 직접 텍스트가 있으면 우선 사용하고,
+    없으면 evidence items에서 구조화된 텍스트를 생성한다.
+
+    Parameters
+    ----------
+    accumulated : Dict[str, Any]
+        tool 결과가 누적된 컨텍스트 dict.
+
+    Returns
+    -------
+    str
+        근거 섹션 텍스트. 근거가 없으면 빈 문자열.
+    """
+    # append_evidence capability의 직접 생성 텍스트 우선 사용
+    ae_payload = accumulated.get("append_evidence", {})
+    if isinstance(ae_payload, dict) and ae_payload.get("text"):
+        return str(ae_payload["text"])
+
+    # evidence items에서 구조화 텍스트 생성
+    items = _collect_evidence_items(accumulated)
+    if not items:
+        return ""
+
+    lines = ["[참조 근거]"]
+    for item in items[:5]:
+        source_type = item.get("source_type", "")
+        title = item.get("title", "")
+        excerpt = item.get("excerpt", "")[:120]
+        label = (
+            "[로컬]" if source_type == "rag" else "[외부]" if source_type == "api" else "[생성]"
+        )
+        if title:
+            lines.append(f"- {label} {title}: {excerpt}")
+        elif excerpt:
+            lines.append(f"- {label} {excerpt}")
+
+    return "\n".join(lines) if len(lines) > 1 else ""

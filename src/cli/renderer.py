@@ -77,19 +77,85 @@ class StreamingStatusDisplay:
             self._status = None
 
 
+def render_evidence_section(evidence_items: list) -> str:
+    """EvidenceItem dict 리스트를 출처 섹션 텍스트로 변환한다.
+
+    source_type별로 그룹화하여 표시한다:
+      [로컬 문서] — rag 출처 (file_path, page, score 포함)
+      [외부 API]  — api 출처 (URL 포함)
+      [LLM 생성]  — llm_generated 출처
+
+    Parameters
+    ----------
+    evidence_items : list
+        EvidenceItem.to_dict() 형태의 dict 리스트.
+
+    Returns
+    -------
+    str
+        출처 섹션 텍스트. items가 없으면 빈 문자열.
+    """
+    if not evidence_items:
+        return ""
+
+    # source_type별 그룹화
+    rag_items = [i for i in evidence_items if i.get("source_type") == "rag"]
+    api_items = [i for i in evidence_items if i.get("source_type") == "api"]
+    llm_items = [i for i in evidence_items if i.get("source_type") == "llm_generated"]
+
+    lines: list[str] = ["── 참조 근거 ──"]
+    idx = 1
+
+    if rag_items:
+        lines.append("[로컬 문서]")
+        for item in rag_items:
+            title = item.get("title") or item.get("link_or_path", "")
+            page = item.get("page")
+            score = item.get("score", 0.0)
+            page_str = f" (p.{page})" if page is not None else ""
+            score_str = f" [{score:.2f}]" if score else ""
+            lines.append(f"  {idx}. {title}{page_str}{score_str}")
+            idx += 1
+
+    if api_items:
+        lines.append("[외부 API]")
+        for item in api_items:
+            title = item.get("title", "")
+            link = item.get("link_or_path", "")
+            link_str = f" — {link}" if link else ""
+            lines.append(f"  {idx}. {title}{link_str}")
+            idx += 1
+
+    if llm_items:
+        lines.append("[LLM 생성]")
+        for item in llm_items:
+            title = item.get("title", "")
+            excerpt = item.get("excerpt", "")[:80]
+            lines.append(f"  {idx}. {title}: {excerpt}" if title else f"  {idx}. {excerpt}")
+            idx += 1
+
+    return "\n".join(lines) if idx > 1 else ""
+
+
 def render_result(result: dict) -> None:
     """Render the final agent response to the terminal.
 
     Expected keys (at least one required):
       - result["text"] or result["response"]: main answer text
-      - result["citations"] or result["sources"]: list of source strings (optional)
+      - result["evidence_items"]: EvidenceItem dict 리스트 (structured, 우선)
+      - result["citations"] or result["sources"]: list of source strings (fallback)
     """
     text_body: str = result.get("text") or result.get("response") or ""
+    evidence_items: list = result.get("evidence_items") or []
     citations: list = result.get("citations") or result.get("sources") or []
 
     if _RICH_AVAILABLE:
         content = Text(text_body)
-        if citations:
+        if evidence_items:
+            evidence_text = render_evidence_section(evidence_items)
+            if evidence_text:
+                content.append(f"\n\n{evidence_text}\n", style="dim")
+        elif citations:
             content.append("\n\n출처\n", style="bold")
             for idx, src in enumerate(citations, 1):
                 content.append(f"  {idx}. {src}\n", style="dim")
@@ -97,7 +163,11 @@ def render_result(result: dict) -> None:
     else:
         print("\n── GovOn ──────────────────────────────────")
         print(text_body)
-        if citations:
+        if evidence_items:
+            evidence_text = render_evidence_section(evidence_items)
+            if evidence_text:
+                print(f"\n{evidence_text}")
+        elif citations:
             print("\n출처")
             for idx, src in enumerate(citations, 1):
                 print(f"  {idx}. {src}")

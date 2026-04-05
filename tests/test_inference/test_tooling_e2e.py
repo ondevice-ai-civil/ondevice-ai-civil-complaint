@@ -52,6 +52,7 @@ def _make_registry(
     capability->adapter->node 파이프라인을 실제로 거친다.
     """
     if rag_fn is None:
+
         async def rag_fn(query, context, session):
             return {
                 "results": [
@@ -62,10 +63,12 @@ def _make_registry(
             }
 
     if draft_fn is None:
+
         async def draft_fn(query, context, session):
             return {"text": f"[기본 초안] {query}에 대한 답변입니다."}
 
     if evidence_fn is None:
+
         async def evidence_fn(query, context, session):
             return {"text": f"[기본 근거] {query}에 대한 근거입니다."}
 
@@ -131,9 +134,7 @@ def make_tooling_graph(session_store):
 
     def _make(planner, rag_fn=None, api_action=None, draft_fn=None, evidence_fn=None):
         registry = _make_registry(rag_fn, api_action, draft_fn, evidence_fn)
-        executor = RegistryExecutorAdapter(
-            tool_registry=registry, session_store=session_store
-        )
+        executor = RegistryExecutorAdapter(tool_registry=registry, session_store=session_store)
         return build_govon_graph(
             planner_adapter=planner,
             executor_adapter=executor,
@@ -209,14 +210,14 @@ class TestDraftResponsePipeline:
         final_text = result.get("final_text", "")
         tool_results = result.get("tool_results", {})
 
-        assert expected_draft_text in final_text, (
-            f"final_text에 draft 텍스트가 포함되어야 합니다. 실제: {final_text!r}"
-        )
+        assert (
+            expected_draft_text in final_text
+        ), f"final_text에 draft 텍스트가 포함되어야 합니다. 실제: {final_text!r}"
         assert "rag_search" in tool_results, "tool_results에 rag_search가 있어야 합니다"
         assert "api_lookup" in tool_results, "tool_results에 api_lookup이 있어야 합니다"
-        assert "draft_civil_response" in tool_results, (
-            "tool_results에 draft_civil_response가 있어야 합니다"
-        )
+        assert (
+            "draft_civil_response" in tool_results
+        ), "tool_results에 draft_civil_response가 있어야 합니다"
 
     def test_draft_response_synthesis_prioritizes_draft_text(self, make_tooling_graph):
         """draft_civil_response 텍스트가 rag 결과보다 우선 선택된다.
@@ -256,13 +257,13 @@ class TestDraftResponsePipeline:
         result = _approve(graph, config)
 
         final_text = result.get("final_text", "")
-        assert draft_text in final_text, (
-            f"draft_civil_response 텍스트가 final_text에 포함되어야 합니다. 실제: {final_text!r}"
-        )
+        assert (
+            draft_text in final_text
+        ), f"draft_civil_response 텍스트가 final_text에 포함되어야 합니다. 실제: {final_text!r}"
         # rag 결과가 아닌 draft 텍스트가 최우선이어야 한다
-        assert "[로컬 문서 근거]" not in final_text, (
-            "draft가 성공했을 때 rag 포맷 출력이 사용되면 안 됩니다"
-        )
+        assert (
+            "[로컬 문서 근거]" not in final_text
+        ), "draft가 성공했을 때 rag 포맷 출력이 사용되면 안 됩니다"
 
     def test_lookup_stats_api_only(self, make_tooling_graph):
         """api_lookup 단독 실행: tool_results에 api_lookup만 존재한다.
@@ -290,15 +291,13 @@ class TestDraftResponsePipeline:
 
         tool_results = result.get("tool_results", {})
         assert "api_lookup" in tool_results, "tool_results에 api_lookup이 있어야 합니다"
-        assert "rag_search" not in tool_results, (
-            "LOOKUP_STATS에서 rag_search가 실행되면 안 됩니다"
-        )
+        assert "rag_search" not in tool_results, "LOOKUP_STATS에서 rag_search가 실행되면 안 됩니다"
 
         # api_lookup 성공 여부: action=None이면 success=True, empty_reason="no_match"
         api_result = tool_results["api_lookup"]
-        assert api_result.get("success") is True, (
-            "api_action=None일 때 api_lookup은 성공 상태(빈 결과)를 반환해야 합니다"
-        )
+        assert (
+            api_result.get("success") is True
+        ), "api_action=None일 때 api_lookup은 성공 상태(빈 결과)를 반환해야 합니다"
 
         # final_text는 fallback이거나 빈 api_lookup 결과에 기반해야 한다
         final_text = result.get("final_text", "")
@@ -326,9 +325,7 @@ class TestEvidenceAugmentationPipeline:
 
         async def rag_fn(query, context, session):
             return {
-                "results": [
-                    {"title": "관련 법령", "content": "법령 내용입니다.", "score": 0.85}
-                ],
+                "results": [{"title": "관련 법령", "content": "법령 내용입니다.", "score": 0.85}],
                 "context_text": "법령 검색 컨텍스트",
                 "query": query,
             }
@@ -354,9 +351,9 @@ class TestEvidenceAugmentationPipeline:
         result = _approve(graph, config)
 
         final_text = result.get("final_text", "")
-        assert evidence_text in final_text, (
-            f"final_text에 append_evidence 텍스트가 포함되어야 합니다. 실제: {final_text!r}"
-        )
+        assert (
+            evidence_text in final_text
+        ), f"final_text에 append_evidence 텍스트가 포함되어야 합니다. 실제: {final_text!r}"
 
     def test_evidence_context_chaining(self, make_tooling_graph):
         """append_evidence execute_fn 호출 시 context에 rag_search/api_lookup 결과가 포함된다.
@@ -368,9 +365,7 @@ class TestEvidenceAugmentationPipeline:
 
         async def rag_fn(query, context, session):
             return {
-                "results": [
-                    {"title": "법령 문서", "content": "관련 법령", "score": 0.9}
-                ],
+                "results": [{"title": "법령 문서", "content": "관련 법령", "score": 0.9}],
                 "context_text": "법령 컨텍스트",
                 "query": query,
             }
@@ -398,12 +393,12 @@ class TestEvidenceAugmentationPipeline:
         _approve(graph, config)
 
         # append_evidence execute_fn이 호출될 때 rag_search 결과가 누적 컨텍스트에 있어야 한다
-        assert "rag_search" in received_context, (
-            "append_evidence 호출 시 context에 rag_search 결과가 있어야 합니다"
-        )
-        assert "api_lookup" in received_context, (
-            "append_evidence 호출 시 context에 api_lookup 결과가 있어야 합니다"
-        )
+        assert (
+            "rag_search" in received_context
+        ), "append_evidence 호출 시 context에 rag_search 결과가 있어야 합니다"
+        assert (
+            "api_lookup" in received_context
+        ), "append_evidence 호출 시 context에 api_lookup 결과가 있어야 합니다"
 
     def test_evidence_with_empty_rag(self, make_tooling_graph):
         """rag 결과가 없을 때도 append_evidence 파이프라인이 완료된다.
@@ -443,9 +438,9 @@ class TestEvidenceAugmentationPipeline:
         assert final_text, "rag가 비어도 final_text가 생성되어야 합니다"
 
         # append_evidence가 실행되어 evidence_text가 final_text에 포함되어야 한다
-        assert evidence_text in final_text, (
-            f"append_evidence 텍스트가 final_text에 포함되어야 합니다. 실제: {final_text!r}"
-        )
+        assert (
+            evidence_text in final_text
+        ), f"append_evidence 텍스트가 final_text에 포함되어야 합니다. 실제: {final_text!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -497,19 +492,17 @@ class TestPartialFailureE2E:
         # rag가 실패해야 한다 (타임아웃)
         assert "rag_search" in tool_results, "rag_search가 tool_results에 있어야 합니다"
         rag_result = tool_results["rag_search"]
-        assert rag_result.get("success") is False, (
-            "rag 타임아웃 시 success=False여야 합니다"
-        )
+        assert rag_result.get("success") is False, "rag 타임아웃 시 success=False여야 합니다"
 
         # draft가 실행되어 final_text가 생성되어야 한다
-        assert "draft_civil_response" in tool_results, (
-            "draft_civil_response가 tool_results에 있어야 합니다"
-        )
+        assert (
+            "draft_civil_response" in tool_results
+        ), "draft_civil_response가 tool_results에 있어야 합니다"
         draft_result = tool_results["draft_civil_response"]
         assert draft_result.get("success") is True, "draft가 성공해야 합니다"
-        assert draft_text in result.get("final_text", ""), (
-            "draft 텍스트가 final_text에 포함되어야 합니다"
-        )
+        assert draft_text in result.get(
+            "final_text", ""
+        ), "draft 텍스트가 final_text에 포함되어야 합니다"
 
     def test_api_failure_draft_still_runs(self, session_store):
         """api_lookup이 예외를 발생시켜도 draft_civil_response가 실행된다.
@@ -535,9 +528,7 @@ class TestPartialFailureE2E:
         # FailingApiAction을 주입한 registry 구성
         registry = _make_registry(draft_fn=draft_fn)
         registry["api_lookup"] = ApiLookupCapability(action=FailingApiAction())
-        executor = RegistryExecutorAdapter(
-            tool_registry=registry, session_store=session_store
-        )
+        executor = RegistryExecutorAdapter(tool_registry=registry, session_store=session_store)
 
         planner = ConfigurableStubPlanner(
             task_type=TaskType.DRAFT_RESPONSE,
@@ -565,16 +556,14 @@ class TestPartialFailureE2E:
         tool_results = result.get("tool_results", {})
         assert "api_lookup" in tool_results, "api_lookup이 tool_results에 있어야 합니다"
         api_result = tool_results["api_lookup"]
-        assert api_result.get("success") is False, (
-            "API 실패 시 success=False여야 합니다"
-        )
+        assert api_result.get("success") is False, "API 실패 시 success=False여야 합니다"
 
-        assert "draft_civil_response" in tool_results, (
-            "api 실패 후에도 draft_civil_response가 실행되어야 합니다"
-        )
-        assert draft_text in result.get("final_text", ""), (
-            "draft 텍스트가 final_text에 포함되어야 합니다"
-        )
+        assert (
+            "draft_civil_response" in tool_results
+        ), "api 실패 후에도 draft_civil_response가 실행되어야 합니다"
+        assert draft_text in result.get(
+            "final_text", ""
+        ), "draft 텍스트가 final_text에 포함되어야 합니다"
 
     def test_draft_exception_caught_by_adapter(self, make_tooling_graph):
         """draft execute_fn이 RuntimeError를 발생시키면 어댑터가 잡고 success=False를 반환한다.
@@ -583,6 +572,7 @@ class TestPartialFailureE2E:
         RegistryExecutorAdapter의 30초 어댑터 타임아웃이 유일한 방어선이다.
         execute_fn에서 발생한 예외는 CapabilityBase.__call__을 통해 어댑터로 전파된다.
         """
+
         async def draft_fn_raises(query, context, session):
             raise RuntimeError("LLM 서버 오류")
 
@@ -604,16 +594,14 @@ class TestPartialFailureE2E:
         result = _approve(graph, config)
 
         tool_results = result.get("tool_results", {})
-        assert "draft_civil_response" in tool_results, (
-            "draft_civil_response가 tool_results에 있어야 합니다"
-        )
+        assert (
+            "draft_civil_response" in tool_results
+        ), "draft_civil_response가 tool_results에 있어야 합니다"
         draft_result = tool_results["draft_civil_response"]
-        assert draft_result.get("success") is False, (
-            "draft 예외 시 tool_results['draft_civil_response']['success']==False여야 합니다"
-        )
-        assert draft_result.get("error"), (
-            "draft 예외 시 error 필드가 있어야 합니다"
-        )
+        assert (
+            draft_result.get("success") is False
+        ), "draft 예외 시 tool_results['draft_civil_response']['success']==False여야 합니다"
+        assert draft_result.get("error"), "draft 예외 시 error 필드가 있어야 합니다"
 
     def test_all_tools_fail_synthesis_fallback(self, make_tooling_graph):
         """모든 tool이 실패하면 final_text가 fallback 메시지가 된다.
@@ -626,6 +614,7 @@ class TestPartialFailureE2E:
         모든 도구가 완전히 실패(success=False)하는 시나리오: rag, draft 예외 + api=None(빈 결과)
         api는 success=True지만 context_text/results가 없으므로 결국 fallback이 된다.
         """
+
         async def rag_fn_fail(query, context, session):
             raise RuntimeError("RAG 엔진 오류")
 
@@ -665,9 +654,9 @@ class TestPartialFailureE2E:
 
         # 모든 유효한 텍스트 소스가 없으므로 fallback이어야 한다
         final_text = result.get("final_text", "")
-        assert final_text == "요청을 처리할 수 없습니다.", (
-            f"모든 tool 실패 시 fallback 메시지여야 합니다. 실제: {final_text!r}"
-        )
+        assert (
+            final_text == "요청을 처리할 수 없습니다."
+        ), f"모든 tool 실패 시 fallback 메시지여야 합니다. 실제: {final_text!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -688,6 +677,7 @@ class TestEmptyResultScenarios:
         RagSearchCapability는 results가 없으면 success=True, empty_reason='no_match'를 반환한다.
         tool_results에서 이 empty_reason을 확인한다.
         """
+
         async def rag_fn_empty(query, context, session):
             return {"results": [], "context_text": "", "query": query}
 
@@ -712,18 +702,19 @@ class TestEmptyResultScenarios:
         assert "rag_search" in tool_results, "tool_results에 rag_search가 있어야 합니다"
 
         rag_result = tool_results["rag_search"]
-        assert rag_result.get("success") is True, (
-            "빈 결과일 때 success=True여야 합니다 (no_match는 오류가 아님)"
-        )
-        assert rag_result.get("empty_reason") == "no_match", (
-            f"empty_reason이 'no_match'여야 합니다. 실제: {rag_result.get('empty_reason')!r}"
-        )
+        assert (
+            rag_result.get("success") is True
+        ), "빈 결과일 때 success=True여야 합니다 (no_match는 오류가 아님)"
+        assert (
+            rag_result.get("empty_reason") == "no_match"
+        ), f"empty_reason이 'no_match'여야 합니다. 실제: {rag_result.get('empty_reason')!r}"
 
     def test_rag_low_confidence_includes_results(self, make_tooling_graph):
         """모든 결과의 score가 0.3 미만이면 empty_reason='low_confidence'지만 results는 있다.
 
         RagSearchCapability는 low_confidence 케이스에서도 results를 반환한다.
         """
+
         async def rag_fn_low_conf(query, context, session):
             return {
                 "results": [
@@ -754,16 +745,14 @@ class TestEmptyResultScenarios:
         tool_results = result.get("tool_results", {})
         rag_result = tool_results.get("rag_search", {})
 
-        assert rag_result.get("success") is True, (
-            "low_confidence일 때 success=True여야 합니다"
-        )
-        assert rag_result.get("empty_reason") == "low_confidence", (
-            f"empty_reason이 'low_confidence'여야 합니다. 실제: {rag_result.get('empty_reason')!r}"
-        )
+        assert rag_result.get("success") is True, "low_confidence일 때 success=True여야 합니다"
+        assert (
+            rag_result.get("empty_reason") == "low_confidence"
+        ), f"empty_reason이 'low_confidence'여야 합니다. 실제: {rag_result.get('empty_reason')!r}"
         # low_confidence여도 results는 포함되어야 한다
-        assert len(rag_result.get("results", [])) > 0, (
-            "low_confidence일 때도 results가 반환되어야 합니다"
-        )
+        assert (
+            len(rag_result.get("results", [])) > 0
+        ), "low_confidence일 때도 results가 반환되어야 합니다"
 
     def test_synthesis_with_only_rag_results(self, make_tooling_graph):
         """rag만 성공하고 draft가 실패할 때 final_text가 rag 포맷 출력을 포함한다.
@@ -771,6 +760,7 @@ class TestEmptyResultScenarios:
         _extract_final_text의 legacy fallback:
         draft가 없고 evidence도 없으면 rag_search.results 기반으로 출력한다.
         """
+
         async def rag_fn(query, context, session):
             return {
                 "results": [
@@ -803,9 +793,9 @@ class TestEmptyResultScenarios:
         tool_results = result.get("tool_results", {})
         rag_result = tool_results.get("rag_search", {})
         assert rag_result.get("success") is True, "rag가 성공해야 합니다"
-        assert tool_results.get("draft_civil_response", {}).get("success") is False, (
-            "draft가 실패해야 합니다"
-        )
+        assert (
+            tool_results.get("draft_civil_response", {}).get("success") is False
+        ), "draft가 실패해야 합니다"
 
         final_text = result.get("final_text", "")
         # rag 결과가 있고 draft가 실패했으므로 rag 기반 출력이 있어야 한다
@@ -816,9 +806,7 @@ class TestEmptyResultScenarios:
             "[참조 근거]" in final_text
             or "[로컬 문서 근거]" in final_text
             or "도로법" in final_text
-        ), (
-            f"rag 결과 기반 출력이 final_text에 포함되어야 합니다. 실제: {final_text!r}"
-        )
+        ), f"rag 결과 기반 출력이 final_text에 포함되어야 합니다. 실제: {final_text!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -838,6 +826,7 @@ class TestPersistToolRunAccuracy:
         실패 tool: success=False + error 존재
         성공 tool: success=True
         """
+
         async def draft_fn_fail(query, context, session):
             raise RuntimeError("LLM 서버 오류")
 
@@ -870,20 +859,18 @@ class TestPersistToolRunAccuracy:
         tool_run_map = {tr.tool: tr for tr in tool_runs}
 
         assert "rag_search" in tool_run_map, "rag_search tool_run이 기록되어야 합니다"
-        assert tool_run_map["rag_search"].success is True, (
-            "rag_search tool_run.success가 True여야 합니다"
-        )
+        assert (
+            tool_run_map["rag_search"].success is True
+        ), "rag_search tool_run.success가 True여야 합니다"
 
-        assert "draft_civil_response" in tool_run_map, (
-            "draft_civil_response tool_run이 기록되어야 합니다"
-        )
+        assert (
+            "draft_civil_response" in tool_run_map
+        ), "draft_civil_response tool_run이 기록되어야 합니다"
         draft_run = tool_run_map["draft_civil_response"]
-        assert draft_run.success is False, (
-            "draft_civil_response tool_run.success가 False여야 합니다"
-        )
-        assert draft_run.error, (
-            "draft_civil_response tool_run.error가 있어야 합니다"
-        )
+        assert (
+            draft_run.success is False
+        ), "draft_civil_response tool_run.success가 False여야 합니다"
+        assert draft_run.error, "draft_civil_response tool_run.error가 있어야 합니다"
 
     def test_total_latency_ms_accumulated(self, make_tooling_graph, session_store):
         """전체 실행 후 graph_run.total_latency_ms가 0보다 커야 한다.
@@ -915,9 +902,9 @@ class TestPersistToolRunAccuracy:
         assert len(graph_runs) > 0, "graph_run이 기록되어야 합니다"
 
         run = graph_runs[0]
-        assert run.total_latency_ms >= 0, (
-            f"total_latency_ms가 0 이상이어야 합니다. 실제: {run.total_latency_ms}"
-        )
+        assert (
+            run.total_latency_ms >= 0
+        ), f"total_latency_ms가 0 이상이어야 합니다. 실제: {run.total_latency_ms}"
 
         # tool_runs에서 개별 latency 합산 검증
         tool_runs = session.recent_tool_runs
@@ -926,9 +913,9 @@ class TestPersistToolRunAccuracy:
             # sum_latency와 total_latency_ms가 같거나 근사해야 한다
             # (latency_ms는 실제 실행 시간이므로 완벽한 일치는 보장 안 됨)
             # 최소한 total_latency_ms > 0인지만 확인
-            assert run.total_latency_ms > 0, (
-                "tool이 실행되었으므로 total_latency_ms > 0이어야 합니다"
-            )
+            assert (
+                run.total_latency_ms > 0
+            ), "tool이 실행되었으므로 total_latency_ms > 0이어야 합니다"
 
     def test_executed_capabilities_matches_actual(self, make_tooling_graph, session_store):
         """graph_run.executed_capabilities에는 실제로 실행된 tool만 포함된다.
@@ -966,15 +953,15 @@ class TestPersistToolRunAccuracy:
 
         # executed_capabilities는 planned_tools 중 tool_results에 있는 것들이어야 한다
         for cap in run.executed_capabilities:
-            assert cap in tool_results, (
-                f"executed_capabilities에 있는 '{cap}'이 tool_results에도 있어야 합니다"
-            )
+            assert (
+                cap in tool_results
+            ), f"executed_capabilities에 있는 '{cap}'이 tool_results에도 있어야 합니다"
 
         # planned_tools에 있는 tool은 모두 executed_capabilities에 포함되어야 한다
         # (실패해도 tool_execute_node가 빈 dict로 기록하지 않고 result를 기록함)
         planned_tools = ["rag_search", "api_lookup", "draft_civil_response"]
         for tool in planned_tools:
             if tool in tool_results:
-                assert tool in run.executed_capabilities, (
-                    f"tool_results에 있는 '{tool}'이 executed_capabilities에도 있어야 합니다"
-                )
+                assert (
+                    tool in run.executed_capabilities
+                ), f"tool_results에 있는 '{tool}'이 executed_capabilities에도 있어야 합니다"

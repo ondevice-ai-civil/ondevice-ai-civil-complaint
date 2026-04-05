@@ -1,6 +1,11 @@
 """LangGraph tooling E2E 통합 테스트.
 
-Issue #162: LangGraph tooling layer E2E 통합 테스트.
+Issue #162: tooling 계층 전체를 end-to-end로 검증한다.
+
+test_orchestration_e2e.py와의 차이:
+  - orchestration E2E는 StubExecutorAdapter로 graph 흐름만 검증
+  - 이 파일은 실제 capability 인스턴스 + mock execute_fn으로
+    capability→adapter→node 파이프라인을 검증
 
 실제 capability 인스턴스(RagSearchCapability, ApiLookupCapability,
 DraftCivilResponseCapability, AppendEvidenceCapability)를 사용하고
@@ -56,7 +61,13 @@ def _make_registry(
         async def rag_fn(query, context, session):
             return {
                 "results": [
-                    {"title": "테스트 문서", "content": "테스트 내용입니다.", "score": 0.9}
+                    {
+                        "title": "테스트 문서",
+                        "content": "테스트 내용입니다.",
+                        "score": 0.9,
+                        "source_type": "local",
+                        "doc_id": "test-doc-001",
+                    }
                 ],
                 "context_text": "",
                 "query": query,
@@ -233,7 +244,13 @@ class TestDraftResponsePipeline:
         async def rag_fn(query, context, session):
             return {
                 "results": [
-                    {"title": "법령 문서", "content": "관련 법령 내용입니다.", "score": 0.95}
+                    {
+                        "title": "법령 문서",
+                        "content": "관련 법령 내용입니다.",
+                        "score": 0.95,
+                        "source_type": "local",
+                        "doc_id": "test-doc-001",
+                    }
                 ],
                 "context_text": "",
                 "query": query,
@@ -299,9 +316,11 @@ class TestDraftResponsePipeline:
             api_result.get("success") is True
         ), "api_action=None일 때 api_lookup은 성공 상태(빈 결과)를 반환해야 합니다"
 
-        # final_text는 fallback이거나 빈 api_lookup 결과에 기반해야 한다
+        # api_action=None이면 유의미한 결과가 없으므로 fallback 메시지여야 한다
         final_text = result.get("final_text", "")
-        assert final_text, "final_text가 비어있으면 안 됩니다"
+        assert final_text == "요청을 처리할 수 없습니다.", (
+            f"api_action=None일 때 유의미한 결과가 없으므로 fallback이어야 합니다. 실제: {final_text!r}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -325,7 +344,15 @@ class TestEvidenceAugmentationPipeline:
 
         async def rag_fn(query, context, session):
             return {
-                "results": [{"title": "관련 법령", "content": "법령 내용입니다.", "score": 0.85}],
+                "results": [
+                    {
+                        "title": "관련 법령",
+                        "content": "법령 내용입니다.",
+                        "score": 0.85,
+                        "source_type": "local",
+                        "doc_id": "test-doc-001",
+                    }
+                ],
                 "context_text": "법령 검색 컨텍스트",
                 "query": query,
             }
@@ -365,7 +392,15 @@ class TestEvidenceAugmentationPipeline:
 
         async def rag_fn(query, context, session):
             return {
-                "results": [{"title": "법령 문서", "content": "관련 법령", "score": 0.9}],
+                "results": [
+                    {
+                        "title": "법령 문서",
+                        "content": "관련 법령",
+                        "score": 0.9,
+                        "source_type": "local",
+                        "doc_id": "test-doc-001",
+                    }
+                ],
                 "context_text": "법령 컨텍스트",
                 "query": query,
             }
@@ -393,12 +428,18 @@ class TestEvidenceAugmentationPipeline:
         _approve(graph, config)
 
         # append_evidence execute_fn이 호출될 때 rag_search 결과가 누적 컨텍스트에 있어야 한다
-        assert (
-            "rag_search" in received_context
-        ), "append_evidence 호출 시 context에 rag_search 결과가 있어야 합니다"
-        assert (
-            "api_lookup" in received_context
-        ), "append_evidence 호출 시 context에 api_lookup 결과가 있어야 합니다"
+        assert "rag_search" in received_context, (
+            "append_evidence 호출 시 context에 rag_search 결과가 있어야 합니다"
+        )
+        assert isinstance(received_context["rag_search"], dict), (
+            "rag_search 결과는 dict이어야 합니다"
+        )
+        assert "api_lookup" in received_context, (
+            "append_evidence 호출 시 context에 api_lookup 결과가 있어야 합니다"
+        )
+        assert isinstance(received_context["api_lookup"], dict), (
+            "api_lookup 결과는 dict이어야 합니다"
+        )
 
     def test_evidence_with_empty_rag(self, make_tooling_graph):
         """rag 결과가 없을 때도 append_evidence 파이프라인이 완료된다.
@@ -568,9 +609,10 @@ class TestPartialFailureE2E:
     def test_draft_exception_caught_by_adapter(self, make_tooling_graph):
         """draft execute_fn이 RuntimeError를 발생시키면 어댑터가 잡고 success=False를 반환한다.
 
-        DraftCivilResponseCapability는 내부 타임아웃이 없으므로
-        RegistryExecutorAdapter의 30초 어댑터 타임아웃이 유일한 방어선이다.
-        execute_fn에서 발생한 예외는 CapabilityBase.__call__을 통해 어댑터로 전파된다.
+        DraftCivilResponseCapability는 execute() 내부 try/except 없이
+        execute_fn에서 발생한 예외가 CapabilityBase.__call__을 통해
+        RegistryExecutorAdapter까지 전파된다. 어댑터가 예외를 잡아 success=False로 반환한다.
+        RagSearchCapability와 달리 capability 자체에서 예외를 흡수하지 않는다.
         """
 
         async def draft_fn_raises(query, context, session):
@@ -606,13 +648,17 @@ class TestPartialFailureE2E:
     def test_all_tools_fail_synthesis_fallback(self, make_tooling_graph):
         """모든 tool이 실패하면 final_text가 fallback 메시지가 된다.
 
-        rag, api(action=None은 성공이므로 아래에서 rag, draft만 실패하는 시나리오),
-        draft 모두 실패 시 _extract_final_text는 "요청을 처리할 수 없습니다."를 반환한다.
-        rag와 draft가 모두 예외를 발생시키고, api_action=None(빈 결과, success=True)인 경우:
-        final_text에 fallback 또는 증거 기반 출력이 생성된다.
+        RagSearchCapability는 execute() 내부에 자체 try/except가 있어서
+        execute_fn에서 발생한 예외를 success=False LookupResult로 변환하고
+        RegistryExecutorAdapter까지 전파하지 않는다.
+        DraftCivilResponseCapability는 execute() 내부 try/except가 없으므로
+        예외가 RegistryExecutorAdapter까지 전파되어 어댑터가 잡는다.
 
-        모든 도구가 완전히 실패(success=False)하는 시나리오: rag, draft 예외 + api=None(빈 결과)
-        api는 success=True지만 context_text/results가 없으므로 결국 fallback이 된다.
+        rag execute_fn에서 RuntimeError 발생 → RagSearchCapability.execute()가 잡아 success=False 반환.
+        draft execute_fn에서 RuntimeError 발생 → CapabilityBase.__call__을 통해 어댑터로 전파 → success=False.
+        api_action=None → ApiLookupCapability가 success=True, 빈 결과 반환.
+
+        유효한 텍스트 소스가 없으므로 _extract_final_text는 "요청을 처리할 수 없습니다."를 반환한다.
         """
 
         async def rag_fn_fail(query, context, session):
@@ -764,7 +810,13 @@ class TestEmptyResultScenarios:
         async def rag_fn(query, context, session):
             return {
                 "results": [
-                    {"title": "도로법 제3조", "content": "도로 유지 보수에 관한 사항", "score": 0.9}
+                    {
+                        "title": "도로법 제3조",
+                        "content": "도로 유지 보수에 관한 사항",
+                        "score": 0.9,
+                        "source_type": "local",
+                        "doc_id": "test-doc-001",
+                    }
                 ],
                 "context_text": "",
                 "query": query,
@@ -799,14 +851,13 @@ class TestEmptyResultScenarios:
 
         final_text = result.get("final_text", "")
         # rag 결과가 있고 draft가 실패했으므로 rag 기반 출력이 있어야 한다
-        # _extract_final_text는 evidence items가 있으면 [참조 근거] 포맷 사용
-        # evidence가 없으면 legacy [로컬 문서 근거] 포맷 사용
-        # 두 경우 중 하나여야 한다
-        assert (
-            "[참조 근거]" in final_text
-            or "[로컬 문서 근거]" in final_text
-            or "도로법" in final_text
-        ), f"rag 결과 기반 출력이 final_text에 포함되어야 합니다. 실제: {final_text!r}"
+        # _extract_final_text는 evidence/draft가 없으면 [로컬 문서 근거] 포맷 사용
+        assert "[로컬 문서 근거]" in final_text, (
+            f"rag만 성공 시 '[로컬 문서 근거]' 포맷이어야 합니다. 실제: {final_text!r}"
+        )
+        assert "도로법" in final_text, (
+            f"rag 결과의 제목이 final_text에 포함되어야 합니다. 실제: {final_text!r}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -902,9 +953,6 @@ class TestPersistToolRunAccuracy:
         assert len(graph_runs) > 0, "graph_run이 기록되어야 합니다"
 
         run = graph_runs[0]
-        assert (
-            run.total_latency_ms >= 0
-        ), f"total_latency_ms가 0 이상이어야 합니다. 실제: {run.total_latency_ms}"
 
         # tool_runs에서 개별 latency 합산 검증
         tool_runs = session.recent_tool_runs

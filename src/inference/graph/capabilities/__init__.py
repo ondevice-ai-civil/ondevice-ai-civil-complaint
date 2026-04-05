@@ -4,7 +4,7 @@ from .api_lookup import ApiLookupCapability, ApiLookupParams
 from .append_evidence import AppendEvidenceCapability
 from .base import CapabilityBase, CapabilityMetadata, LookupResult
 from .draft_civil_response import DraftCivilResponseCapability
-from .rag_search import RagSearchCapability
+from .rag_search import RagSearchCapability, RagSearchParams
 from .registry import (
     MVP_CAPABILITY_IDS,
     build_mvp_registry,
@@ -20,6 +20,7 @@ __all__ = [
     "ApiLookupCapability",
     "ApiLookupParams",
     "RagSearchCapability",
+    "RagSearchParams",
     "DraftCivilResponseCapability",
     "AppendEvidenceCapability",
     "MVP_CAPABILITY_IDS",

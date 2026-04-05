@@ -74,7 +74,10 @@ class LocalDocumentIndexer:
         self.embed_model = embed_model
         self.session_factory = session_factory
         self.processor = processor or DocumentProcessor()
-        root_hash = hashlib.sha1(str(self.root_dir).encode("utf-8")).hexdigest()[:12]
+        root_hash = hashlib.sha1(
+            str(self.root_dir).encode("utf-8"),
+            usedforsecurity=False,
+        ).hexdigest()[:12]
         self.source_name = f"local-docs:{root_hash}"
 
     def ensure_layout(self) -> None:

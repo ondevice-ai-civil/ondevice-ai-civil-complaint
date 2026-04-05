@@ -14,15 +14,38 @@ import numpy as np
 import pytest
 
 # ---------------------------------------------------------------------------
-# faiss mock 등록
+# faiss mock — fixture 스코프로 격리
 # ---------------------------------------------------------------------------
-_faiss_module = sys.modules.get("faiss")
-_faiss_is_real = _faiss_module is not None and not isinstance(_faiss_module, MagicMock)
-if not _faiss_is_real:
-    _faiss_mock = MagicMock()
-    _faiss_mock.IndexIVFFlat = type("IndexIVFFlat", (), {})
-    _faiss_mock.IndexFlatIP = type("IndexFlatIP", (), {})
-    sys.modules.setdefault("faiss", _faiss_mock)
+# pytest fixture(autouse=True)로 faiss mock을 각 테스트 스코프 안에서 등록하고,
+# 테스트 종료 후 자동 복원하여 타 테스트 모듈로의 오염을 방지한다.
+
+_MISSING_MGR = object()  # sys.modules에 키가 없음을 표시하는 sentinel
+
+
+@pytest.fixture(autouse=True)
+def _isolate_faiss_mock():
+    """faiss mock을 테스트 스코프로 격리한다.
+
+    각 테스트 시작 전에 faiss mock을 등록하고, 종료 후 원래 상태로 복원한다.
+    실제 faiss가 이미 로드된 경우에는 mock으로 덮어쓰지 않는다.
+    """
+    original = sys.modules.get("faiss", _MISSING_MGR)
+    faiss_is_real = original is not _MISSING_MGR and not isinstance(original, MagicMock)
+
+    if not faiss_is_real:
+        faiss_mock = MagicMock()
+        faiss_mock.IndexIVFFlat = type("IndexIVFFlat", (), {})
+        faiss_mock.IndexFlatIP = type("IndexFlatIP", (), {})
+        sys.modules["faiss"] = faiss_mock
+
+    yield
+
+    if not faiss_is_real:
+        if original is _MISSING_MGR:
+            sys.modules.pop("faiss", None)
+        else:
+            sys.modules["faiss"] = original
+
 
 from src.inference.index_manager import (
     _IVF_THRESHOLD,

@@ -23,8 +23,17 @@ _mock_database.SessionLocal = MagicMock()
 _mock_database.get_db = MagicMock()
 sys.modules["src.inference.db.database"] = _mock_database
 
+# rank_bm25, konlpy: bm25_indexer.py의 모듈 레벨 import(rank_bm25)와
+# KoreanTokenizer 초기화(konlpy)에 필요.
+# setdefault를 사용하여 실제 모듈이 있으면 덮어쓰지 않는다.
+_konlpy_mock = MagicMock()
+sys.modules.setdefault("konlpy", _konlpy_mock)
+sys.modules.setdefault("konlpy.tag", _konlpy_mock)
+sys.modules.setdefault("rank_bm25", MagicMock())
+
 # faiss 모듈이 설치되지 않은 환경에서도 DB 테스트가 동작하도록 mock 등록
 # 이미 실제 faiss가 로드된 경우에는 mock하지 않는다
+# setdefault를 사용하여 실제 faiss를 덮어쓰지 않음 (직접 대입 대신)
 _faiss_module = sys.modules.get("faiss")
 _faiss_is_real = _faiss_module is not None and not isinstance(_faiss_module, MagicMock)
 if not _faiss_is_real:
@@ -51,7 +60,8 @@ if not _faiss_is_real:
 
     _faiss_mock.IndexIVFFlat = type("IndexIVFFlat", (MockIndex,), {})
     _faiss_mock.IndexFlatIP = type("IndexFlatIP", (MockIndex,), {})
-    sys.modules["faiss"] = _faiss_mock
+    # setdefault: 이미 실제 faiss가 로드된 경우 덮어쓰지 않음
+    sys.modules.setdefault("faiss", _faiss_mock)
 
 import pytest
 from sqlalchemy import CHAR, JSON, TypeDecorator, create_engine, event

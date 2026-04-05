@@ -17,25 +17,59 @@ import numpy as np
 import pytest
 
 # ---------------------------------------------------------------------------
-# 무거운 의존성 mock 등록
+# 무거운 의존성 mock — fixture 스코프로 격리
 # ---------------------------------------------------------------------------
-# konlpy mock
-_konlpy_mock = MagicMock()
-sys.modules.setdefault("konlpy", _konlpy_mock)
-sys.modules.setdefault("konlpy.tag", _konlpy_mock)
+# pytest fixture(autouse=True)로 konlpy, rank_bm25, faiss mock을 각 테스트 스코프 안에서
+# 등록하고, 테스트 종료 후 자동 복원하여 타 테스트 모듈로의 오염을 방지한다.
+#
+# 주의: bm25_indexer import는 pytest 수집 시 한 번 발생하므로, 해당 import에 필요한
+# konlpy/rank_bm25는 conftest.py 또는 최초 수집 전에 이미 등록되어 있어야 한다.
+# 아래 fixture는 각 테스트 실행 중의 격리와 cleanup을 담당한다.
 
-# rank_bm25 mock - BM25Okapi를 실제처럼 동작하도록 설정
-_bm25_mock_module = MagicMock()
-sys.modules.setdefault("rank_bm25", _bm25_mock_module)
+_MISSING = object()  # sys.modules에 키가 없음을 표시하는 sentinel
 
-# faiss mock
-_faiss_module = sys.modules.get("faiss")
-_faiss_is_real = _faiss_module is not None and not isinstance(_faiss_module, MagicMock)
-if not _faiss_is_real:
-    _faiss_mock = MagicMock()
-    _faiss_mock.IndexIVFFlat = type("IndexIVFFlat", (), {})
-    _faiss_mock.IndexFlatIP = type("IndexFlatIP", (), {})
-    sys.modules.setdefault("faiss", _faiss_mock)
+_BM25_MOCK_MODULES = ("konlpy", "konlpy.tag", "rank_bm25", "faiss")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_module_mocks():
+    """konlpy, rank_bm25, faiss mock을 테스트 스코프로 격리한다.
+
+    각 테스트 시작 전에 mock을 등록하고, 종료 후 원래 상태(등록 전 값 또는 없음)로 복원한다.
+    실제 모듈이 이미 로드된 경우에는 mock으로 덮어쓰지 않는다.
+    """
+    # 1. 테스트 시작 전 원래 상태 저장
+    originals = {key: sys.modules.get(key, _MISSING) for key in _BM25_MOCK_MODULES}
+
+    # 2. mock 등록
+    def _is_mock_or_absent(val):
+        return val is _MISSING or isinstance(val, MagicMock)
+
+    konlpy_mock = MagicMock()
+    if _is_mock_or_absent(originals["konlpy"]):
+        sys.modules["konlpy"] = konlpy_mock
+    if _is_mock_or_absent(originals["konlpy.tag"]):
+        sys.modules["konlpy.tag"] = konlpy_mock
+
+    bm25_mock = MagicMock()
+    if _is_mock_or_absent(originals["rank_bm25"]):
+        sys.modules["rank_bm25"] = bm25_mock
+
+    if _is_mock_or_absent(originals["faiss"]):
+        faiss_mock = MagicMock()
+        faiss_mock.IndexIVFFlat = type("IndexIVFFlat", (), {})
+        faiss_mock.IndexFlatIP = type("IndexFlatIP", (), {})
+        sys.modules["faiss"] = faiss_mock
+
+    yield
+
+    # 3. 테스트 종료 후 원래 상태로 복원
+    for key, original in originals.items():
+        if original is _MISSING:
+            sys.modules.pop(key, None)
+        else:
+            sys.modules[key] = original
+
 
 from src.inference.bm25_indexer import _STOPWORDS, BM25Indexer, KoreanTokenizer
 

@@ -18,36 +18,79 @@ import os
 import sys
 import unittest.mock as mock
 
-# ---------------------------------------------------------------------------
-# 무거운 외부 의존성 mock (import 전에 등록)
-# ---------------------------------------------------------------------------
-_vllm_mock = mock.MagicMock()
-_vllm_mock.AsyncLLM = mock.MagicMock()
-_vllm_mock.SamplingParams = mock.MagicMock()
-sys.modules.setdefault("vllm", _vllm_mock)
-sys.modules.setdefault("vllm.engine", _vllm_mock)
-sys.modules.setdefault("vllm.engine.arg_utils", _vllm_mock)
-sys.modules.setdefault("vllm.engine.async_llm_engine", _vllm_mock)
-sys.modules.setdefault("vllm.sampling_params", _vllm_mock)
-sys.modules.setdefault("sentence_transformers", mock.MagicMock())
-
-_faiss_module = sys.modules.get("faiss")
-_faiss_is_real = _faiss_module is not None and not isinstance(_faiss_module, mock.MagicMock)
-if not _faiss_is_real:
-    _faiss_mock = mock.MagicMock()
-    _faiss_mock.IndexIVFFlat = type("IndexIVFFlat", (), {})
-    _faiss_mock.IndexFlatIP = type("IndexFlatIP", (), {})
-    sys.modules["faiss"] = _faiss_mock
-
-_mock_stabilizer = mock.MagicMock()
-_mock_stabilizer.apply_transformers_patch = mock.MagicMock()
-sys.modules.setdefault("src.inference.vllm_stabilizer", _mock_stabilizer)
-
-_mock_retriever_module = mock.MagicMock()
-sys.modules.setdefault("src.inference.retriever", _mock_retriever_module)
-
 import numpy as np
 import pytest
+
+# ---------------------------------------------------------------------------
+# 무거운 외부 의존성 mock — fixture 스코프로 격리
+# ---------------------------------------------------------------------------
+# pytest fixture(autouse=True)로 mock을 각 테스트 스코프 안에서 등록하고,
+# 테스트 종료 후 자동 복원하여 타 테스트 모듈로의 오염을 방지한다.
+# 실제 모듈이 이미 로드된 경우에는 mock으로 덮어쓰지 않는다.
+
+_MISSING_HSI = object()  # sys.modules에 키가 없음을 표시하는 sentinel
+
+_HSI_MOCK_KEYS = [
+    "vllm",
+    "vllm.engine",
+    "vllm.engine.arg_utils",
+    "vllm.engine.async_llm_engine",
+    "vllm.sampling_params",
+    "sentence_transformers",
+    "faiss",
+    "src.inference.vllm_stabilizer",
+    "src.inference.retriever",
+]
+
+
+@pytest.fixture(autouse=True)
+def _isolate_heavy_deps():
+    """vllm, faiss 등 무거운 의존성 mock을 테스트 스코프로 격리한다.
+
+    각 테스트 시작 전에 mock을 등록하고, 종료 후 원래 상태로 복원한다.
+    실제 모듈이 이미 로드된 경우에는 mock으로 덮어쓰지 않는다.
+    """
+    # 1. 테스트 시작 전 원래 상태 저장
+    originals = {key: sys.modules.get(key, _MISSING_HSI) for key in _HSI_MOCK_KEYS}
+
+    def _is_mock_or_absent(val):
+        return val is _MISSING_HSI or isinstance(val, mock.MagicMock)
+
+    # 2. mock 등록
+    vllm_mock = mock.MagicMock()
+    vllm_mock.AsyncLLM = mock.MagicMock()
+    vllm_mock.SamplingParams = mock.MagicMock()
+    for key in ("vllm", "vllm.engine", "vllm.engine.arg_utils",
+                "vllm.engine.async_llm_engine", "vllm.sampling_params"):
+        if _is_mock_or_absent(originals[key]):
+            sys.modules[key] = vllm_mock
+
+    if _is_mock_or_absent(originals["sentence_transformers"]):
+        sys.modules["sentence_transformers"] = mock.MagicMock()
+
+    if _is_mock_or_absent(originals["faiss"]):
+        faiss_mock = mock.MagicMock()
+        faiss_mock.IndexIVFFlat = type("IndexIVFFlat", (), {})
+        faiss_mock.IndexFlatIP = type("IndexFlatIP", (), {})
+        sys.modules["faiss"] = faiss_mock
+
+    stabilizer_mock = mock.MagicMock()
+    stabilizer_mock.apply_transformers_patch = mock.MagicMock()
+    if _is_mock_or_absent(originals["src.inference.vllm_stabilizer"]):
+        sys.modules["src.inference.vllm_stabilizer"] = stabilizer_mock
+
+    if _is_mock_or_absent(originals["src.inference.retriever"]):
+        sys.modules["src.inference.retriever"] = mock.MagicMock()
+
+    yield
+
+    # 3. 테스트 종료 후 원래 상태로 복원
+    for key, original in originals.items():
+        if original is _MISSING_HSI:
+            sys.modules.pop(key, None)
+        else:
+            sys.modules[key] = original
+
 
 from src.inference.hybrid_search import HybridSearchEngine, SearchMode
 from src.inference.index_manager import DocumentMetadata, IndexType

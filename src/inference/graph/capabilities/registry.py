@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, List
 
+from src.inference.tool_router import ToolType
+
 from .api_lookup import ApiLookupCapability
 from .append_evidence import AppendEvidenceCapability
 from .base import CapabilityBase, CapabilityMetadata
@@ -20,16 +22,10 @@ from .rag_search import RagSearchCapability
 
 # ---------------------------------------------------------------------------
 # MVP capability stable identifiers (session log, approval prompt에서 사용)
+# ToolType enum에서 파생하여 단일 소스를 유지한다.
 # ---------------------------------------------------------------------------
 
-MVP_CAPABILITY_IDS: frozenset[str] = frozenset(
-    [
-        "rag_search",
-        "api_lookup",
-        "draft_civil_response",
-        "append_evidence",
-    ]
-)
+MVP_CAPABILITY_IDS: frozenset[str] = frozenset(t.value for t in ToolType)
 
 
 def get_mvp_capability_ids() -> frozenset[str]:

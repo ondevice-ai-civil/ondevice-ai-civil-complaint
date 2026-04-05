@@ -12,7 +12,6 @@ I/O가 필요한 노드는 async 함수이며, `approval_wait` 노드는 `interr
 
 from __future__ import annotations
 
-import time
 from typing import TYPE_CHECKING, Any, Dict, List
 
 from langchain_core.messages import AIMessage
@@ -108,7 +107,6 @@ async def planner_node(
         return {
             **validator.make_fallback_plan(e),
             "task_type": "",
-            "adapter_mode": "llm",
         }
 
     logger.info(
@@ -255,8 +253,9 @@ async def tool_execute_node(
             context=accumulated,
         )
         tool_results[name] = result
-        # 성공한 경우에만 누적 컨텍스트에 반영
-        accumulated[name] = result if result.get("success", True) else {}
+        # 성공한 경우에만 누적 컨텍스트에 반영 (실패 시 키 부재로 구분)
+        if result.get("success", True):
+            accumulated[name] = result
 
     logger.info(f"[tool_execute] 완료: {list(tool_results.keys())}")
 

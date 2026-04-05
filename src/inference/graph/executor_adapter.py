@@ -113,7 +113,8 @@ class RegistryExecutorAdapter(ExecutorAdapter):
             )
             latency = (time.monotonic() - start) * 1000
             if isinstance(result, dict):
-                result["latency_ms"] = latency
+                if "latency_ms" not in result:
+                    result["latency_ms"] = latency
                 result.setdefault("success", True)
                 return result
             return {"success": True, "result": result, "latency_ms": latency}

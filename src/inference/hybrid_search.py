@@ -85,6 +85,7 @@ class HybridSearchEngine:
             raise ValueError(f"rrf_k는 1 이상이어야 합니다. (입력값: {rrf_k})")
         self.rrf_k = rrf_k
         self.rrf_weights = rrf_weights or DEFAULT_RRF_WEIGHTS
+        self._embed_cache: Dict[str, np.ndarray] = {}
 
     async def search(
         self,
@@ -307,13 +308,21 @@ class HybridSearchEngine:
         return results
 
     def _embed_query(self, query: str) -> np.ndarray:
-        """쿼리를 임베딩 벡터로 변환한다.
+        """쿼리를 임베딩 벡터로 변환한다 (동일 쿼리는 캐시 재사용).
 
         multilingual-e5-large 모델 규칙에 따라 'query:' 접두사를 추가하고
         L2 정규화된 벡터를 반환한다.
         """
+        cached = self._embed_cache.get(query)
+        if cached is not None:
+            return cached
         embedding = self.embed_model.encode([f"query: {query}"], normalize_embeddings=True)
-        return embedding[0]
+        vector = embedding[0]
+        # 캐시 크기 제한 (최근 64개 쿼리)
+        if len(self._embed_cache) >= 64:
+            self._embed_cache.pop(next(iter(self._embed_cache)))
+        self._embed_cache[query] = vector
+        return vector
 
     def is_ready(self, index_type: IndexType) -> bool:
         """지정된 인덱스 타입이 검색 가능한 상태인지 확인한다.

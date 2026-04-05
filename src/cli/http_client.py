@@ -129,7 +129,8 @@ class GovOnClient:
         logger.debug(f"[http_client] stream: session_id={session_id} query_len={len(query)}")
 
         try:
-            with httpx.Client(timeout=self._RUN_TIMEOUT) as client:
+            timeout = httpx.Timeout(connect=10.0, read=300.0, write=10.0, pool=10.0)
+            with httpx.Client(timeout=timeout) as client:
                 with client.stream("POST", url, json=body) as resp:
                     resp.raise_for_status()
                     for line in resp.iter_lines():

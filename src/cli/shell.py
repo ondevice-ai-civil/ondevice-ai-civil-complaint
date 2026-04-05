@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import argparse
 import sys
-import time
+
+import httpx
 
 # ---------------------------------------------------------------------------
 # Optional dependencies — graceful degradation
@@ -100,9 +101,6 @@ def _get_input(session: "PromptSession | None") -> str:  # type: ignore[name-def
     return input(_PROMPT_TEXT)
 
 
-_LONG_WAIT_THRESHOLD_SEC = 30
-
-
 def _process_query(
     client: "GovOnClient",
     query: str,
@@ -124,7 +122,7 @@ def _process_query(
     except (AttributeError, NotImplementedError):
         # client.stream() is not available (stub or older server)
         pass
-    except Exception:
+    except (ConnectionError, httpx.HTTPStatusError, httpx.StreamError, OSError):
         # Streaming endpoint unavailable — fall back silently
         pass
 
@@ -141,14 +139,9 @@ def _process_query_streaming(
     final_response: dict = {}
     approval_event: dict | None = None
     new_session_id: str | None = None
-    last_event_time = time.monotonic()
-    warned_long_wait = False
 
     with StreamingStatusDisplay("처리 중…") as status_display:
         for event in client.stream(query, session_id):
-            last_event_time = time.monotonic()
-            warned_long_wait = False
-
             node: str = event.get("node", "")
             event_status: str = event.get("status", "")
 
@@ -172,12 +165,6 @@ def _process_query_streaming(
             # Collect final result if present
             if event_status == "completed" or event.get("final_text") or event.get("text"):
                 final_response = event
-
-            # Long-wait warning check (checked on each event receipt)
-            elapsed = time.monotonic() - last_event_time
-            if elapsed >= _LONG_WAIT_THRESHOLD_SEC and not warned_long_wait:
-                status_display.update("응답 대기 중… (30초 초과)")
-                warned_long_wait = True
 
     # Handle approval
     if approval_event is not None:

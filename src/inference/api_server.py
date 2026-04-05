@@ -1,7 +1,9 @@
 import asyncio
 import json
 import os
+import queue
 import re
+import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -1353,9 +1355,6 @@ async def v2_agent_stream(
     }
 
     async def _generate() -> AsyncGenerator[str, None]:
-        import queue
-        import threading
-
         event_queue: "queue.Queue[dict | None]" = queue.Queue()
 
         def _stream_in_thread():
@@ -1385,8 +1384,11 @@ async def v2_agent_stream(
                                         "thread_id": thread_id,
                                         "session_id": session_id,
                                     }
-                            except Exception:
-                                pass
+                            except Exception as exc:
+                                logger.warning(f"[v2/agent/stream] get_state 실패: {exc}")
+                                # get_state 실패해도 approval_wait 이벤트는 전송
+                                event["status"] = "awaiting_approval"
+                                event["approval_request"] = {"prompt": "승인 정보를 불러올 수 없습니다. /v2/agent/approve로 진행하세요."}
                         event_queue.put(event)
             except Exception as exc:
                 logger.error(f"[v2/agent/stream] 스레드 예외: {exc}")
@@ -1400,7 +1402,7 @@ async def v2_agent_stream(
         while True:
             try:
                 event = await asyncio.to_thread(event_queue.get, True, 0.5)
-            except Exception:
+            except queue.Empty:
                 # timeout — check if thread is still alive
                 if not thread.is_alive() and event_queue.empty():
                     break
@@ -1417,6 +1419,8 @@ async def v2_agent_stream(
                 break
 
         thread.join(timeout=1.0)
+        if thread.is_alive():
+            logger.warning("[v2/agent/stream] 스트리밍 스레드가 1초 내에 종료되지 않았습니다.")
 
     return StreamingResponse(_generate(), media_type="text/event-stream")
 

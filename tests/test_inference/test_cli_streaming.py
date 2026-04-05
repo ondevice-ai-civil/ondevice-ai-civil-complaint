@@ -230,7 +230,7 @@ def _parse_sse_events(sse_text: str) -> list[dict]:
 class TestGovOnClientStream:
     """GovOnClient.stream() SSE 파싱 단위 테스트."""
 
-    def test_stream_parses_sse_events_correctly(self, httpx_mock_or_patch):
+    def test_stream_parses_sse_events_correctly(self):
         """SSE 응답 라인을 올바르게 파싱하여 dict를 yield한다."""
         from src.cli.http_client import GovOnClient
 
@@ -308,12 +308,6 @@ class TestGovOnClientStream:
 
             with pytest.raises(ConnectionError):
                 list(client.stream("테스트"))
-
-    @pytest.fixture
-    def httpx_mock_or_patch(self):
-        """더미 fixture — 파라미터 주입을 위한 placeholder."""
-        yield None
-
 
 # ---------------------------------------------------------------------------
 # 3. StreamingStatusDisplay 렌더러 테스트

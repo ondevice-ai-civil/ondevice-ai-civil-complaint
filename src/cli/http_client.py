@@ -137,7 +137,7 @@ class GovOnClient:
                         if not line:
                             continue
                         if line.startswith("data:"):
-                            data_str = line[len("data:"):].strip()
+                            data_str = line[len("data:") :].strip()
                             if not data_str:
                                 continue
                             try:

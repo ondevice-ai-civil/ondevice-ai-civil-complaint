@@ -1334,6 +1334,7 @@ async def v2_agent_stream(
       ``/v2/agent/approve``로 승인/거절을 전달한다.
     """
     if not manager.graph:
+
         async def _no_graph():
             yield 'data: {"node": "error", "status": "error", "error": "LangGraph graph가 초기화되지 않았습니다."}\n\n'
 

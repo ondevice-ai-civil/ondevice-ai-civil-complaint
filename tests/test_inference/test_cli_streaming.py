@@ -147,7 +147,11 @@ class TestV2AgentStreamEndpoint:
 
         # approval_wait interrupt 상태 모킹
         fake_interrupt = MagicMock()
-        fake_interrupt.value = {"goal": "테스트 목표", "reason": "테스트 이유", "tool_summaries": []}
+        fake_interrupt.value = {
+            "goal": "테스트 목표",
+            "reason": "테스트 이유",
+            "tool_summaries": [],
+        }
         fake_task = MagicMock()
         fake_task.interrupts = [fake_interrupt]
         fake_state = MagicMock()
@@ -209,7 +213,7 @@ def _parse_sse_events(sse_text: str) -> list[dict]:
     for line in sse_text.splitlines():
         line = line.strip()
         if line.startswith("data:"):
-            data_str = line[len("data:"):].strip()
+            data_str = line[len("data:") :].strip()
             if data_str:
                 try:
                     events.append(json.loads(data_str))
@@ -263,10 +267,10 @@ class TestGovOnClientStream:
 
         lines = [
             "event: node_update",
-            "data: {\"node\": \"planner\", \"status\": \"completed\"}",
+            'data: {"node": "planner", "status": "completed"}',
             "",
             ": comment line",
-            "data: {\"node\": \"persist\", \"status\": \"completed\"}",
+            'data: {"node": "persist", "status": "completed"}',
         ]
 
         client = GovOnClient("http://localhost:8000")
@@ -389,12 +393,14 @@ class TestProcessQueryStreaming:
         from src.cli import shell
 
         mock_client = MagicMock()
-        mock_client.stream.return_value = iter([
-            {"node": "session_load", "status": "completed"},
-            {"node": "planner", "status": "completed"},
-            {"node": "synthesis", "status": "completed", "final_text": "완료"},
-            {"node": "persist", "status": "completed"},
-        ])
+        mock_client.stream.return_value = iter(
+            [
+                {"node": "session_load", "status": "completed"},
+                {"node": "planner", "status": "completed"},
+                {"node": "synthesis", "status": "completed", "final_text": "완료"},
+                {"node": "persist", "status": "completed"},
+            ]
+        )
         mock_client.approve = MagicMock()
 
         update_calls = []
@@ -416,9 +422,9 @@ class TestProcessQueryStreaming:
             sid, cont = shell._process_query_streaming(mock_client, "쿼리", None)
 
         assert cont is True
-        assert any("planner" in msg or "계획" in msg for msg in update_calls), (
-            f"planner 관련 메시지가 없음: {update_calls}"
-        )
+        assert any(
+            "planner" in msg or "계획" in msg for msg in update_calls
+        ), f"planner 관련 메시지가 없음: {update_calls}"
 
     def test_streaming_handles_approval_event(self):
         """awaiting_approval 이벤트 시 show_approval_prompt를 호출한다."""
@@ -430,17 +436,19 @@ class TestProcessQueryStreaming:
             "tool_summaries": ["rag_search 실행"],
         }
         mock_client = MagicMock()
-        mock_client.stream.return_value = iter([
-            {"node": "session_load", "status": "completed"},
-            {"node": "planner", "status": "completed"},
-            {
-                "node": "approval_wait",
-                "status": "awaiting_approval",
-                "approval_request": approval_data,
-                "thread_id": "t-123",
-                "session_id": "s-123",
-            },
-        ])
+        mock_client.stream.return_value = iter(
+            [
+                {"node": "session_load", "status": "completed"},
+                {"node": "planner", "status": "completed"},
+                {
+                    "node": "approval_wait",
+                    "status": "awaiting_approval",
+                    "approval_request": approval_data,
+                    "thread_id": "t-123",
+                    "session_id": "s-123",
+                },
+            ]
+        )
         mock_client.approve.return_value = {"status": "completed", "text": "승인 완료"}
 
         with patch("src.cli.shell.StreamingStatusDisplay"):
@@ -456,10 +464,12 @@ class TestProcessQueryStreaming:
         from src.cli import shell
 
         mock_client = MagicMock()
-        mock_client.stream.return_value = iter([
-            {"node": "planner", "status": "completed"},
-            {"node": "error", "status": "error", "error": "테스트 오류"},
-        ])
+        mock_client.stream.return_value = iter(
+            [
+                {"node": "planner", "status": "completed"},
+                {"node": "error", "status": "error", "error": "테스트 오류"},
+            ]
+        )
 
         with patch("src.cli.shell.StreamingStatusDisplay"):
             with patch("src.cli.shell.render_error") as mock_render_error:

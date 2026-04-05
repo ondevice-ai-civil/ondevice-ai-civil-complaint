@@ -48,6 +48,7 @@ def skip_if_missing(path: Path):
 # GukripParser 테스트
 # ---------------------------------------------------------------------------
 
+
 @skip_if_missing(GUKRIP_SAMPLE)
 def test_gukrip_parser_basic():
     parser = GukripParser()
@@ -78,6 +79,7 @@ def test_gukrip_answer_not_from_output_field():
 # ---------------------------------------------------------------------------
 # GovQAParser 테스트 (중앙)
 # ---------------------------------------------------------------------------
+
 
 @skip_if_missing(GOV_CENTRAL_SAMPLE)
 def test_govqa_parser_central_basic():
@@ -121,6 +123,7 @@ def test_govqa_auxiliary_question_records():
 # GovQALocalParser 테스트 (지방)
 # ---------------------------------------------------------------------------
 
+
 @skip_if_missing(GOV_LOCAL_SAMPLE)
 def test_govqa_local_parser_source_label():
     parser = GovQALocalParser()
@@ -142,6 +145,7 @@ def test_govqa_local_parser_answer_length():
 # ---------------------------------------------------------------------------
 # AdminLawParser 테스트
 # ---------------------------------------------------------------------------
+
 
 @skip_if_missing(ADMIN_LAW_DECISION_SAMPLE)
 def test_admin_law_parser_decision():
@@ -169,6 +173,7 @@ def test_admin_law_parser_statute():
 # 중복 제거 테스트
 # ---------------------------------------------------------------------------
 
+
 def test_deduplicate_removes_exact_duplicates():
     pipeline = CivilResponseDataPipeline()
     records = [
@@ -194,6 +199,7 @@ def test_deduplicate_keeps_different_answers():
 # 길이 필터 테스트
 # ---------------------------------------------------------------------------
 
+
 def test_filter_removes_short_answers():
     config = DataConfig(min_answer_length=30, min_question_length=5)
     pipeline = CivilResponseDataPipeline(config)
@@ -211,7 +217,12 @@ def test_filter_removes_long_answers():
     pipeline = CivilResponseDataPipeline(config)
     records = [
         {"question": "충분히 긴 질문입니다", "answer": "A" * 50, "source": "test", "category": "c"},
-        {"question": "충분히 긴 질문입니다", "answer": "A" * 200, "source": "test", "category": "c"},
+        {
+            "question": "충분히 긴 질문입니다",
+            "answer": "A" * 200,
+            "source": "test",
+            "category": "c",
+        },
     ]
     filtered = pipeline._filter(records)
     assert len(filtered) == 1
@@ -231,6 +242,7 @@ def test_filter_removes_short_questions():
 # ---------------------------------------------------------------------------
 # JSONL 출력 형식 테스트
 # ---------------------------------------------------------------------------
+
 
 def test_save_jsonl_format():
     pipeline = CivilResponseDataPipeline()

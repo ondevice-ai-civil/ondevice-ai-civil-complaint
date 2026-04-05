@@ -129,8 +129,9 @@ class CivilResponseDataPipeline:
         seen: set[str] = set()
         unique: list[dict] = []
         for rec in records:
-            key = hashlib.md5(
-                (rec["question"] + rec["answer"]).encode("utf-8")
+            key = hashlib.md5(  # nosec B324
+                (rec["question"] + rec["answer"]).encode("utf-8"),
+                usedforsecurity=False,
             ).hexdigest()
             if key not in seen:
                 seen.add(key)

@@ -12,9 +12,7 @@ from .pipeline import CivilResponseDataPipeline
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="민원답변 어댑터 학습 데이터 파이프라인"
-    )
+    parser = argparse.ArgumentParser(description="민원답변 어댑터 학습 데이터 파이프라인")
     parser.add_argument(
         "--raw-dir",
         default="data/raw/aihub",

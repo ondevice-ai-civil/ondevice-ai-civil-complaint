@@ -51,7 +51,7 @@ class GukripParser:
         for line in content.split("\n"):
             line = line.strip()
             if line.startswith("상담원:"):
-                turn_text = line[len("상담원:"):].strip()
+                turn_text = line[len("상담원:") :].strip()
                 if turn_text:
                     agent_turns.append(turn_text)
 

@@ -27,8 +27,6 @@ except ImportError:
         AsyncLLM = None
         SamplingParams = None
 
-SKIP_MODEL_LOAD = os.getenv("SKIP_MODEL_LOAD", "false").lower() in ("true", "1", "yes")
-
 from .agent_loop import AgentLoop, AgentTrace
 from .agent_manager import AgentManager
 from .bm25_indexer import BM25Indexer
@@ -56,6 +54,7 @@ from .tool_router import ToolType, tool_name
 
 SessionLocal = None
 LocalDocumentIndexer = None
+SKIP_MODEL_LOAD = os.getenv("SKIP_MODEL_LOAD", "false").lower() in ("true", "1", "yes")
 
 
 async def _noop_tool(query: str, context: dict, session: Any) -> dict:
@@ -253,9 +252,7 @@ class vLLMEngineManager:
 
                 SessionLocal = _SessionLocal
             if LocalDocumentIndexer is None:
-                from .local_document_indexer import (
-                    LocalDocumentIndexer as _LocalDocumentIndexer,
-                )
+                from .local_document_indexer import LocalDocumentIndexer as _LocalDocumentIndexer
 
                 LocalDocumentIndexer = _LocalDocumentIndexer
 

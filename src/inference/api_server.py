@@ -1388,7 +1388,9 @@ async def v2_agent_stream(
                                 logger.warning(f"[v2/agent/stream] get_state 실패: {exc}")
                                 # get_state 실패해도 approval_wait 이벤트는 전송
                                 event["status"] = "awaiting_approval"
-                                event["approval_request"] = {"prompt": "승인 정보를 불러올 수 없습니다. /v2/agent/approve로 진행하세요."}
+                                event["approval_request"] = {
+                                    "prompt": "승인 정보를 불러올 수 없습니다. /v2/agent/approve로 진행하세요."
+                                }
                         event_queue.put(event)
             except Exception as exc:
                 logger.error(f"[v2/agent/stream] 스레드 예외: {exc}")

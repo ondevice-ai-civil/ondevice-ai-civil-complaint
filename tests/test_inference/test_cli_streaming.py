@@ -309,6 +309,7 @@ class TestGovOnClientStream:
             with pytest.raises(ConnectionError):
                 list(client.stream("테스트"))
 
+
 # ---------------------------------------------------------------------------
 # 3. StreamingStatusDisplay 렌더러 테스트
 # ---------------------------------------------------------------------------

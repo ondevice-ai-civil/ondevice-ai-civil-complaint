@@ -1,4 +1,5 @@
 """HF Spaces 배포 설정 검증 테스트."""
+
 import os
 import unittest
 
@@ -20,6 +21,7 @@ class TestHFSpaceConfig(unittest.TestCase):
 
     def test_space_id_in_container_markers(self):
         from src.inference.runtime_config import _CONTAINER_PLATFORM_ENV_MARKERS
+
         assert "SPACE_ID" in _CONTAINER_PLATFORM_ENV_MARKERS
 
     def test_env_example_exists(self):

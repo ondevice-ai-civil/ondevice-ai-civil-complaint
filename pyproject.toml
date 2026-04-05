@@ -97,6 +97,8 @@ inference = [
     "langgraph-checkpoint==4.0.1",
     "langgraph-checkpoint-sqlite==3.0.3",
     "langchain-core>=1.2.0,<2.0.0",
+    "rich>=13.0.0",
+    "prompt-toolkit>=3.0.0",
 ]
 
 database = [
@@ -108,6 +110,9 @@ database = [
 all = [
     "GovOn[dev,korean-nlp,inference,database]",
 ]
+
+[project.scripts]
+govon = "src.cli.shell:main"
 
 [project.urls]
 Homepage = "https://github.com/GovOn-org/GovOn"

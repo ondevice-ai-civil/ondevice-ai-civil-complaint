@@ -12,12 +12,46 @@ from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Sequence
+from typing import Any, Dict, Optional, Sequence
 
 from langchain_core.messages import AnyMessage
 
 from .capabilities.registry import get_mvp_capability_ids
 from .state import TaskType, ToolPlan
+
+# ---------------------------------------------------------------------------
+# 내부 헬퍼: registry에서 tool_summaries를 조회한다
+# ---------------------------------------------------------------------------
+
+
+def _build_tool_summaries(
+    tool_names: list[str],
+    registry: "dict[str, Any] | None",
+) -> list[str]:
+    """registry에서 각 tool의 approval_summary를 조회하여 반환한다.
+
+    registry가 없거나 tool이 registry에 없으면 tool 이름 그대로 반환한다.
+
+    Parameters
+    ----------
+    tool_names : list[str]
+        planned tool 이름 목록.
+    registry : dict | None
+        CapabilityBase 인스턴스가 담긴 registry. None이면 이름 그대로 반환.
+
+    Returns
+    -------
+    list[str]
+        각 tool의 human-readable approval_summary 목록.
+    """
+    summaries: list[str] = []
+    for name in tool_names:
+        if registry and name in registry:
+            cap = registry[name]
+            summaries.append(cap.metadata.approval_summary)
+        else:
+            summaries.append(name)
+    return summaries
 
 
 class PlannerAdapter(ABC):
@@ -81,8 +115,9 @@ class LLMPlannerAdapter(PlannerAdapter):
         "- JSON만 출력하세요. 다른 텍스트 없이.\n"
     )
 
-    def __init__(self, llm: Any) -> None:
+    def __init__(self, llm: Any, registry: Optional[Dict[str, Any]] = None) -> None:
         self._llm = llm
+        self._registry = registry
 
     async def plan(
         self,
@@ -100,11 +135,13 @@ class LLMPlannerAdapter(PlannerAdapter):
         response = await self._llm.ainvoke(plan_messages)
         parsed = json.loads(response.content)
 
+        tools: list[str] = parsed["tools"]
         return ToolPlan(
             task_type=TaskType(parsed["task_type"]),
             goal=parsed["goal"],
             reason=parsed["reason"],
-            tools=parsed["tools"],
+            tools=tools,
+            tool_summaries=_build_tool_summaries(tools, self._registry),
         )
 
     @staticmethod
@@ -129,10 +166,11 @@ class RegexPlannerAdapter(PlannerAdapter):
     기존 `src.inference.tool_router.ToolRouter`의 로직을 그대로 재사용한다.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, registry: Optional[Dict[str, Any]] = None) -> None:
         from src.inference.tool_router import ToolRouter
 
         self._router = ToolRouter()
+        self._registry = registry
 
     async def plan(
         self,
@@ -146,12 +184,14 @@ class RegexPlannerAdapter(PlannerAdapter):
         execution_plan = self._router.plan(query, has_context=has_context)
 
         task_type = self._infer_task_type(execution_plan.tool_names)
+        tools: list[str] = execution_plan.tool_names
 
         return ToolPlan(
             task_type=task_type,
             goal=f"요청 처리: {execution_plan.reason}",
             reason=execution_plan.reason,
-            tools=execution_plan.tool_names,
+            tools=tools,
+            tool_summaries=_build_tool_summaries(tools, self._registry),
         )
 
     @staticmethod

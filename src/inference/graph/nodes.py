@@ -118,6 +118,7 @@ async def planner_node(
         "goal": plan.goal,
         "reason": plan.reason,
         "planned_tools": plan.tools,
+        "tool_summaries": plan.tool_summaries,
         "adapter_mode": plan.adapter_mode,
     }
 
@@ -142,21 +143,29 @@ def approval_wait_node(state: GovOnGraphState) -> dict:
     dict
         `approval_status`를 갱신한다.
     """
+    tool_summaries: List[str] = state.get("tool_summaries") or []
+    planned_tools: List[str] = state.get("planned_tools", [])
+
+    # CLI 표시용 도구 설명: tool_summaries가 있으면 사용, 없으면 tool 이름 그대로
+    display_tools = tool_summaries if tool_summaries else planned_tools
+
     approval_request = {
         "type": "approval_request",
         "goal": state.get("goal", ""),
         "reason": state.get("reason", ""),
-        "planned_tools": state.get("planned_tools", []),
+        "planned_tools": planned_tools,
+        "tool_summaries": display_tools,
         "prompt": (
             f"다음 작업을 수행하겠습니다:\n\n"
             f"  {state.get('goal', '')}\n\n"
             f"  이유: {state.get('reason', '')}\n"
-            f"  사용할 도구: {', '.join(state.get('planned_tools', []))}\n\n"
-            f"승인하시겠습니까? (승인/거절)"
+            f"  사용할 도구:\n"
+            + "".join(f"    - {s}\n" for s in display_tools)
+            + "\n승인하시겠습니까? (승인/거절)"
         ),
     }
 
-    logger.info(f"[approval_wait] interrupt 호출: tools={state.get('planned_tools', [])}")
+    logger.info(f"[approval_wait] interrupt 호출: tools={planned_tools}")
 
     # interrupt()는 graph 실행을 멈추고, resume 시 반환값이 된다.
     # 예: {"approved": True} 또는 {"approved": False}

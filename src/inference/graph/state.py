@@ -49,13 +49,22 @@ class ToolPlan:
     tools : List[str]
         실행할 tool 이름 목록 (순서대로).
         예: ["rag_search", "api_lookup", "draft_civil_response"]
+    tool_summaries : List[str]
+        각 tool의 human-readable approval_summary.
+        CLI 렌더링과 approval prompt에 사용된다.
+        기본값은 빈 리스트이며, planner adapter가 registry metadata로 채운다.
     """
 
     task_type: TaskType
     goal: str
     reason: str
     tools: List[str]
+    tool_summaries: List[str] = None  # type: ignore[assignment]
     adapter_mode: str = "regex"  # "regex" | "llm"
+
+    def __post_init__(self) -> None:
+        if self.tool_summaries is None:
+            self.tool_summaries = list(self.tools)
 
 
 class GovOnGraphState(TypedDict, total=False):
@@ -80,6 +89,7 @@ class GovOnGraphState(TypedDict, total=False):
     goal: str  # 승인 프롬프트에 표시할 작업 설명
     reason: str  # 작업 이유
     planned_tools: List[str]  # 실행 예정 tool 이름 리스트
+    tool_summaries: List[str]  # 각 planned_tool의 human-readable approval_summary
     adapter_mode: str  # planner adapter 모드 ("regex" | "llm")
 
     # --- approval gate ---

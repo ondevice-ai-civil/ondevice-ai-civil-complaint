@@ -62,7 +62,6 @@ from langgraph.checkpoint.memory import MemorySaver
 from src.inference.graph.builder import build_govon_graph
 from src.inference.graph.executor_adapter import ExecutorAdapter
 from src.inference.graph.planner_adapter import RegexPlannerAdapter
-from src.inference.graph.state import ApprovalStatus, TaskType, ToolPlan
 from src.inference.session_context import SessionStore
 
 # ---------------------------------------------------------------------------
@@ -471,7 +470,7 @@ class TestHttpClientCompatibility:
         ), f"approve()가 여전히 json body를 사용함. kwargs: {call_kwargs}"
         params = call_kwargs["params"]
         assert params.get("thread_id") == "test-thread-123"
-        assert params.get("approved") in ("true", True), f"approved 파라미터 오류: {params}"
+        assert params.get("approved") == "true", f"approved 파라미터 오류: {params}"
 
     def test_cancel_sends_correct_params(self, setup_real_graph):
         """GovOnClient.cancel()이 쿼리 파라미터로 올바르게 동작한다.

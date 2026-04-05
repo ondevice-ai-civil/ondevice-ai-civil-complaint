@@ -279,13 +279,28 @@ class TestCapabilityDefaults:
         assert get_max_retries("rag_search") == 0
         assert get_max_retries("unknown") == 0
 
-    def test_get_timeout_invalid_env_logs_warning(self, monkeypatch, caplog):
+    def test_get_timeout_invalid_env_logs_warning(self, monkeypatch):
         """환경변수 값이 숫자가 아닐 때 경고 로그를 출력하고 기본값을 반환한다."""
-        import logging
+        from loguru import logger
 
         from src.inference.graph.capabilities.defaults import get_timeout
 
+        warnings: list[dict] = []
+        sink_id = logger.add(
+            lambda message: warnings.append(message.record),
+            level="WARNING",
+        )
         monkeypatch.setenv("GOVON_TOOL_TIMEOUT_RAG_SEARCH", "not-a-number")
-        with caplog.at_level(logging.WARNING):
+        try:
             result = get_timeout("rag_search")
+        finally:
+            logger.remove(sink_id)
+
         assert result == 15.0
+        assert warnings, "숫자가 아닌 환경변수 값에 대해 경고 로그가 발생해야 합니다"
+        assert any(record["level"].name == "WARNING" for record in warnings)
+        assert any(
+            "not-a-number" in record["message"]
+            or "GOVON_TOOL_TIMEOUT_RAG_SEARCH" in record["message"]
+            for record in warnings
+        )

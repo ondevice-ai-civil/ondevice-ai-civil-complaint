@@ -300,7 +300,7 @@ async def tool_execute_node(
             result = await executor_adapter.execute(
                 tool_name=name,
                 query=execution_query,
-                context=accumulated,
+                context=dict(accumulated),
             )
             latency = round((time.monotonic() - t0) * 1000, 2)
             return name, result, latency
@@ -327,11 +327,23 @@ async def tool_execute_node(
         t0 = time.monotonic()
         execution_query = resolve_tool_query(name, accumulated)
         logger.info(f"[tool_execute] 순차 실행: {name}")
-        result = await executor_adapter.execute(
-            tool_name=name,
-            query=execution_query,
-            context=accumulated,
-        )
+        try:
+            result = await executor_adapter.execute(
+                tool_name=name,
+                query=execution_query,
+                context=accumulated,
+            )
+        except Exception as exc:
+            latency = round((time.monotonic() - t0) * 1000, 2)
+            logger.opt(exception=exc).error(
+                f"[tool_execute] 순차 실행 실패: tool={name}"
+            )
+            tool_results[name] = {
+                "success": False,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+            tool_latencies[name] = latency
+            continue
         latency = round((time.monotonic() - t0) * 1000, 2)
         tool_results[name] = result
         tool_latencies[name] = latency
@@ -410,7 +422,7 @@ async def persist_node(
     Returns
     -------
     dict
-        side effect로 DB에 저장하고, `_node_latency_ms`를 반환한다.
+        side effect로 DB에 저장하고, `node_latencies` 업데이트를 반환한다.
     """
     _start = time.monotonic()
 

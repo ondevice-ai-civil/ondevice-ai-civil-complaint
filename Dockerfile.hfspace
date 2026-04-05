@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
+FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -17,14 +17,19 @@ COPY requirements.txt .
 RUN python3.10 -m pip install --no-cache-dir --upgrade pip \
     && python3.10 -m pip install --no-cache-dir -r requirements.txt
 
-COPY src/ ./src/
-COPY agents/ ./agents/
-
+# HF Spaces는 uid 1000 권장 — COPY 전에 유저/디렉터리 생성으로 레이어 캐시 최적화
+RUN useradd -m -u 1000 user
 RUN mkdir -p models/faiss_index models/bm25_index data/processed .cache logs
 
-# HF Spaces는 uid 1000 권장
-RUN useradd -m -u 1000 user && chown -R user:user /app
+COPY src/ ./src/
+# agents/ 디렉터리 (선택적 — 없으면 빌드 시 오류 발생하지 않도록 주의)
+COPY agents/ ./agents/
+
+RUN chown -R user:user /app
 USER user
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD python3.10 -c "import urllib.request; urllib.request.urlopen('http://localhost:7860/health')" || exit 1
 
 EXPOSE 7860
 

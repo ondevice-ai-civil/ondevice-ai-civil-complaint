@@ -40,6 +40,19 @@ from fastapi.testclient import TestClient
 _API_KEY_ATTR = "_API_KEY"  # api_server 내부 API key 변수 이름
 
 
+def _assert_api_key_attr_exists():
+    """api_server 모듈에 _API_KEY 속성이 존재하는지 검증한다.
+    속성 이름이 변경되면 테스트가 silently 실패하는 것을 방지한다.
+    """
+    assert hasattr(_api_server_module, _API_KEY_ATTR), (
+        f"api_server 모듈에 '{_API_KEY_ATTR}' 속성이 없습니다. "
+        f"속성 이름이 변경되었으면 _API_KEY_ATTR 상수를 업데이트하세요."
+    )
+
+
+_assert_api_key_attr_exists()
+
+
 @pytest.fixture()
 def api_key():
     return "test-secret-key-for-integration"

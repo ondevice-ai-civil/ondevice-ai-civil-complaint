@@ -112,10 +112,11 @@ class TestBuildBoxLines:
         # 각 본문 줄(│…│)의 표시 너비는 _BOX_WIDTH + 4 (│ + space + content + space + │) 이내
         req = self._base_request(tool_summaries=["도구 실행"])
         lines = _build_box_lines(req, selected=0)
+        _limit = _BOX_WIDTH + 6
         for line in lines:
             if line.startswith("│"):
-                assert _display_width(line) <= _BOX_WIDTH + 4 + 2, (
-                    f"줄 너비 초과: {_display_width(line)!r} > {_BOX_WIDTH + 6!r}: {line!r}"
+                assert _display_width(line) <= _limit, (
+                    f"줄 너비 초과: {_display_width(line)} > {_limit}: {line!r}"
                 )
 
     def test_none_tool_summaries(self):

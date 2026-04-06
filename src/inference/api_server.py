@@ -1539,7 +1539,7 @@ async def v2_agent_stream(
                                     "session_id": session_id,
                                 }
                         except Exception as exc:
-                            logger.warning(f"[v2/agent/stream] aget_state 실패: {exc}")
+                            logger.warning(f"[v2/agent/stream] aget_state 실패 (thread_id={thread_id}): {exc}")
                             # get_state 실패해도 approval_wait 이벤트는 전송
                             event["status"] = "awaiting_approval"
                             event["approval_request"] = {
@@ -1551,8 +1551,9 @@ async def v2_agent_stream(
                     if event.get("status") == "awaiting_approval" or event.get("node") == "error":
                         return
         except Exception as exc:
-            logger.error(f"[v2/agent/stream] 예외: {exc}")
-            yield f"data: {json.dumps({'node': 'error', 'status': 'error', 'error': str(exc)}, ensure_ascii=False)}\n\n"
+            logger.error(f"[v2/agent/stream] 예외 (thread_id={thread_id}): {exc}")
+            # 내부 예외 메시지를 그대로 노출하지 않도록 일반 오류 메시지 반환
+            yield f"data: {json.dumps({'node': 'error', 'status': 'error', 'error': '처리 중 오류가 발생했습니다.'}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(_generate(), media_type="text/event-stream")
 

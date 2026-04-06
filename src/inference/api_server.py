@@ -954,9 +954,7 @@ class vLLMEngineManager:
             api_data = context.get(ToolType.API_LOOKUP.value, {})
 
             # 기존 evidence 텍스트 (fallback용)
-            fallback_text = engine_ref._build_evidence_section(
-                session, query, rag_data, api_data
-            )
+            fallback_text = engine_ref._build_evidence_section(session, query, rag_data, api_data)
 
             # LLM으로 evidence 보강 시도
             enhanced_text = fallback_text
@@ -1002,9 +1000,7 @@ class vLLMEngineManager:
                             evidence_prompt, sp, request_id, lora_request=lora_req
                         )
                         if output is not None:
-                            enhanced_text = engine_ref._strip_thought_blocks(
-                                output.outputs[0].text
-                            )
+                            enhanced_text = engine_ref._strip_thought_blocks(output.outputs[0].text)
                 except Exception as exc:
                     logger.warning(f"Evidence LLM 보강 실패, fallback 사용: {exc}")
                     enhanced_text = fallback_text

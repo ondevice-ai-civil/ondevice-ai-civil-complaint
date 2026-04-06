@@ -35,8 +35,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup Python with uv
-        uses: ./.github/actions/setup-python-uv
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
@@ -44,10 +47,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.local/share/uv/tools
-          key: uv-tools-${{ runner.os }}-bandit-pip-audit-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            uv-tools-${{ runner.os }}-bandit-pip-audit-
-            uv-tools-${{ runner.os }}-
+          key: uv-tools-${{ runner.os }}-bandit-pip-audit
 
       - name: Install security tools
         run: uv tool install bandit && uv tool install pip-audit

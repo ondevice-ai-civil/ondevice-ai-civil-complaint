@@ -392,6 +392,23 @@ class TestStreamingStatusDisplay:
         assert "planner 처리 중" in out
         assert "synthesis 처리 중" in out
 
+    def test_streaming_status_display_falls_back_on_narrow_terminal(self, capsys):
+        """좁은 터미널에서는 rich가 있어도 plain mode로 전환된다."""
+        from src.cli import renderer
+
+        mock_console = MagicMock()
+        with patch.object(renderer, "_RICH_AVAILABLE", True):
+            with patch.object(renderer, "_console", mock_console):
+                with patch.object(renderer, "get_terminal_columns", return_value=30):
+                    with patch.object(renderer, "_LAST_NARROW_WARNING_COLUMNS", None):
+                        with renderer.StreamingStatusDisplay("초기") as display:
+                            display.update("planner 처리 중")
+
+        out = capsys.readouterr().out
+        assert "plain mode" in out
+        assert "planner 처리 중" in out
+        mock_console.status.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # 4. Shell _process_query 스트리밍 통합 테스트

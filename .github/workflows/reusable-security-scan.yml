@@ -30,8 +30,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: ${{ inputs.upload-sarif && 'write' || 'read' }}
-      issues: ${{ inputs.create-issue-on-vuln && 'write' || 'read' }}
+      security-events: write
+      issues: write
     steps:
       - uses: actions/checkout@v6
 

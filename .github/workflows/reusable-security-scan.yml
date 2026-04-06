@@ -1,0 +1,209 @@
+name: Reusable Security Scan
+
+on:
+  workflow_call:
+    inputs:
+      bandit-target:
+        type: string
+        default: 'src'
+      bandit-severity:
+        type: string
+        default: '-lll'
+      pip-audit-enabled:
+        type: boolean
+        default: true
+      upload-sarif:
+        type: boolean
+        default: false
+      create-issue-on-vuln:
+        type: boolean
+        default: false
+    secrets:
+      github-token:
+        required: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: ${{ inputs.upload-sarif && 'write' || 'read' }}
+      issues: ${{ inputs.create-issue-on-vuln && 'write' || 'read' }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+
+      - name: Install security tools
+        run: python -m pip install bandit pip-audit
+
+      - name: Run Bandit (Static Analysis)
+        env:
+          BANDIT_TARGET: ${{ inputs.bandit-target }}
+          BANDIT_SEVERITY: ${{ inputs.bandit-severity }}
+        run: |
+          bandit -r "$BANDIT_TARGET" $BANDIT_SEVERITY -x tests
+
+      - name: Compile dependency lockfile
+        if: inputs.pip-audit-enabled
+        run: |
+          uv pip compile pyproject.toml -o /tmp/requirements-lock.txt 2>/dev/null || true
+
+      - name: Run Dependency Audit
+        if: inputs.pip-audit-enabled
+        continue-on-error: true
+        run: |
+          if [ -f /tmp/requirements-lock.txt ]; then
+            pip-audit -r /tmp/requirements-lock.txt
+          elif [ -f requirements.txt ]; then
+            pip-audit -r requirements.txt
+          else
+            echo "No dependency file found, skipping audit."
+          fi
+
+      - name: Run Bandit with SARIF output
+        if: inputs.upload-sarif
+        continue-on-error: true
+        env:
+          BANDIT_TARGET: ${{ inputs.bandit-target }}
+          BANDIT_SEVERITY: ${{ inputs.bandit-severity }}
+        run: |
+          bandit -r "$BANDIT_TARGET" $BANDIT_SEVERITY -x tests -f sarif -o bandit-results.sarif 2>/dev/null || true
+
+      - name: Upload Bandit SARIF to Code Scanning
+        if: inputs.upload-sarif && hashFiles('bandit-results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: bandit-results.sarif
+          category: bandit
+
+      - name: Run pip-audit with JSON output
+        if: inputs.pip-audit-enabled
+        id: audit
+        continue-on-error: true
+        run: |
+          AUDIT_EXIT=0
+          if [ -f /tmp/requirements-lock.txt ]; then
+            pip-audit -r /tmp/requirements-lock.txt -f json -o audit-results.json 2>/dev/null || AUDIT_EXIT=$?
+          elif [ -f requirements.txt ]; then
+            pip-audit -r requirements.txt -f json -o audit-results.json 2>/dev/null || AUDIT_EXIT=$?
+          fi
+          echo "exit_code=$AUDIT_EXIT" >> "$GITHUB_OUTPUT"
+
+          # Generate summary
+          if [ -f audit-results.json ]; then
+            VULN_COUNT=$(python3 -c "import json; data=json.load(open('audit-results.json')); print(len([d for d in data.get('dependencies', []) if d.get('vulns', [])]))" 2>/dev/null || echo "0")
+            echo "vuln_count=$VULN_COUNT" >> "$GITHUB_OUTPUT"
+          else
+            echo "vuln_count=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload security reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: security-reports
+          path: |
+            bandit-results.sarif
+            audit-results.json
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Create or Update Issue on vulnerability detection
+        if: inputs.create-issue-on-vuln && always() && steps.audit.outputs.vuln_count != '0'
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.github-token || github.token }}
+          script: |
+            const vulnCount = parseInt('${{ steps.audit.outputs.vuln_count }}');
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const today = new Date().toISOString().split('T')[0];
+
+            // Check for existing open issue with security,automated labels
+            const existingIssues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'security,automated',
+              state: 'open',
+            });
+
+            if (existingIssues.data.length > 0) {
+              const existing = existingIssues.data[0];
+
+              // Get last comment to check for duplicates
+              const comments = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+              });
+
+              const lastBotComment = comments.data.reverse().find(c => c.user.login === 'github-actions[bot]');
+
+              // Only comment if count changed or last comment is old (to avoid spam)
+              if (lastBotComment && lastBotComment.body.includes(`감지된 취약점 | ${vulnCount}건`)) {
+                core.info(`Vulnerability count (${vulnCount}) hasn't changed since last report. Skipping comment.`);
+                return;
+              }
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: `## 🔍 보안 스캔 업데이트 (${today})\n\n| 항목 | 값 |\n|------|----|\n| 감지된 취약점 | **${vulnCount}건** |\n| 상태 | 여전히 조치 필요 |\n| Actions Run | [상세 로그 확인](${runUrl}) |\n\n> 동일한 취약점 개수가 감지될 경우 중복 코멘트 작성을 방지하도록 개선되었습니다.`,
+              });
+              core.info(`Updated existing issue #${existing.number} with new vulnerability data`);
+              return;
+            }
+
+            // No open issue exists — create a new one
+            const title = `🔒 보안 취약점 감지: ${vulnCount}건 (${today})`;
+
+            let body = `## 자동 보안 스캔 결과\n\n`;
+            body += `| 항목 | 값 |\n|------|----|\n`;
+            body += `| 감지된 취약점 | ${vulnCount}건 |\n`;
+            body += `| 스캔 일시 | ${new Date().toISOString()} |\n`;
+            body += `| Actions Run | [링크](${runUrl}) |\n\n`;
+            body += `### 조치 필요\n`;
+            body += `1. Actions Run 링크에서 상세 결과 확인\n`;
+            body += `2. \`audit-results.json\` 아티팩트 다운로드하여 취약점 목록 검토\n`;
+            body += `3. 취약한 패키지 업데이트 후 이 이슈 종료\n`;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['security', 'automated'],
+            });
+
+      - name: Security Summary
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 보안 스캔 결과 요약" >> $GITHUB_STEP_SUMMARY
+          echo "| 항목 | 결과 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Bandit (정적 분석) | ✅ 완료 |" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.upload-sarif }}" = "true" ]; then
+            echo "| SARIF 업로드 | ✅ Code Scanning |" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "${{ inputs.pip-audit-enabled }}" = "true" ]; then
+            echo "| pip-audit (의존성) | 취약점 ${{ steps.audit.outputs.vuln_count }}건 |" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ steps.audit.outputs.vuln_count }}" != "0" ]; then
+              echo "| 자동 이슈 생성 | ✅ |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| 자동 이슈 생성 | ⏭️ (취약점 없음) |" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi

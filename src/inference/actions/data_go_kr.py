@@ -19,9 +19,13 @@ try:
     import httpx
 
     _HTTPX_AVAILABLE = True
+    _HttpxTimeoutError = httpx.TimeoutException
+    _HttpxStatusError = httpx.HTTPStatusError
 except ImportError:
     httpx = None  # type: ignore
     _HTTPX_AVAILABLE = False
+    _HttpxTimeoutError = type(None)  # 절대 매치되지 않는 타입
+    _HttpxStatusError = type(None)
 
 
 # ---------------------------------------------------------------------------
@@ -225,10 +229,10 @@ class MinwonAnalysisAction(BaseAction):
                 response = await client.get(url, params=params)
                 response.raise_for_status()
                 body = response.json()
-        except httpx.TimeoutException as exc:
+        except _HttpxTimeoutError as exc:
             logger.warning(f"[minwon_analysis] API 타임아웃: {exc}")
             return None
-        except httpx.HTTPStatusError as exc:
+        except _HttpxStatusError as exc:
             logger.warning(f"[minwon_analysis] HTTP 오류 {exc.response.status_code}: {exc}")
             return None
         except Exception as exc:
@@ -248,11 +252,12 @@ class MinwonAnalysisAction(BaseAction):
             obj = body["returnObject"]
             return obj if isinstance(obj, list) else []
 
-        # 에러 응답 검사
+        # 에러 응답 검사 — 성공 코드만 통과
+        _SUCCESS_CODES = {"00", "0", "200", ""}
         code = str(body.get("code", body.get("resultCode", "00")))
-        if code in ("500",):
+        if code not in _SUCCESS_CODES:
             logger.warning(
-                f"[minwon_analysis] API 에러: {body.get('msg', body.get('resultMsg', ''))}"
+                f"[minwon_analysis] API 에러 (code={code}): {body.get('msg', body.get('resultMsg', ''))}"
             )
             return None
 

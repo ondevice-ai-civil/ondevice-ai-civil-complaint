@@ -1,0 +1,17 @@
+name: 'Free runner disk space'
+description: |
+  Remove unused SDK directories to reclaim disk space on GitHub Actions runners.
+
+  **Prerequisites**: `actions/checkout` must run before this action so that
+  `$GITHUB_WORKSPACE` is populated and the cleanup script is available.
+runs:
+  using: 'composite'
+  steps:
+    - name: Free disk space
+      shell: bash
+      run: |
+        if [ ! -d "${GITHUB_WORKSPACE}" ]; then
+          echo "::error::GITHUB_WORKSPACE (${GITHUB_WORKSPACE}) does not exist. Run actions/checkout before this action."
+          exit 1
+        fi
+        "${GITHUB_WORKSPACE}/.github/scripts/free_runner_disk_space.sh"

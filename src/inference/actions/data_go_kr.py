@@ -407,40 +407,541 @@ class MinwonAnalysisAction(BaseAction):
         return query
 
     # ---------------------------------------------------------------------------
-    # 보조 API 메서드 (시그니처만 정의)
+    # 공통 API 호출 헬퍼
     # ---------------------------------------------------------------------------
 
-    async def get_top_keywords(
-        self,
-        period: str = "monthly",
-        category: Optional[str] = None,
+    async def _call_api(
+        self, endpoint: str, params: Dict[str, Any]
     ) -> Optional[List[Dict[str, Any]]]:
-        """인기 민원 키워드를 조회한다. (미구현)
+        """공통 API 호출 + 응답 파싱.
 
         Parameters
         ----------
-        period : str
-            조회 주기 ("daily" | "weekly" | "monthly").
-        category : Optional[str]
-            필터할 카테고리.
+        endpoint : str
+            _BASE_URL 뒤에 붙는 엔드포인트 경로.
+        params : Dict[str, Any]
+            쿼리 파라미터 (serviceKey, dataType 자동 추가).
+
+        Returns
+        -------
+        Optional[List[Dict[str, Any]]]
+            성공 시 아이템 목록, 실패 시 None.
         """
-        raise NotImplementedError("get_top_keywords는 아직 구현되지 않았습니다.")
+        if not _HTTPX_AVAILABLE:
+            logger.warning("[minwon_analysis] httpx 미설치")
+            return None
+
+        url = _BASE_URL + endpoint
+        params["serviceKey"] = self._api_key
+        params["dataType"] = "json"
+
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                body = response.json()
+        except httpx.TimeoutException as exc:
+            logger.warning(f"[minwon_analysis] API 타임아웃 ({endpoint}): {exc}")
+            return None
+        except httpx.HTTPStatusError as exc:
+            logger.warning(
+                f"[minwon_analysis] HTTP 오류 ({endpoint}) "
+                f"{exc.response.status_code}: {exc}"
+            )
+            return None
+        except Exception as exc:
+            logger.error(
+                f"[minwon_analysis] API 호출 오류 ({endpoint}): {exc}",
+                exc_info=True,
+            )
+            return None
+
+        # 최상위 배열
+        if isinstance(body, list):
+            return body
+
+        # dict 래핑
+        if isinstance(body, dict):
+            if "returnObject" in body:
+                obj = body["returnObject"]
+                return obj if isinstance(obj, list) else []
+            code = str(body.get("code", body.get("resultCode", "00")))
+            if code in ("500",):
+                logger.warning(f"[minwon_analysis] 서버 오류 ({endpoint}): code={code}")
+                return None
+
+        return None
+
+    # ---------------------------------------------------------------------------
+    # 이슈 탐지 API (issue_detector)
+    # ---------------------------------------------------------------------------
+
+    async def get_rising_keywords(
+        self,
+        analysis_time: str,
+        max_result: int = 10,
+        target: str = "pttn,dfpt,saeol",
+        main_sub_code: str = "1140100",
+    ) -> Optional[List[Dict[str, Any]]]:
+        """급증키워드를 조회한다.
+
+        Parameters
+        ----------
+        analysis_time : str
+            분석 시점 (예: "2021050614").
+        max_result : int
+            최대 결과 수.
+        target : str
+            대상 채널.
+        main_sub_code : str
+            기관 코드.
+        """
+        return await self._call_api(
+            "/minRisingKeyword5",
+            {
+                "analysisTime": analysis_time,
+                "maxResult": max_result,
+                "target": target,
+                "mainSubCode": main_sub_code,
+            },
+        )
+
+    async def get_today_topics(
+        self,
+        search_date: str,
+        top_n: int = 5,
+        target: str = "pttn,dfpt,saeol",
+    ) -> Optional[List[Dict[str, Any]]]:
+        """오늘 이슈 토픽을 조회한다.
+
+        Parameters
+        ----------
+        search_date : str
+            검색 날짜 (예: "20210506").
+        top_n : int
+            상위 N개.
+        target : str
+            대상 채널.
+        """
+        return await self._call_api(
+            "/minTodayTopicInfo5",
+            {
+                "searchDate": search_date,
+                "todayTopicTopN": top_n,
+                "target": target,
+            },
+        )
+
+    async def get_top_keywords_by_period(
+        self,
+        analysis_time: str,
+        period: str = "MONTHLY",
+        range_count: int = 1,
+        max_result: int = 5,
+        target: str = "pttn,dfpt,saeol",
+        main_sub_code: str = "1140100",
+    ) -> Optional[List[Dict[str, Any]]]:
+        """기간별 최다 키워드를 조회한다.
+
+        Parameters
+        ----------
+        analysis_time : str
+            분석 시작 시점 (예: "20210301").
+        period : str
+            기간 단위 ("DAILY" | "WEEKLY" | "MONTHLY").
+        range_count : int
+            기간 범위 수.
+        max_result : int
+            최대 결과 수.
+        target : str
+            대상 채널.
+        main_sub_code : str
+            기관 코드.
+        """
+        return await self._call_api(
+            "/minDFTopNKeyword5",
+            {
+                "target": target,
+                "period": period,
+                "analysisTime": analysis_time,
+                "rangeCount": range_count,
+                "maxResult": max_result,
+                "mainSubCode": main_sub_code,
+            },
+        )
+
+    # ---------------------------------------------------------------------------
+    # 통계 API (stats_lookup)
+    # ---------------------------------------------------------------------------
+
+    async def get_statistics(
+        self,
+        date_from: str,
+        date_to: str,
+        period: str = "DAILY",
+        target: str = "pttn,dfpt,saeol",
+        sort_by: str = "NAME",
+        sort_order: str = "false",
+    ) -> Optional[List[Dict[str, Any]]]:
+        """맞춤형 통계를 조회한다.
+
+        Parameters
+        ----------
+        date_from : str
+            시작 날짜 (YYYYMMDD).
+        date_to : str
+            종료 날짜 (YYYYMMDD).
+        period : str
+            기간 단위.
+        target : str
+            대상 채널.
+        sort_by : str
+            정렬 기준.
+        sort_order : str
+            정렬 순서 ("true" 오름차순, "false" 내림차순).
+        """
+        return await self._call_api(
+            "/minStaticsInfo5",
+            {
+                "target": target,
+                "dateFrom": date_from,
+                "dateTo": date_to,
+                "period": period,
+                "sortBy": sort_by,
+                "sortOrder": sort_order,
+            },
+        )
 
     async def get_trend(
         self,
-        category: str,
-        start_date: str,
-        end_date: str,
-    ) -> Optional[Dict[str, Any]]:
-        """민원 트렌드를 조회한다. (미구현)
+        date_from: str,
+        date_to: str,
+        period: str = "DAILY",
+        target: str = "pttn,dfpt,saeol",
+        sort_by: str = "NAME",
+        sort_order: str = "false",
+    ) -> Optional[List[Dict[str, Any]]]:
+        """민원 트렌드(시계열)를 조회한다.
 
         Parameters
         ----------
-        category : str
-            트렌드를 조회할 카테고리.
-        start_date : str
-            시작 날짜 (YYYYMMDD).
-        end_date : str
-            종료 날짜 (YYYYMMDD).
+        date_from : str
+            시작 날짜시간 (YYYYMMDDHH).
+        date_to : str
+            종료 날짜시간 (YYYYMMDDHH).
+        period : str
+            기간 단위.
+        target : str
+            대상 채널.
+        sort_by : str
+            정렬 기준.
+        sort_order : str
+            정렬 순서.
         """
-        raise NotImplementedError("get_trend는 아직 구현되지 않았습니다.")
+        return await self._call_api(
+            "/minTimeSeriseView5",
+            {
+                "target": target,
+                "dateFrom": date_from,
+                "dateTo": date_to,
+                "period": period,
+                "sortBy": sort_by,
+                "sortOrder": sort_order,
+            },
+        )
+
+    async def get_doc_count(
+        self,
+        date_from: str,
+        date_to: str,
+        searchword: str,
+        target: str = "pttn,dfpt,saeol",
+        min_score: int = 70,
+        omit_duplicate: bool = False,
+    ) -> Optional[List[Dict[str, Any]]]:
+        """민원 건수를 조회한다.
+
+        Parameters
+        ----------
+        date_from : str
+            시작 날짜 (YYYYMMDD).
+        date_to : str
+            종료 날짜 (YYYYMMDD).
+        searchword : str
+            검색어.
+        target : str
+            대상 채널.
+        min_score : int
+            최소 유사도 점수.
+        omit_duplicate : bool
+            중복 제거 여부.
+        """
+        return await self._call_api(
+            "/minSearchDocCnt5",
+            {
+                "dateFrom": date_from,
+                "dateTo": date_to,
+                "target": target,
+                "minScore": min_score,
+                "searchword": searchword,
+                "omitDuplicate": str(omit_duplicate).lower(),
+            },
+        )
+
+    async def get_org_ranking(
+        self,
+        date_from: str,
+        date_to: str,
+        top_n: int = 5,
+        target: str = "pttn,dfpt,saeol",
+        sort_by: str = "VALUE",
+        sort_order: str = "false",
+    ) -> Optional[List[Dict[str, Any]]]:
+        """기관별 민원 순위를 조회한다.
+
+        Parameters
+        ----------
+        date_from : str
+            시작 날짜 (YYYYMMDD).
+        date_to : str
+            종료 날짜 (YYYYMMDD).
+        top_n : int
+            상위 N개.
+        target : str
+            대상 채널.
+        sort_by : str
+            정렬 기준.
+        sort_order : str
+            정렬 순서.
+        """
+        return await self._call_api(
+            "/minMofacetInfo5",
+            {
+                "topN": top_n,
+                "sortBy": sort_by,
+                "sortOrder": sort_order,
+                "target": target,
+                "dateFrom": date_from,
+                "dateTo": date_to,
+            },
+        )
+
+    async def get_region_ranking(
+        self,
+        date_from: str,
+        date_to: str,
+        top_n: int = 5,
+        target: str = "pttn,dfpt,saeol",
+        sort_by: str = "VALUE",
+        sort_order: str = "false",
+    ) -> Optional[List[Dict[str, Any]]]:
+        """지역별 민원 순위를 조회한다.
+
+        Parameters
+        ----------
+        date_from : str
+            시작 날짜 (YYYYMMDD).
+        date_to : str
+            종료 날짜 (YYYYMMDD).
+        top_n : int
+            상위 N개.
+        target : str
+            대상 채널.
+        sort_by : str
+            정렬 기준.
+        sort_order : str
+            정렬 순서.
+        """
+        return await self._call_api(
+            "/minMrfacetInfo5",
+            {
+                "topN": top_n,
+                "sortBy": sort_by,
+                "sortOrder": sort_order,
+                "dateFrom": date_from,
+                "dateTo": date_to,
+                "target": target,
+            },
+        )
+
+    # ---------------------------------------------------------------------------
+    # 키워드 분석 API (keyword_analyzer)
+    # ---------------------------------------------------------------------------
+
+    async def get_core_keywords(
+        self,
+        date_from: str,
+        date_to: str,
+        result_count: int = 5,
+        target: str = "pttn,dfpt,saeol",
+    ) -> Optional[List[Dict[str, Any]]]:
+        """핵심 키워드를 조회한다.
+
+        Parameters
+        ----------
+        date_from : str
+            시작 날짜 (YYYYMMDD).
+        date_to : str
+            종료 날짜 (YYYYMMDD).
+        result_count : int
+            결과 수.
+        target : str
+            대상 채널.
+        """
+        return await self._call_api(
+            "/minTopNKeyword5",
+            {
+                "target": target,
+                "dateFrom": date_from,
+                "dateTo": date_to,
+                "resultCount": result_count,
+            },
+        )
+
+    async def get_related_words(
+        self,
+        date_from: str,
+        date_to: str,
+        searchword: str,
+        result_count: int = 5,
+        target: str = "pttn,dfpt,saeol",
+    ) -> Optional[List[Dict[str, Any]]]:
+        """연관어를 조회한다.
+
+        Parameters
+        ----------
+        date_from : str
+            시작 날짜 (YYYYMMDD).
+        date_to : str
+            종료 날짜 (YYYYMMDD).
+        searchword : str
+            검색어.
+        result_count : int
+            결과 수.
+        target : str
+            대상 채널.
+        """
+        return await self._call_api(
+            "/minWdcloudInfo5",
+            {
+                "target": target,
+                "searchword": searchword,
+                "dateFrom": date_from,
+                "dateTo": date_to,
+                "resultCount": result_count,
+            },
+        )
+
+    # ---------------------------------------------------------------------------
+    # 인구통계 API (demographics_lookup)
+    # ---------------------------------------------------------------------------
+
+    async def get_gender_stats(
+        self,
+        date_from: str,
+        date_to: str,
+        searchword: str,
+        target: str = "pttn",
+    ) -> Optional[List[Dict[str, Any]]]:
+        """성별 통계를 조회한다.
+
+        Parameters
+        ----------
+        date_from : str
+            시작 날짜 (YYYYMMDD).
+        date_to : str
+            종료 날짜 (YYYYMMDD).
+        searchword : str
+            검색어.
+        target : str
+            대상 채널.
+        """
+        return await self._call_api(
+            "/minPttnStstGndrInfo5",
+            {
+                "dateFrom": date_from,
+                "dateTo": date_to,
+                "target": target,
+                "searchword": searchword,
+            },
+        )
+
+    async def get_age_stats(
+        self,
+        date_from: str,
+        date_to: str,
+        searchword: str,
+        target: str = "pttn",
+    ) -> Optional[List[Dict[str, Any]]]:
+        """연령별 통계를 조회한다.
+
+        Parameters
+        ----------
+        date_from : str
+            시작 날짜 (YYYYMMDD).
+        date_to : str
+            종료 날짜 (YYYYMMDD).
+        searchword : str
+            검색어.
+        target : str
+            대상 채널.
+        """
+        return await self._call_api(
+            "/minPttnStstAgeInfo5",
+            {
+                "dateFrom": date_from,
+                "dateTo": date_to,
+                "target": target,
+                "searchword": searchword,
+            },
+        )
+
+    async def get_population_ratio(
+        self,
+        date_from: str,
+        date_to: str,
+        top_n: int = 5,
+        target: str = "pttn,saeol,dfpt",
+        period: str = "DAILY",
+        sort_by: str = "VALUE",
+        sort_order: str = "false",
+        date_type: str = "C",
+        search_type: str = "REGION",
+    ) -> Optional[List[Dict[str, Any]]]:
+        """인구대비 민원 비율을 조회한다.
+
+        Parameters
+        ----------
+        date_from : str
+            시작 날짜 (YYYYMMDD).
+        date_to : str
+            종료 날짜 (YYYYMMDD).
+        top_n : int
+            상위 N개.
+        target : str
+            대상 채널.
+        period : str
+            기간 단위.
+        sort_by : str
+            정렬 기준.
+        sort_order : str
+            정렬 순서.
+        date_type : str
+            날짜 유형 ("C" 접수일, "R" 등록일).
+        search_type : str
+            검색 유형 ("REGION" 지역별).
+        """
+        return await self._call_api(
+            "/minMrPopltnRtInfo5",
+            {
+                "target": target,
+                "dateFrom": date_from,
+                "dateTo": date_to,
+                "dateType": date_type,
+                "topN": top_n,
+                "period": period,
+                "sortBy": sort_by,
+                "sortOrder": sort_order,
+                "searchType": search_type,
+            },
+        )

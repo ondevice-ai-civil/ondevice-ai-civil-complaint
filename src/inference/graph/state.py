@@ -44,6 +44,10 @@ class TaskType(str, Enum):
     REVISE_RESPONSE = "revise_response"  # 답변 수정
     APPEND_EVIDENCE = "append_evidence"  # 근거 보강
     LOOKUP_STATS = "lookup_stats"  # 통계/사례 조회
+    ISSUE_DETECTION = "issue_detection"  # 이슈 탐지
+    STATS_QUERY = "stats_query"  # 통계 조회
+    KEYWORD_ANALYSIS = "keyword_analysis"  # 키워드 분석
+    DEMOGRAPHICS_QUERY = "demographics_query"  # 인구통계 조회
 
 
 @dataclass

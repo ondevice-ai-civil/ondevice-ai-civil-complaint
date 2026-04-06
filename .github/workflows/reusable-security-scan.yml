@@ -46,14 +46,13 @@ jobs:
       - name: Cache uv tools
         uses: actions/cache@v4
         with:
-          path: ~/.local/share/uv/tools
+          path: |
+            ~/.local/share/uv/tools
+            ~/.local/bin
           key: uv-tools-${{ runner.os }}-bandit-pip-audit
 
       - name: Install security tools
         run: uv tool install bandit && uv tool install pip-audit
-
-      - name: Add uv tool bin to PATH
-        run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Run Bandit (Static Analysis)
         env:

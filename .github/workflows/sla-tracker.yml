@@ -44,8 +44,9 @@ jobs:
               const hoursOpen = (now - created) / (1000 * 60 * 60);
               const issueLabels = issue.labels.map(l => l.name);
 
-              let slaHours = SLA.default;
-              for (const [label, hours] of Object.entries(SLA)) {
+              const { default: defaultSla, ...labelSla } = SLA;
+              let slaHours = defaultSla;
+              for (const [label, hours] of Object.entries(labelSla)) {
                 if (issueLabels.includes(label) && hours < slaHours) {
                   slaHours = hours;
                 }

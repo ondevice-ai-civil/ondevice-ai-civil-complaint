@@ -105,7 +105,10 @@ def normalize_metrics(raw: dict) -> dict:
 
 def compute_grade(m: dict) -> str:
     """DORA 등급 판정."""
-    if m["df_weekly"] >= ELITE["deployment_frequency"] and m["lead_time_hours"] < ELITE["lead_time_hours"]:
+    if (
+        m["df_weekly"] >= ELITE["deployment_frequency"]
+        and m["lead_time_hours"] < ELITE["lead_time_hours"]
+    ):
         return "Elite"
     if m["df_weekly"] >= 1:
         return "High"

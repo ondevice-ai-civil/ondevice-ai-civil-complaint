@@ -9,7 +9,7 @@ on:
       strict:
         type: boolean
         default: true
-      upload-pages-artifact:
+      upload_pages_artifact:
         type: boolean
         default: false
 
@@ -42,13 +42,13 @@ jobs:
         run: cd site && mkdocs build
 
       - name: Upload pages artifact
-        if: inputs.upload-pages-artifact
+        if: inputs.upload_pages_artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: site/site
 
       - name: Upload regular artifact
-        if: ${{ !inputs.upload-pages-artifact }}
+        if: ${{ !inputs.upload_pages_artifact }}
         uses: actions/upload-artifact@v7
         with:
           name: docs-site-preview

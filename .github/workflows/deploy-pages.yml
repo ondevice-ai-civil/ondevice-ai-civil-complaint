@@ -36,7 +36,7 @@ jobs:
     uses: ./.github/workflows/reusable-docs-build.yml
     with:
       strict: true
-      upload-pages-artifact: true
+      upload_pages_artifact: true
 
   deploy:
     needs: build

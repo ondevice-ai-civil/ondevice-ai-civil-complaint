@@ -172,7 +172,7 @@ jobs:
 
       - name: Install Playwright browsers
         run: |
-          if [ -d ~/.cache/ms-playwright/chromium-* ] && ls ~/.cache/ms-playwright/chromium-*/chrome-linux/chrome 2>/dev/null; then
+          if ls ~/.cache/ms-playwright/chromium-*/chrome-linux/chrome 2>/dev/null; then
             echo "Playwright chromium found in cache — installing OS deps only"
             npx playwright install-deps chromium
           else
@@ -235,7 +235,7 @@ jobs:
     uses: ./.github/workflows/reusable-docs-build.yml
     with:
       strict: true
-      upload-pages-artifact: false
+      upload_pages_artifact: false
 
   build:
     needs: [detect-changes, lint, test]

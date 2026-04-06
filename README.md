@@ -6,11 +6,11 @@ GovOn은 행정 업무를 보조하는 **에이전틱 CLI 셸**이다. 사용자
 [![Public Roadmap](https://img.shields.io/badge/Public_Roadmap-Workstreams-7C3AED)](https://github.com/GovOn-Org/GovOn/issues?q=label%3A%22%F0%9F%A7%AD+Workstream%22+sort%3Aupdated-desc)
 
 <!-- DORA-BADGES:START -->
-![DORA Grade](https://img.shields.io/badge/DORA-N%2FA-lightgrey)
-![Deploy Freq](https://img.shields.io/badge/Deploy_Freq-N%2FA-lightgrey)
-![Lead Time](https://img.shields.io/badge/Lead_Time-N%2FA-lightgrey)
-![CFR](https://img.shields.io/badge/CFR-N%2FA-lightgrey)
-![MTTR](https://img.shields.io/badge/MTTR-N%2FA-lightgrey)
+![DORA Grade](https://img.shields.io/badge/DORA-Elite-brightgreen)
+![Deploy Freq](https://img.shields.io/badge/Deploy_Freq-30%2Fweek-blue)
+![Lead Time](https://img.shields.io/badge/Lead_Time-1.0h-brightgreen)
+![CFR](https://img.shields.io/badge/CFR-26.0%2525-yellow)
+![MTTR](https://img.shields.io/badge/MTTR-0.0h-brightgreen)
 <!-- DORA-BADGES:END -->
 
 ## 아키텍처

@@ -155,8 +155,9 @@ class ModelConfig:
       학습 데이터: neuralfoundry-coder/korean-legal-instruction-sample (232K건), QLoRA on AWQ base
     - 나머지 capability (rag_search, api_lookup, synthesis 등)는 LoRA 없이 base model 사용
 
-    adapter_paths: vLLM --lora-modules 형식으로 전달할 어댑터 경로 목록.
-      예: ["civil-adapter=/path/to/civil", "legal-adapter=/path/to/legal"]
+    adapter_paths: Dict[str, str] 형식의 어댑터 이름-경로 매핑.
+      환경변수 ADAPTER_PATHS="civil=/path/to/civil,legal=/path/to/legal" 형식으로 설정.
+      예: {"civil": "/path/to/civil", "legal": "/path/to/legal"}
     """
 
     model_path: str = "LGAI-EXAONE/EXAONE-4.0-32B-AWQ"

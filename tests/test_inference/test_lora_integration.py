@@ -148,21 +148,103 @@ class TestRunEngineLora:
 
 
 class TestLoraEngineConfig:
-    """adapter_paths 유무에 따른 enable_lora 설정 검증."""
+    """adapter_paths 유무에 따른 enable_lora 설정 검증.
 
-    def test_no_adapters_no_lora(self):
-        """adapter_paths가 비어있으면 enable_lora 키워드가 추가되지 않아야 한다."""
-        from src.inference.runtime_config import ModelConfig
+    SKIP_MODEL_LOAD=false로 설정하고 AsyncEngineArgs를 patch하여
+    enable_lora 인자가 올바르게 전달되는지 검증한다.
+    """
 
-        config = ModelConfig(adapter_paths={})
-        assert not bool(config.adapter_paths)
+    @pytest.mark.asyncio
+    async def test_no_adapters_no_lora(self):
+        """adapter_paths가 비어있으면 AsyncEngineArgs에 enable_lora가 전달되지 않아야 한다."""
+        from src.inference.api_server import vLLMEngineManager
 
-    def test_with_adapters_lora_enabled(self):
-        """adapter_paths가 있으면 bool(adapter_paths)가 True."""
-        from src.inference.runtime_config import ModelConfig
+        manager = vLLMEngineManager.__new__(vLLMEngineManager)
+        manager.engine = None
+        manager.retriever = None
+        manager.index_manager = None
+        manager.hybrid_engine = None
+        manager.bm25_indexers = {}
+        manager.embed_model = None
+        manager.feature_flags = MagicMock()
+        manager.session_store = MagicMock()
+        manager.agent_manager = MagicMock()
+        manager.agent_loop = None
+        manager.graph = None
+        manager.local_document_indexer = None
+        manager.local_document_sync_status = None
+        manager._local_document_sync_task = None
+        manager._checkpointer_ctx = None
+        manager._sync_checkpointer_conn = None
 
-        config = ModelConfig(adapter_paths={"civil": "/path"})
-        assert bool(config.adapter_paths)
+        mock_engine_args_cls = MagicMock()
+        mock_engine_args_instance = MagicMock()
+        mock_engine_args_cls.return_value = mock_engine_args_instance
+
+        mock_async_llm = MagicMock()
+        mock_async_llm.from_engine_args = MagicMock(return_value=MagicMock())
+
+        with (
+            patch("src.inference.api_server.SKIP_MODEL_LOAD", False),
+            patch("src.inference.api_server.AsyncEngineArgs", mock_engine_args_cls),
+            patch("src.inference.api_server.AsyncLLM", mock_async_llm),
+            patch(
+                "src.inference.api_server.runtime_config.model.adapter_paths",
+                {},
+            ),
+            patch("src.inference.api_server.CivilComplaintRetriever", MagicMock()),
+        ):
+            await manager.initialize()
+
+        # AsyncEngineArgs에 enable_lora가 전달되지 않아야 한다
+        call_kwargs = mock_engine_args_cls.call_args[1]
+        assert "enable_lora" not in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_with_adapters_lora_enabled(self):
+        """adapter_paths가 있으면 AsyncEngineArgs에 enable_lora=True가 전달되어야 한다."""
+        from src.inference.api_server import vLLMEngineManager
+
+        manager = vLLMEngineManager.__new__(vLLMEngineManager)
+        manager.engine = None
+        manager.retriever = None
+        manager.index_manager = None
+        manager.hybrid_engine = None
+        manager.bm25_indexers = {}
+        manager.embed_model = None
+        manager.feature_flags = MagicMock()
+        manager.session_store = MagicMock()
+        manager.agent_manager = MagicMock()
+        manager.agent_loop = None
+        manager.graph = None
+        manager.local_document_indexer = None
+        manager.local_document_sync_status = None
+        manager._local_document_sync_task = None
+        manager._checkpointer_ctx = None
+        manager._sync_checkpointer_conn = None
+
+        mock_engine_args_cls = MagicMock()
+        mock_engine_args_instance = MagicMock()
+        mock_engine_args_cls.return_value = mock_engine_args_instance
+
+        mock_async_llm = MagicMock()
+        mock_async_llm.from_engine_args = MagicMock(return_value=MagicMock())
+
+        with (
+            patch("src.inference.api_server.SKIP_MODEL_LOAD", False),
+            patch("src.inference.api_server.AsyncEngineArgs", mock_engine_args_cls),
+            patch("src.inference.api_server.AsyncLLM", mock_async_llm),
+            patch(
+                "src.inference.api_server.runtime_config.model.adapter_paths",
+                {"civil": "/path/to/civil"},
+            ),
+            patch("src.inference.api_server.CivilComplaintRetriever", MagicMock()),
+        ):
+            await manager.initialize()
+
+        # AsyncEngineArgs에 enable_lora=True가 전달되어야 한다
+        call_kwargs = mock_engine_args_cls.call_args[1]
+        assert call_kwargs.get("enable_lora") is True
 
 
 # ---------------------------------------------------------------------------
@@ -221,12 +303,19 @@ class TestLoRARequestImportGuard:
         assert api_server.LoRARequest is None or callable(api_server.LoRARequest)
 
     def test_draft_tool_skips_lora_when_none(self):
-        """LoRARequest가 None이면 lora_req도 None이어야 한다."""
-        adapter_path = "/some/path"
-        LoRARequestLocal = None  # 시뮬레이션
+        """LoRARequest가 None이면 adapter_path가 있어도 lora_req가 생성되지 않아야 한다."""
+        from src.inference import api_server
 
-        lora_req = None
-        if adapter_path and LoRARequestLocal is not None:
-            lora_req = LoRARequestLocal("civil", 1, adapter_path)
+        original = api_server.LoRARequest
+        try:
+            api_server.LoRARequest = None
 
-        assert lora_req is None
+            # LoRARequest가 None이면 adapter_path 존재 여부와 무관하게 건너뜀
+            adapter_path = "/some/path"
+            lora_req = None
+            if adapter_path and api_server.LoRARequest is not None:
+                lora_req = api_server.LoRARequest("civil", 1, adapter_path)
+
+            assert lora_req is None
+        finally:
+            api_server.LoRARequest = original

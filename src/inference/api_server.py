@@ -32,6 +32,9 @@ try:
 except ImportError:
     LoRARequest = None
 
+# Multi-LoRA adapter name → numeric ID 매핑 (vLLM LoRARequest에 전달)
+_LORA_ID_MAP: Dict[str, int] = {"civil": 1, "legal": 2}
+
 from .agent_loop import AgentLoop, AgentTrace
 from .agent_manager import AgentManager
 from .bm25_indexer import BM25Indexer
@@ -910,7 +913,7 @@ class vLLMEngineManager:
             civil_adapter_path = runtime_config.model.adapter_paths.get("civil")
             lora_req = None
             if civil_adapter_path and LoRARequest is not None:
-                lora_req = LoRARequest("civil", 1, civil_adapter_path)
+                lora_req = LoRARequest("civil", _LORA_ID_MAP["civil"], civil_adapter_path)
 
             gen_request = GenerateCivilResponseRequest(
                 prompt=working_query,
@@ -961,14 +964,19 @@ class vLLMEngineManager:
             if engine_ref.engine is not None:
                 try:
                     _, previous_answer = engine_ref._latest_prior_turns(session, query)
-                    existing_response = previous_answer or ""
-                    rag_context = rag_data.get("context_text", "")
+                    existing_response = engine_ref._escape_special_tokens(previous_answer or "")
+                    rag_context = engine_ref._escape_special_tokens(
+                        rag_data.get("context_text", "")
+                    )
                     api_context = ""
                     for item in api_data.get("results", [])[:3]:
                         title = item.get("title", "")
                         content = item.get("content", "") or item.get("qnaContent", "")
                         if title or content:
-                            api_context += f"- {title}: {content[:200]}\n"
+                            api_context += (
+                                f"- {engine_ref._escape_special_tokens(title)}"
+                                f": {engine_ref._escape_special_tokens(content[:200])}\n"
+                            )
 
                     evidence_prompt = (
                         "[|system|]당신은 대한민국 공무원 민원 답변 보강 전문가입니다. "
@@ -986,7 +994,7 @@ class vLLMEngineManager:
                     legal_adapter_path = runtime_config.model.adapter_paths.get("legal")
                     lora_req = None
                     if legal_adapter_path and LoRARequest is not None:
-                        lora_req = LoRARequest("legal", 2, legal_adapter_path)
+                        lora_req = LoRARequest("legal", _LORA_ID_MAP["legal"], legal_adapter_path)
 
                     if SamplingParams is not None:
                         sp = SamplingParams(
@@ -999,7 +1007,7 @@ class vLLMEngineManager:
                         output = await engine_ref._run_engine(
                             evidence_prompt, sp, request_id, lora_request=lora_req
                         )
-                        if output is not None:
+                        if output is not None and output.outputs:
                             enhanced_text = engine_ref._strip_thought_blocks(output.outputs[0].text)
                 except Exception as exc:
                     logger.warning(f"Evidence LLM 보강 실패, fallback 사용: {exc}")

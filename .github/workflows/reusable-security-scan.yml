@@ -54,7 +54,7 @@ jobs:
           bandit -r ${{ inputs.bandit-target }} ${{ inputs.bandit-severity }} -x tests
 
       - name: Run Dependency Audit
-        if: ${{ inputs.pip-audit-enabled }}
+        if: inputs.pip-audit-enabled
         continue-on-error: true
         run: |
           uv pip compile pyproject.toml -o /tmp/requirements-lock.txt 2>/dev/null || true
@@ -67,20 +67,20 @@ jobs:
           fi
 
       - name: Run Bandit with SARIF output
-        if: ${{ inputs.upload-sarif }}
+        if: inputs.upload-sarif
         continue-on-error: true
         run: |
           bandit -r ${{ inputs.bandit-target }} ${{ inputs.bandit-severity }} -x tests -f sarif -o bandit-results.sarif 2>/dev/null || true
 
       - name: Upload Bandit SARIF to Code Scanning
-        if: ${{ inputs.upload-sarif }} && always() && hashFiles('bandit-results.sarif') != ''
+        if: inputs.upload-sarif && hashFiles('bandit-results.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: bandit-results.sarif
           category: bandit
 
       - name: Run pip-audit with JSON output
-        if: ${{ inputs.pip-audit-enabled }}
+        if: inputs.pip-audit-enabled
         id: audit
         continue-on-error: true
         run: |
@@ -113,7 +113,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Create or Update Issue on vulnerability detection
-        if: ${{ inputs.create-issue-on-vuln }} && always() && steps.audit.outputs.vuln_count != '0'
+        if: inputs.create-issue-on-vuln && always() && steps.audit.outputs.vuln_count != '0'
         uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.github-token || github.token }}

@@ -37,13 +37,13 @@ jobs:
         run: cd site && mkdocs build ${{ inputs.strict && '--strict' || '' }}
 
       - name: Upload pages artifact
-        if: ${{ inputs.upload-pages-artifact }}
+        if: inputs.upload-pages-artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: site/site
 
       - name: Upload regular artifact
-        if: ${{ !inputs.upload-pages-artifact }}
+        if: "!inputs.upload-pages-artifact"
         uses: actions/upload-artifact@v7
         with:
           name: docs-site-preview

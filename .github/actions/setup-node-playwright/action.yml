@@ -1,0 +1,36 @@
+name: 'Setup Node.js with Playwright'
+description: 'Install Node.js, npm dependencies, and optionally Playwright browsers with caching'
+inputs:
+  node-version:
+    description: 'Node.js version'
+    required: false
+    default: '22'
+  install-browsers:
+    description: 'Install Playwright browsers'
+    required: false
+    default: 'true'
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+    - name: Install npm dependencies
+      shell: bash
+      run: npm ci
+    - name: Cache Playwright browsers
+      if: inputs.install-browsers == 'true'
+      uses: actions/cache@v4
+      id: playwright-cache
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+    - name: Install Playwright browsers
+      if: inputs.install-browsers == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: npx playwright install --with-deps chromium
+    - name: Install Playwright system deps only (cache hit)
+      if: inputs.install-browsers == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
+      shell: bash
+      run: npx playwright install-deps chromium

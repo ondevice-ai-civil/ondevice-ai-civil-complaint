@@ -1,0 +1,8 @@
+name: 'Free runner disk space'
+description: 'Remove unused SDK directories to reclaim disk space on GitHub Actions runners'
+runs:
+  using: 'composite'
+  steps:
+    - name: Free disk space
+      shell: bash
+      run: bash ${GITHUB_WORKSPACE}/.github/scripts/free_runner_disk_space.sh

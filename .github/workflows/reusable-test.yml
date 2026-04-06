@@ -38,13 +38,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # matrix-include가 제공된 경우 placeholder 값으로 기본 축을 채우고
-        # exclude로 placeholder 조합을 제거한 뒤 include로만 실제 조합을 구성한다.
-        # 이는 GitHub Actions에서 동적으로 matrix를 완전히 override하는 관용적 패턴이다.
-        python-version: ${{ inputs.matrix-include == '' && fromJSON(inputs.python-versions) || fromJSON('["placeholder"]') }}
-        os: ${{ inputs.matrix-include == '' && fromJSON(inputs.os-list) || fromJSON('["placeholder"]') }}
-        include: ${{ inputs.matrix-include != '' && fromJSON(inputs.matrix-include) || fromJSON('[]') }}
-        exclude: ${{ inputs.matrix-include != '' && fromJSON('[{"python-version":"placeholder","os":"placeholder"}]') || fromJSON('[]') }}
+        python-version: ${{ fromJSON(inputs.python-versions) }}
+        os: ${{ fromJSON(inputs.os-list) }}
     steps:
       - uses: actions/checkout@v6
 

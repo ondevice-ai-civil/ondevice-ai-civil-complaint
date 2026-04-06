@@ -96,10 +96,6 @@ jobs:
 
   test:
     needs: detect-changes
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      needs.detect-changes.outputs.runtime == 'true' ||
-      needs.detect-changes.outputs.packaging == 'true'
     uses: ./.github/workflows/reusable-test.yml
     with:
       python-versions: '["3.10", "3.11", "3.12"]'
@@ -110,10 +106,6 @@ jobs:
 
   security:
     needs: detect-changes
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      needs.detect-changes.outputs.runtime == 'true' ||
-      needs.detect-changes.outputs.packaging == 'true'
     uses: ./.github/workflows/reusable-security-scan.yml
     with:
       bandit-target: src/inference
@@ -224,9 +216,6 @@ jobs:
           retention-days: 7
 
   docs-build:
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      needs.detect-changes.outputs.docs == 'true'
     needs: [detect-changes]
     uses: ./.github/workflows/reusable-docs-build.yml
     with:

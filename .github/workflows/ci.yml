@@ -121,13 +121,22 @@ jobs:
 
   test:
     needs: detect-changes
-    uses: ./.github/workflows/reusable-test.yml
-    with:
-      python-versions: '["3.10", "3.11", "3.12"]'
-      os-list: '["ubuntu-latest"]'
-      coverage-threshold: 80
-    secrets:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.runtime == 'true' ||
+      needs.detect-changes.outputs.packaging == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Python with uv
+        uses: ./.github/actions/setup-python-uv
+        with:
+          python-version: '3.10'
+          extras: '--extra dev --extra inference --extra database'
+
+      - name: Run PR-safe inference suite
+        run: bash .github/scripts/run_inference_ci.sh 80
 
   security:
     needs: detect-changes

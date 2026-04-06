@@ -22,6 +22,8 @@ jobs:
       runtime_contract: ${{ steps.filter.outputs.runtime_contract }}
       docs: ${{ steps.filter.outputs.docs }}
       packaging: ${{ steps.filter.outputs.packaging }}
+      training: ${{ steps.filter.outputs.training }}
+      monitoring: ${{ steps.filter.outputs.monitoring }}
     steps:
       - uses: actions/checkout@v6
 
@@ -61,6 +63,14 @@ jobs:
               - '.github/workflows/docker-publish.yml'
               - '.github/workflows/offline-package.yml'
               - '.github/workflows/publish-package.yml'
+            training:
+              - 'training/**'
+              - 'data/**'
+              - 'configs/**'
+            monitoring:
+              - 'metrics/**'
+              - '.github/workflows/dora-metrics.yml'
+              - '.github/workflows/monitor-cloud-run.yml'
 
       - name: Change summary
         run: |
@@ -72,6 +82,8 @@ jobs:
           | Runtime contract | \`${{ steps.filter.outputs.runtime_contract }}\` |
           | Docs | \`${{ steps.filter.outputs.docs }}\` |
           | Packaging | \`${{ steps.filter.outputs.packaging }}\` |
+          | Training | \`${{ steps.filter.outputs.training }}\` |
+          | Monitoring | \`${{ steps.filter.outputs.monitoring }}\` |
           EOF
 
   lint:
@@ -113,7 +125,7 @@ jobs:
       needs.detect-changes.outputs.packaging == 'true'
     uses: ./.github/workflows/reusable-test.yml
     with:
-      python-versions: '["3.10", "3.11"]'
+      python-versions: '["3.10", "3.11", "3.12"]'
       os-list: '["ubuntu-latest"]'
       coverage-threshold: 80
     secrets:

@@ -18,6 +18,11 @@ on:
         required: false
         type: number
         default: 80
+      matrix-include:
+        description: 'JSON array for matrix include entries (overrides python-versions x os-list when provided)'
+        required: false
+        type: string
+        default: ''
     secrets:
       CODECOV_TOKEN:
         required: false
@@ -31,8 +36,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ${{ fromJSON(inputs.python-versions) }}
-        os: ${{ fromJSON(inputs.os-list) }}
+        python-version: ${{ inputs.matrix-include == '' && fromJSON(inputs.python-versions) || fromJSON('["placeholder"]') }}
+        os: ${{ inputs.matrix-include == '' && fromJSON(inputs.os-list) || fromJSON('["placeholder"]') }}
+        include: ${{ inputs.matrix-include != '' && fromJSON(inputs.matrix-include) || fromJSON('[]') }}
+        exclude: ${{ inputs.matrix-include != '' && fromJSON('[{"python-version":"placeholder","os":"placeholder"}]') || fromJSON('[]') }}
     steps:
       - uses: actions/checkout@v6
 

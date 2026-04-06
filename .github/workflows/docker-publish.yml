@@ -24,11 +24,37 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  check-changes:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_run'
+    outputs:
+      should-build: ${{ steps.filter.outputs.docker }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            docker:
+              - 'Dockerfile'
+              - 'docker-compose*.yml'
+              - 'src/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - '.github/workflows/docker-publish.yml'
+
   build-and-push:
+    needs: [check-changes]
     if: |
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      github.event.workflow_run.conclusion == 'success'
+      always() && (
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'push' ||
+        (github.event_name == 'workflow_run' &&
+         github.event.workflow_run.conclusion == 'success' &&
+         needs.check-changes.outputs.should-build == 'true')
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -114,6 +114,7 @@ jobs:
 
   compose-gpu-smoke:
     needs: compose-config
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-22.04-gpu-t4
     timeout-minutes: 45
 

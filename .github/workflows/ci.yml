@@ -235,7 +235,7 @@ jobs:
     uses: ./.github/workflows/reusable-docs-build.yml
     with:
       strict: true
-      upload-pages-artifact: false
+      upload_pages_artifact: false
 
   build:
     needs: [detect-changes, lint, test]

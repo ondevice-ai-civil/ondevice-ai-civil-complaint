@@ -31,7 +31,7 @@ _DEFAULTS: Dict[str, CapabilityDefaults] = {
     "rag_search": CapabilityDefaults(timeout_sec=15.0, max_retries=0),
     "api_lookup": CapabilityDefaults(timeout_sec=10.0, max_retries=1),
     "draft_civil_response": CapabilityDefaults(timeout_sec=30.0, max_retries=0),
-    "append_evidence": CapabilityDefaults(timeout_sec=15.0, max_retries=0),
+    "append_evidence": CapabilityDefaults(timeout_sec=30.0, max_retries=0),
     "issue_detector": CapabilityDefaults(timeout_sec=15.0, max_retries=0),
     "stats_lookup": CapabilityDefaults(timeout_sec=15.0, max_retries=0),
     "keyword_analyzer": CapabilityDefaults(timeout_sec=10.0, max_retries=0),

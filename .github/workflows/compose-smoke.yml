@@ -82,7 +82,7 @@ EOF
       - name: Compose 런타임 스모크 실행
         env:
           DOCKER_BUILDKIT: 1
-          COMPOSE_DOCKER_CLI_BUILD: 1
+          # COMPOSE_DOCKER_CLI_BUILD는 Compose V2에서 불필요 — 제거됨
         run: |
           set -euo pipefail
 
@@ -155,7 +155,7 @@ EOF
       - name: GPU Compose 런타임 스모크 실행
         env:
           DOCKER_BUILDKIT: 1
-          COMPOSE_DOCKER_CLI_BUILD: 1
+          # COMPOSE_DOCKER_CLI_BUILD는 Compose V2에서 불필요 — 제거됨
         run: |
           set -euo pipefail
 

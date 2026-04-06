@@ -39,6 +39,7 @@ jobs:
           filters: |
             docker:
               - 'Dockerfile'
+              - '.dockerignore'
               - 'docker-compose*.yml'
               - 'src/**'
               - 'pyproject.toml'

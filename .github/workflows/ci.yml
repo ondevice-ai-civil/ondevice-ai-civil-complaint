@@ -22,6 +22,8 @@ jobs:
       runtime_contract: ${{ steps.filter.outputs.runtime_contract }}
       docs: ${{ steps.filter.outputs.docs }}
       packaging: ${{ steps.filter.outputs.packaging }}
+      # training/monitoring outputs는 현재 다운스트림 job에서 직접 사용하지 않으나
+      # 향후 training pipeline / monitoring alert job 연동을 위해 미리 노출해 둔다.
       training: ${{ steps.filter.outputs.training }}
       monitoring: ${{ steps.filter.outputs.monitoring }}
     steps:

@@ -90,7 +90,7 @@ jobs:
 
   lint:
     needs: detect-changes
-    if: |
+    if: >-
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.runtime == 'true' ||
       needs.detect-changes.outputs.packaging == 'true'
@@ -100,7 +100,7 @@ jobs:
 
   test:
     needs: detect-changes
-    if: |
+    if: >-
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.runtime == 'true' ||
       needs.detect-changes.outputs.packaging == 'true'
@@ -114,7 +114,7 @@ jobs:
 
   security:
     needs: detect-changes
-    if: |
+    if: >-
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.runtime == 'true' ||
       needs.detect-changes.outputs.packaging == 'true'
@@ -228,7 +228,7 @@ jobs:
           retention-days: 7
 
   docs-build:
-    if: |
+    if: >-
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.docs == 'true'
     needs: [detect-changes]

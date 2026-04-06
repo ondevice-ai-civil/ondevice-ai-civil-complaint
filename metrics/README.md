@@ -1,17 +1,26 @@
-# DORA Metrics 수집 및 Grafana Cloud 대시보드
+# DORA Metrics 수집 및 대시보드
 
 ## 개요
 
 DORA(DevOps Research and Assessment) 4대 지표를 GitHub Actions로 자동 수집하고,
-**Grafana Cloud**(무료 티어)에서 공개 대시보드로 시각화한다.
+**Grafana Cloud**(무료 티어)에서 실시간 대시보드로 시각화한다.
+수집 시마다 주간 보고서(마크다운 + Chart.js HTML + PNG)를 자동 생성한다.
+
+- **Grafana 실시간 대시보드**: [GovOn DORA Dashboard](https://umyunsang.grafana.net/d/govon-dora/govon-dora-metrics-dashboard?orgId=1&from=now-7d&to=now&timezone=Asia%2FSeoul)
+- **Chart.js 보고서**: `metrics/reports/latest-dora.html` (워크플로우 실행 후 생성됨)
+- **주간 보고서**: `metrics/reports/weekly-YYYYMMDD.md` (워크플로우 실행 후 생성됨)
 
 ## 아키텍처
 
 ```
-GitHub Actions (매주 월요일 + main push)
+GitHub Actions (매주 월요일 09:00 KST + main push)
     │
     ├── DORA 4대 지표 수집 (gh CLI)
     ├── JSON 아티팩트 저장 (metrics/dora/)
+    ├── 주간 보고서 생성 (metrics/scripts/generate_report.py)
+    │   ├── weekly-YYYYMMDD.md  (마크다운)
+    │   ├── latest-dora.html    (Chart.js 대시보드)
+    │   └── latest-dora.png     (matplotlib 이미지)
     └── Grafana Cloud Prometheus에 메트릭 전송 (InfluxDB line protocol)
             │
             └── Grafana Cloud Dashboard (공개 URL로 팀원/교수님 공유)
@@ -21,10 +30,10 @@ GitHub Actions (매주 월요일 + main push)
 
 | 지표 | 측정 방법 | PromQL |
 |------|----------|--------|
-| **배포 빈도** | main 머지 PR 수 / 주 | `dora_deployment_frequency{project="govon"}` |
-| **리드 타임** | PR 생성 → 머지 평균 시간 | `dora_lead_time_hours{project="govon"}` |
-| **변경 실패율** | hotfix/revert 커밋 비율 | `dora_change_failure_rate{project="govon"}` |
-| **복구 시간 (MTTR)** | bug 이슈 open → close 평균 시간 | `dora_mttr_hours{project="govon"}` |
+| **배포 빈도** | main 머지 PR 수 / 주 | `dora_deployment_frequency{project="govon", branch="main"}` |
+| **리드 타임** | PR 첫 커밋 → 머지 평균 시간 | `dora_lead_time_hours{project="govon", branch="main"}` |
+| **변경 실패율** | hotfix/revert 커밋 비율 | `dora_change_failure_rate{project="govon", branch="main"}` |
+| **복구 시간 (MTTR)** | bug 이슈 open → close 평균 시간 | `dora_mttr_hours{project="govon", branch="main"}` |
 
 ## 디렉토리 구조
 
@@ -33,6 +42,12 @@ metrics/
 ├── README.md
 ├── dora/                        # 수집된 JSON 데이터 (Actions 자동 생성)
 │   └── dora-YYYYMMDD.json
+├── reports/                     # 주간 보고서 (Actions 자동 생성)
+│   ├── weekly-YYYYMMDD.md
+│   ├── latest-dora.html
+│   └── latest-dora.png
+├── scripts/
+│   └── generate_report.py       # 보고서 생성 스크립트
 └── grafana-cloud/
     ├── setup-guide.md           # Grafana Cloud 설정 가이드
     └── dora-dashboard.json      # 대시보드 Import용 JSON
@@ -53,6 +68,13 @@ metrics/
 4. Actions → DORA Metrics Collector → Run workflow
 5. Grafana Cloud에서 `dora-dashboard.json` Import
 6. **Share → Public dashboard** 활성화하여 공유
+
+### 수동 보고서 생성
+
+```bash
+pip install matplotlib
+python metrics/scripts/generate_report.py
+```
 
 ## 등급 기준
 

@@ -5,6 +5,14 @@ GovOn은 행정 업무를 보조하는 **에이전틱 CLI 셸**이다. 사용자
 [![Docs Portal](https://img.shields.io/badge/Docs-Portal-blue?logo=readthedocs)](https://govon-org.github.io/GovOn/)
 [![Public Roadmap](https://img.shields.io/badge/Public_Roadmap-Workstreams-7C3AED)](https://github.com/GovOn-Org/GovOn/issues?q=label%3A%22%F0%9F%A7%AD+Workstream%22+sort%3Aupdated-desc)
 
+<!-- DORA-BADGES:START -->
+![DORA Grade](https://img.shields.io/badge/DORA-N%2FA-lightgrey)
+![Deploy Freq](https://img.shields.io/badge/Deploy_Freq-N%2FA-lightgrey)
+![Lead Time](https://img.shields.io/badge/Lead_Time-N%2FA-lightgrey)
+![CFR](https://img.shields.io/badge/CFR-N%2FA-lightgrey)
+![MTTR](https://img.shields.io/badge/MTTR-N%2FA-lightgrey)
+<!-- DORA-BADGES:END -->
+
 ## 아키텍처
 
 ```mermaid
@@ -177,6 +185,21 @@ stateDiagram-v2
 - roadmap의 하위: `workstream`
 - workstream의 하위: `task`
 - 세부 작업 내용은 `task` 이슈 본문에만 작성한다.
+
+## DORA Metrics
+
+<!-- latest-dora.png는 워크플로우 첫 실행 후 자동 생성됩니다. 실시간 대시보드는 아래 Grafana 링크를 이용하세요. -->
+
+| 지표 | 설명 | 수집 방식 |
+|------|------|----------|
+| Deployment Frequency | main 머지 PR 수 / 주 | GitHub API |
+| Lead Time | PR 첫 커밋 → 머지 평균 시간 | GitHub API |
+| Change Failure Rate | hotfix/revert 커밋 비율 | git log |
+| MTTR | bug 이슈 open → close 평균 시간 | GitHub API |
+
+- **실시간 대시보드**: [Grafana Cloud](https://umyunsang.grafana.net/d/govon-dora/govon-dora-metrics-dashboard?orgId=1&from=now-7d&to=now&timezone=Asia%2FSeoul)
+- **주간 보고서**: [`metrics/reports/`](metrics/reports/)
+- **수집 워크플로우**: [`.github/workflows/dora-metrics.yml`](.github/workflows/dora-metrics.yml)
 
 ## 개발 규칙
 

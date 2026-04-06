@@ -65,20 +65,26 @@ def _count_tokens(text: str) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _parse_pdf(file_path: str) -> str:
-    """PyMuPDF로 PDF 텍스트를 추출한다."""
+def _parse_pdf_pages(file_path: str) -> List[Tuple[int, str]]:
+    """PyMuPDF로 PDF의 페이지별 텍스트를 추출한다."""
     try:
         import fitz  # PyMuPDF
     except ImportError as e:
         raise ImportError("PyMuPDF가 설치되지 않았습니다: pip install PyMuPDF") from e
 
-    pages: List[str] = []
+    pages: List[Tuple[int, str]] = []
     with fitz.open(file_path) as doc:
-        for page in doc:
+        for page_number, page in enumerate(doc, start=1):
             text = page.get_text("text")
             if text.strip():
-                pages.append(text)
-    return "\n\n".join(pages)
+                pages.append((page_number, text))
+    return pages
+
+
+def _parse_pdf(file_path: str) -> str:
+    """PyMuPDF로 PDF 텍스트를 추출한다."""
+    pages = _parse_pdf_pages(file_path)
+    return "\n\n".join(text for _, text in pages)
 
 
 def _parse_hwp(file_path: str) -> str:
@@ -122,6 +128,10 @@ _PARSERS = {
     ".pdf": _parse_pdf,
     ".hwp": _parse_hwp,
     ".txt": _parse_txt,
+}
+
+_PAGE_PARSERS = {
+    ".pdf": _parse_pdf_pages,
 }
 
 
@@ -382,8 +392,18 @@ class DocumentProcessor:
         valid_from: Optional[str] = None,
         valid_until: Optional[str] = None,
         extras: Optional[Dict[str, Any]] = None,
+        document_id: Optional[str] = None,
     ) -> List[DocumentMetadata]:
         """파일을 파싱 → 정제 → 청킹하여 DocumentMetadata 리스트를 반환한다.
+
+        Parameters
+        ----------
+        file_path : str
+            파싱할 원본 문서 경로.
+        doc_type : IndexType
+            문서의 semantic type.
+        document_id : Optional[str]
+            원본 문서 단위의 안정 ID. 지정되면 생성되는 모든 chunk가 같은 doc_id를 공유한다.
 
         Returns
         -------
@@ -400,35 +420,48 @@ class DocumentProcessor:
                 f"(지원: {', '.join(sorted(self.SUPPORTED_EXTENSIONS))})"
             )
 
-        # 1. 파싱
         logger.info(f"문서 파싱 시작: {file_path} (type={doc_type.value})")
-        raw_text = _PARSERS[ext](file_path)
 
-        if not raw_text.strip():
-            logger.warning(f"빈 문서: {file_path}")
-            return []
+        units: List[Tuple[Optional[int], str]] = []
+        page_parser = _PAGE_PARSERS.get(ext)
+        if page_parser is not None:
+            for page_number, page_text in page_parser(file_path):
+                cleaned_page = _clean_text(page_text)
+                if cleaned_page:
+                    units.append((page_number, cleaned_page))
+        else:
+            raw_text = _PARSERS[ext](file_path)
+            if not raw_text.strip():
+                logger.warning(f"빈 문서: {file_path}")
+                return []
 
-        # 2. 정제
-        cleaned = _clean_text(raw_text)
+            cleaned = _clean_text(raw_text)
+            if not cleaned:
+                logger.warning(f"정제 후 빈 문서: {file_path}")
+                return []
+            units.append((None, cleaned))
 
-        if not cleaned:
+        if not units:
             logger.warning(f"정제 후 빈 문서: {file_path}")
             return []
 
-        # 3. 청킹
-        chunks = _hybrid_chunk(
-            cleaned,
-            doc_type,
-            chunk_size=self.chunk_size,
-            chunk_overlap=self.chunk_overlap,
-            min_chunk_tokens=self.min_chunk_tokens,
-        )
+        chunk_entries: List[Tuple[str, Optional[int]]] = []
+        for page_number, cleaned_text in units:
+            chunks = _hybrid_chunk(
+                cleaned_text,
+                doc_type,
+                chunk_size=self.chunk_size,
+                chunk_overlap=self.chunk_overlap,
+                min_chunk_tokens=self.min_chunk_tokens,
+            )
+            for chunk in chunks:
+                chunk_entries.append((chunk, page_number))
 
-        if not chunks:
+        if not chunk_entries:
             logger.warning(f"청킹 결과 없음: {file_path}")
             return []
 
-        logger.info(f"청킹 완료: {len(chunks)}개 청크 생성 ({file_path})")
+        logger.info(f"청킹 완료: {len(chunk_entries)}개 청크 생성 ({file_path})")
 
         # 4. 메타데이터 생성
         now_iso = datetime.now(timezone.utc).isoformat()
@@ -439,10 +472,24 @@ class DocumentProcessor:
             else _DEFAULT_RELIABILITY.get(doc_type, 0.5)
         )
         # doc_id: 원본 문서 단위 안정 ID (모든 청크가 동일)
-        doc_id = hashlib.sha256(f"{file_path}:{doc_type.value}".encode()).hexdigest()[:12]
+        doc_id = (
+            document_id or hashlib.sha256(f"{file_path}:{doc_type.value}".encode()).hexdigest()[:12]
+        )
 
         results: List[DocumentMetadata] = []
-        for idx, chunk in enumerate(chunks):
+        for idx, (chunk, page_number) in enumerate(chunk_entries):
+            chunk_extras = dict(extras or {})
+            chunk_extras.update(
+                {
+                    "chunk_text": chunk,
+                    "file_path": str(path),
+                    "file_extension": ext,
+                    "chunk_id": f"{doc_id}:{idx}",
+                }
+            )
+            if page_number is not None:
+                chunk_extras["page"] = page_number
+
             meta = DocumentMetadata(
                 doc_id=doc_id,
                 doc_type=doc_type.value,
@@ -455,13 +502,8 @@ class DocumentProcessor:
                 valid_from=valid_from,
                 valid_until=valid_until,
                 chunk_index=idx,
-                chunk_total=len(chunks),
-                extras={
-                    "chunk_text": chunk,
-                    "file_path": str(path),
-                    "file_extension": ext,
-                    **(extras or {}),
-                },
+                chunk_total=len(chunk_entries),
+                extras=chunk_extras,
             )
             results.append(meta)
 

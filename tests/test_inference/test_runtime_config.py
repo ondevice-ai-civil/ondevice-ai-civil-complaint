@@ -159,12 +159,14 @@ class TestPathConfig:
             pc = PathConfig.from_env()
         assert pc.data_path == ""
         assert pc.index_path == "models/faiss_index/complaints.index"
+        assert pc.local_docs_root == ""
 
     def test_env_override(self):
-        env = {"DATA_PATH": "/opt/data.jsonl"}
+        env = {"DATA_PATH": "/opt/data.jsonl", "LOCAL_DOCS_ROOT": "/opt/local-docs"}
         with patch.dict(os.environ, env, clear=True):
             pc = PathConfig.from_env()
         assert pc.data_path == "/opt/data.jsonl"
+        assert pc.local_docs_root == "/opt/local-docs"
 
 
 class TestHealthcheckConfig:

@@ -207,6 +207,20 @@ class TestIndexCRUD:
             assert orig["doc_id"] == loaded["doc_id"]
             assert abs(orig["score"] - loaded["score"]) < 1e-5
 
+    def test_replace_index_rebuilds_snapshot_atomically(self, populated_manager):
+        new_vectors = make_vectors(3)
+        new_metadata = make_metadata(3)
+
+        populated_manager.replace_index(IndexType.CASE, new_vectors, new_metadata)
+
+        stats = populated_manager.get_index_stats()
+        assert stats["indexes"][IndexType.CASE.value]["doc_count"] == 3
+        assert [meta.doc_id for meta in populated_manager.metadata[IndexType.CASE]] == [
+            "case-0000",
+            "case-0001",
+            "case-0002",
+        ]
+
 
 # ---------------------------------------------------------------------------
 # 5. Search

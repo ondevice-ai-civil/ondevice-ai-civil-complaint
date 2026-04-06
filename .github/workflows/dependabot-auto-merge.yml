@@ -29,7 +29,7 @@ jobs:
             --body "Dependabot 자동 승인 (CODEOWNER)" \
             --repo "${{ github.repository }}"
         env:
-          GH_TOKEN: ${{ secrets.REVIEWER_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Auto-merge (GitHub Actions — all versions)
         if: steps.metadata.outputs.package-ecosystem == 'github_actions'

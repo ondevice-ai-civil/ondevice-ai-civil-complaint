@@ -15,6 +15,10 @@ class ToolType(str, Enum):
     API_LOOKUP = "api_lookup"
     DRAFT_CIVIL_RESPONSE = "draft_civil_response"
     APPEND_EVIDENCE = "append_evidence"
+    ISSUE_DETECTOR = "issue_detector"
+    STATS_LOOKUP = "stats_lookup"
+    KEYWORD_ANALYZER = "keyword_analyzer"
+    DEMOGRAPHICS_LOOKUP = "demographics_lookup"
 
 
 ToolName = ToolType | str

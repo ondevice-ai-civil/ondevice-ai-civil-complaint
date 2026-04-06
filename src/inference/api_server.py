@@ -7,7 +7,7 @@ import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
@@ -26,8 +26,6 @@ except ImportError:
     except ImportError:
         AsyncLLM = None
         SamplingParams = None
-
-SKIP_MODEL_LOAD = os.getenv("SKIP_MODEL_LOAD", "false").lower() in ("true", "1", "yes")
 
 from .agent_loop import AgentLoop, AgentTrace
 from .agent_manager import AgentManager
@@ -53,6 +51,10 @@ from .schemas import (
 )
 from .session_context import SessionContext, SessionStore
 from .tool_router import ToolType, tool_name
+
+SessionLocal = None
+LocalDocumentIndexer = None
+SKIP_MODEL_LOAD = os.getenv("SKIP_MODEL_LOAD", "false").lower() in ("true", "1", "yes")
 
 
 async def _noop_tool(query: str, context: dict, session: Any) -> dict:
@@ -120,13 +122,28 @@ if not SKIP_MODEL_LOAD:
 def _extract_content_by_type(result: dict, index_type: IndexType) -> str:
     extras = result.get("extras", {})
     if index_type == IndexType.CASE:
-        text = (extras.get("complaint_text", "") + "\n" + extras.get("answer_text", "")).strip()
+        case_text = "\n".join(
+            part
+            for part in (extras.get("complaint_text", ""), extras.get("answer_text", ""))
+            if part
+        ).strip()
+        text = case_text or extras.get("content", "") or extras.get("chunk_text", "")
     elif index_type == IndexType.LAW:
-        text = extras.get("law_text", "") or extras.get("content", "")
+        text = (
+            extras.get("law_text", "") or extras.get("content", "") or extras.get("chunk_text", "")
+        )
     elif index_type == IndexType.MANUAL:
-        text = extras.get("manual_text", "") or extras.get("content", "")
+        text = (
+            extras.get("manual_text", "")
+            or extras.get("content", "")
+            or extras.get("chunk_text", "")
+        )
     elif index_type == IndexType.NOTICE:
-        text = extras.get("notice_text", "") or extras.get("content", "")
+        text = (
+            extras.get("notice_text", "")
+            or extras.get("content", "")
+            or extras.get("chunk_text", "")
+        )
     else:
         text = ""
     return text or result.get("title", "")
@@ -147,6 +164,9 @@ class vLLMEngineManager:
         self.agent_manager = AgentManager(AGENTS_DIR)
         self.agent_loop: Optional[AgentLoop] = None
         self.graph = None  # LangGraph CompiledGraph (v2 엔드포인트용)
+        self.local_document_indexer: Optional[Any] = None
+        self.local_document_sync_status: Optional[Dict[str, Any]] = None
+        self._local_document_sync_task: Optional[asyncio.Task] = None
         self._checkpointer_ctx = None  # AsyncSqliteSaver 컨텍스트 매니저 (lifespan에서 관리)
         self._sync_checkpointer_conn = None  # SqliteSaver용 sqlite3 connection (leak 방지)
         self._init_agent_loop()
@@ -187,8 +207,9 @@ class vLLMEngineManager:
         if self.retriever.index is not None and not os.path.exists(INDEX_PATH):
             self.retriever.save_index(INDEX_PATH)
 
-        faiss_index_dir = os.getenv("FAISS_INDEX_DIR", "models/faiss_index")
-        if os.path.isdir(faiss_index_dir):
+        faiss_index_dir = runtime_config.paths.faiss_index_dir
+        local_docs_root = runtime_config.paths.local_docs_root
+        if os.path.isdir(faiss_index_dir) or local_docs_root:
             self.index_manager = MultiIndexManager(base_dir=faiss_index_dir)
             logger.info(f"MultiIndexManager 초기화 완료: {faiss_index_dir}")
         else:
@@ -218,8 +239,98 @@ class vLLMEngineManager:
                 embed_model=self.embed_model,
             )
             logger.info("HybridSearchEngine 초기화 완료")
+            self._schedule_local_document_sync()
         else:
             logger.warning("HybridSearchEngine 미초기화: index_manager 또는 embed_model 없음")
+
+    def _schedule_local_document_sync(self) -> None:
+        indexer = self._build_local_document_indexer()
+        if indexer is None:
+            return
+        if self._local_document_sync_task and not self._local_document_sync_task.done():
+            return
+
+        self.local_document_sync_status = {
+            "status": "syncing",
+            "root_dir": str(indexer.root_dir),
+            "source_name": indexer.source_name,
+        }
+        self._local_document_sync_task = asyncio.create_task(self._sync_local_documents_async())
+
+    async def _sync_local_documents_async(self) -> Optional[Dict[str, Any]]:
+        try:
+            return await asyncio.to_thread(self.sync_local_documents)
+        except Exception as exc:
+            logger.error(f"백그라운드 로컬 문서 인덱싱 실패: {exc}", exc_info=True)
+            if self.local_document_indexer is None:
+                return None
+            self.local_document_sync_status = {
+                "status": "error",
+                "root_dir": str(self.local_document_indexer.root_dir),
+                "source_name": self.local_document_indexer.source_name,
+                "error": str(exc),
+            }
+            return self.local_document_sync_status
+
+    def _build_local_document_indexer(self) -> Optional[Any]:
+        global SessionLocal, LocalDocumentIndexer
+
+        root_dir = runtime_config.paths.local_docs_root
+        if not root_dir:
+            return None
+        if self.index_manager is None or self.embed_model is None:
+            logger.warning(
+                "LOCAL_DOCS_ROOT가 설정됐지만 index_manager 또는 embed_model이 없습니다."
+            )
+            return None
+        if self.local_document_indexer is None:
+            if SessionLocal is None:
+                from .db.database import SessionLocal as _SessionLocal
+
+                SessionLocal = _SessionLocal
+            if LocalDocumentIndexer is None:
+                from .local_document_indexer import LocalDocumentIndexer as _LocalDocumentIndexer
+
+                LocalDocumentIndexer = _LocalDocumentIndexer
+
+            self.local_document_indexer = LocalDocumentIndexer(
+                root_dir=root_dir,
+                index_manager=self.index_manager,
+                embed_model=self.embed_model,
+                session_factory=SessionLocal,
+            )
+        return self.local_document_indexer
+
+    def sync_local_documents(self) -> Optional[Dict[str, Any]]:
+        indexer = self._build_local_document_indexer()
+        if indexer is None:
+            return None
+
+        try:
+            summary = indexer.sync()
+        except Exception as exc:
+            logger.error(f"로컬 문서 인덱싱 실패: {exc}", exc_info=True)
+            self.local_document_sync_status = {
+                "status": "error",
+                "root_dir": str(indexer.root_dir),
+                "source_name": indexer.source_name,
+                "error": str(exc),
+            }
+            return self.local_document_sync_status
+
+        self.local_document_sync_status = {
+            "status": "ok",
+            "root_dir": str(indexer.root_dir),
+            "source_name": indexer.source_name,
+            **asdict(summary),
+        }
+        logger.info(
+            "로컬 문서 인덱싱 완료: "
+            f"root={indexer.root_dir}, scanned={summary.scanned_files}, "
+            f"indexed={summary.indexed_files}, unchanged={summary.unchanged_files}, "
+            f"removed={summary.removed_files}"
+        )
+        return self.local_document_sync_status
 
     def _escape_special_tokens(self, text: str) -> str:
         tokens = [
@@ -1075,6 +1186,11 @@ async def health():
         "indexes": index_summary,
         "bm25_indexes": bm25_summary,
         "hybrid_search_enabled": manager.hybrid_engine is not None,
+        "local_documents": {
+            "enabled": bool(runtime_config.paths.local_docs_root),
+            "root_dir": runtime_config.paths.local_docs_root or None,
+            "last_sync": manager.local_document_sync_status,
+        },
         "feature_flags": {
             "use_rag_pipeline": manager.feature_flags.use_rag_pipeline,
             "model_version": manager.feature_flags.model_version,

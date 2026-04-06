@@ -5,7 +5,11 @@ vLLMEngineManager의 내부 메서드와 모듈 레벨 유틸리티 함수를 �
 GPU/모델 의존성 없이 실행 가능.
 """
 
+import os
+import subprocess
 import sys
+import textwrap
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -48,6 +52,7 @@ with patch("src.inference.vllm_stabilizer.apply_transformers_patch"):
     )
 
 from src.inference.index_manager import IndexType
+from src.inference.local_document_indexer import IndexSyncSummary
 from src.inference.schemas import SearchResult
 
 # ---------------------------------------------------------------------------
@@ -284,6 +289,12 @@ class TestExtractContentByType:
         content = _extract_content_by_type(result_dict, IndexType.LAW)
         assert content == "일반 내용"
 
+    def test_chunk_text_fallback(self):
+        """타입별 전용 필드가 없으면 chunk_text로 폴백한다."""
+        result_dict = {"title": "매뉴얼", "extras": {"chunk_text": "청크 본문"}}
+        content = _extract_content_by_type(result_dict, IndexType.MANUAL)
+        assert content == "청크 본문"
+
 
 # ---------------------------------------------------------------------------
 # _rate_limit 테스트
@@ -361,3 +372,129 @@ class TestGetFeatureFlags:
 
         flags = get_feature_flags(mock_request)
         assert flags.use_rag_pipeline is False
+
+
+class TestLocalDocumentSync:
+    def setup_method(self):
+        self.mgr = vLLMEngineManager()
+        self.mgr.index_manager = MagicMock()
+        self.mgr.embed_model = MagicMock()
+
+    def test_sync_local_documents_builds_indexer_and_stores_summary(self):
+        summary = IndexSyncSummary(
+            scanned_files=3,
+            indexed_files=2,
+            unchanged_files=1,
+            removed_files=0,
+            indexed_chunks=4,
+            rebuilt_index_types=["case"],
+        )
+
+        with patch(
+            "src.inference.api_server.runtime_config.paths.local_docs_root", "/tmp/local-docs"
+        ):
+            with patch("src.inference.api_server.SessionLocal", MagicMock()):
+                with patch("src.inference.api_server.LocalDocumentIndexer") as mock_indexer_cls:
+                    mock_indexer = mock_indexer_cls.return_value
+                    mock_indexer.root_dir = "/tmp/local-docs"
+                    mock_indexer.source_name = "local-docs:test"
+                    mock_indexer.sync.return_value = summary
+
+                    result = self.mgr.sync_local_documents()
+
+        mock_indexer_cls.assert_called_once()
+        assert result["status"] == "ok"
+        assert result["root_dir"] == "/tmp/local-docs"
+        assert result["scanned_files"] == 3
+        assert result["indexed_files"] == 2
+        assert result["rebuilt_index_types"] == ["case"]
+        assert self.mgr.local_document_sync_status == result
+
+    def test_sync_local_documents_returns_none_without_root(self):
+        with patch("src.inference.api_server.runtime_config.paths.local_docs_root", ""):
+            with patch("src.inference.api_server.LocalDocumentIndexer") as mock_indexer_cls:
+                result = self.mgr.sync_local_documents()
+
+        assert result is None
+        mock_indexer_cls.assert_not_called()
+
+    def test_schedule_local_document_sync_marks_syncing_and_creates_task(self):
+        fake_indexer = MagicMock()
+        fake_indexer.root_dir = "/tmp/local-docs"
+        fake_indexer.source_name = "local-docs:test"
+
+        with patch.object(self.mgr, "_build_local_document_indexer", return_value=fake_indexer):
+            with patch("src.inference.api_server.asyncio.create_task") as mock_create_task:
+                mock_create_task.return_value = MagicMock()
+                self.mgr._schedule_local_document_sync()
+
+        assert self.mgr.local_document_sync_status == {
+            "status": "syncing",
+            "root_dir": "/tmp/local-docs",
+            "source_name": "local-docs:test",
+        }
+        mock_create_task.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_sync_local_documents_async_uses_to_thread(self):
+        expected = {"status": "ok"}
+        with patch(
+            "src.inference.api_server.asyncio.to_thread", new_callable=AsyncMock
+        ) as mock_to_thread:
+            mock_to_thread.return_value = expected
+            result = await self.mgr._sync_local_documents_async()
+
+        mock_to_thread.assert_awaited_once_with(self.mgr.sync_local_documents)
+        assert result == expected
+
+
+class TestImportWithoutSqlalchemy:
+    def test_api_server_imports_without_sqlalchemy_when_local_docs_disabled(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        script = textwrap.dedent("""
+            import builtins
+            import sys
+            from unittest.mock import MagicMock
+
+            original_import = builtins.__import__
+
+            def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
+                if name == "sqlalchemy" or name.startswith("sqlalchemy."):
+                    raise ModuleNotFoundError("No module named 'sqlalchemy'")
+                return original_import(name, globals, locals, fromlist, level)
+
+            builtins.__import__ = guarded_import
+
+            _vllm_mock = MagicMock()
+            _vllm_mock.AsyncLLM = MagicMock()
+            _vllm_mock.SamplingParams = MagicMock()
+            sys.modules.setdefault("vllm", _vllm_mock)
+            sys.modules.setdefault("vllm.engine", _vllm_mock)
+            sys.modules.setdefault("vllm.engine.arg_utils", _vllm_mock)
+            sys.modules.setdefault("vllm.engine.async_llm_engine", _vllm_mock)
+            sys.modules.setdefault("vllm.sampling_params", _vllm_mock)
+            sys.modules.setdefault("sentence_transformers", MagicMock())
+            sys.modules.setdefault("transformers", MagicMock())
+            sys.modules.setdefault("transformers.modeling_rope_utils", MagicMock())
+            sys.modules.setdefault("transformers.utils", MagicMock())
+            sys.modules.setdefault("transformers.utils.generic", MagicMock())
+            sys.modules.setdefault("faiss", MagicMock())
+            sys.modules.setdefault("torch", MagicMock())
+
+            import src.inference.api_server  # noqa: F401
+            """)
+        env = {
+            **os.environ,
+            "SKIP_MODEL_LOAD": "true",
+            "LOCAL_DOCS_ROOT": "",
+            "PYTHONPATH": str(repo_root),
+        }
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=repo_root,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 0, result.stderr

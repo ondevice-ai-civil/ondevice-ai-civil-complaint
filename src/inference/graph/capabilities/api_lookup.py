@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional
 from loguru import logger
 
 from .base import CapabilityBase, CapabilityMetadata, EvidenceEnvelope, EvidenceItem, LookupResult
+from .defaults import get_timeout
 
 try:
     import httpx
@@ -35,14 +36,28 @@ class ApiLookupParams:
     @classmethod
     def from_context(cls, query: str, context: Dict[str, Any]) -> "ApiLookupParams":
         """context에서 파라미터를 추출하고 alias를 정규화한다."""
+
+        def _first_not_none(*values, default):
+            for v in values:
+                if v is not None:
+                    return v
+            return default
+
         ret_count = int(
-            context.get("api_lookup_count") or context.get("ret_count") or context.get("count") or 5
+            _first_not_none(
+                context.get("api_lookup_count"),
+                context.get("ret_count"),
+                context.get("count"),
+                default=5,
+            )
         )
         min_score = int(
-            context.get("api_lookup_min_score")
-            or context.get("min_score")
-            or context.get("score_threshold")
-            or 2
+            _first_not_none(
+                context.get("api_lookup_min_score"),
+                context.get("min_score"),
+                context.get("score_threshold"),
+                default=2,
+            )
         )
         return cls(
             query=query.strip(),
@@ -84,7 +99,7 @@ class ApiLookupCapability(CapabilityBase):
             description="공공데이터포털 민원분석정보조회 API를 호출하여 유사 민원 사례를 검색합니다.",
             approval_summary="외부 API(data.go.kr)에서 유사 민원 사례를 조회합니다.",
             provider="data.go.kr",
-            timeout_sec=10.0,
+            timeout_sec=get_timeout("api_lookup"),
         )
 
     async def execute(
@@ -123,14 +138,15 @@ class ApiLookupCapability(CapabilityBase):
                 evidence=EvidenceEnvelope(status="empty"),
             )
 
-        # action에 파라미터 반영
-        self._action._ret_count = params.ret_count
-        self._action._min_score = params.min_score
-
-        # API 호출 (타임아웃 적용)
+        # 파라미터를 인자로 전달 (shared state 변경 없이 thread-safe)
         try:
             payload = await asyncio.wait_for(
-                self._action.fetch_similar_cases(params.query, context),
+                self._action.fetch_similar_cases(
+                    params.query,
+                    context,
+                    ret_count=params.ret_count,
+                    min_score=params.min_score,
+                ),
                 timeout=self.metadata.timeout_sec,
             )
         except asyncio.TimeoutError:

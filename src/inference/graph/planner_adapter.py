@@ -115,6 +115,10 @@ class LLMPlannerAdapter(PlannerAdapter):
             "- revise_response: rag_search, api_lookup, draft_civil_response 순서\n"
             "- append_evidence: rag_search, api_lookup, append_evidence 순서\n"
             "- lookup_stats: api_lookup 단독\n"
+            "- issue_detection: issue_detector 단독\n"
+            "- stats_query: stats_lookup 단독 또는 stats_lookup, issue_detector 조합\n"
+            "- keyword_analysis: keyword_analyzer 단독\n"
+            "- demographics_query: demographics_lookup 단독\n"
             "- JSON만 출력하세요. 다른 텍스트 없이.\n"
         )
 
@@ -227,6 +231,14 @@ class RegexPlannerAdapter(PlannerAdapter):
     @staticmethod
     def _infer_task_type(tool_names: list[str]) -> TaskType:
         """tool 이름 목록에서 TaskType을 추론한다."""
+        if "issue_detector" in tool_names:
+            return TaskType.ISSUE_DETECTION
+        if "stats_lookup" in tool_names:
+            return TaskType.STATS_QUERY
+        if "keyword_analyzer" in tool_names:
+            return TaskType.KEYWORD_ANALYSIS
+        if "demographics_lookup" in tool_names:
+            return TaskType.DEMOGRAPHICS_QUERY
         if "append_evidence" in tool_names:
             return TaskType.APPEND_EVIDENCE
         if "draft_civil_response" in tool_names:

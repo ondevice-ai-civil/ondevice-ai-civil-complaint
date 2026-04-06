@@ -164,17 +164,21 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
 
       - name: Install Node dependencies
         run: npm ci
 
       - name: Install Playwright browsers
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
-
-      - name: Install Playwright deps (cache hit)
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
+        run: |
+          if [ -d ~/.cache/ms-playwright/chromium-* ] && ls ~/.cache/ms-playwright/chromium-*/chrome-linux/chrome 2>/dev/null; then
+            echo "Playwright chromium found in cache — installing OS deps only"
+            npx playwright install-deps chromium
+          else
+            echo "Playwright cache miss or partial — running full install"
+            npx playwright install --with-deps chromium
+          fi
 
       - name: Run shell-first runtime contract tests
         env:

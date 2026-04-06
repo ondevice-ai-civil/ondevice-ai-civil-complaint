@@ -5,6 +5,14 @@ GovOn은 행정 업무를 보조하는 **에이전틱 CLI 셸**이다. 사용자
 [![Docs Portal](https://img.shields.io/badge/Docs-Portal-blue?logo=readthedocs)](https://govon-org.github.io/GovOn/)
 [![Public Roadmap](https://img.shields.io/badge/Public_Roadmap-Workstreams-7C3AED)](https://github.com/GovOn-Org/GovOn/issues?q=label%3A%22%F0%9F%A7%AD+Workstream%22+sort%3Aupdated-desc)
 
+<!-- DORA-BADGES:START -->
+![DORA Grade](https://img.shields.io/badge/DORA-N%2FA-lightgrey)
+![Deploy Freq](https://img.shields.io/badge/Deploy_Freq-N%2FA-lightgrey)
+![Lead Time](https://img.shields.io/badge/Lead_Time-N%2FA-lightgrey)
+![CFR](https://img.shields.io/badge/CFR-N%2FA-lightgrey)
+![MTTR](https://img.shields.io/badge/MTTR-N%2FA-lightgrey)
+<!-- DORA-BADGES:END -->
+
 ## 아키텍처
 
 ```mermaid

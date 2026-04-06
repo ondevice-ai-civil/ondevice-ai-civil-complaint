@@ -155,27 +155,56 @@ class ModelConfig:
       학습 데이터: neuralfoundry-coder/korean-legal-instruction-sample (232K건), QLoRA on AWQ base
     - 나머지 capability (rag_search, api_lookup, synthesis 등)는 LoRA 없이 base model 사용
 
-    adapter_paths: vLLM --lora-modules 형식으로 전달할 어댑터 경로 목록.
-      예: ["civil-adapter=/path/to/civil", "legal-adapter=/path/to/legal"]
+    adapter_paths: Dict[str, str] 형식의 어댑터 이름-경로 매핑.
+      환경변수 ADAPTER_PATHS="civil=/path/to/civil,legal=/path/to/legal" 형식으로 설정.
+      예: {"civil": "/path/to/civil", "legal": "/path/to/legal"}
     """
 
     model_path: str = "LGAI-EXAONE/EXAONE-4.0-32B-AWQ"
     trust_remote_code: bool = True
     dtype: str = "half"
     enforce_eager: bool = True
-    # Multi-LoRA: vLLM --lora-modules 형식으로 전달할 어댑터 경로 목록
-    # 예: ["civil-adapter=/path/to/civil", "legal-adapter=/path/to/legal"]
-    adapter_paths: List[str] = field(default_factory=list)
+    # Multi-LoRA 어댑터 경로: {"civil": "/path/to/civil", "legal": "/path/to/legal"}
+    # 환경변수 ADAPTER_PATHS="civil=/path/to/civil,legal=/path/to/legal" 형식으로 설정
+    adapter_paths: Dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def from_env(cls) -> "ModelConfig":
+        adapter_paths = cls._parse_adapter_paths(os.getenv("ADAPTER_PATHS", ""))
         return cls(
             model_path=os.getenv("MODEL_PATH", "LGAI-EXAONE/EXAONE-4.0-32B-AWQ"),
             trust_remote_code=os.getenv("TRUST_REMOTE_CODE", "true").lower()
             in ("true", "1", "yes"),
             dtype=os.getenv("MODEL_DTYPE", "half"),
             enforce_eager=os.getenv("ENFORCE_EAGER", "true").lower() in ("true", "1", "yes"),
+            adapter_paths=adapter_paths,
         )
+
+    @staticmethod
+    def _parse_adapter_paths(raw: str) -> Dict[str, str]:
+        """ADAPTER_PATHS 환경변수를 파싱한다.
+
+        형식: "civil=/path/to/civil,legal=/path/to/legal"
+        반환: {"civil": "/path/to/civil", "legal": "/path/to/legal"}
+        잘못된 항목은 경고 후 무시한다.
+        """
+        if not raw or not raw.strip():
+            return {}
+        result: Dict[str, str] = {}
+        for entry in raw.split(","):
+            entry = entry.strip()
+            if not entry:
+                continue
+            if "=" not in entry:
+                logger.warning(f"ADAPTER_PATHS 항목 형식 오류 (name=path 필요): {entry!r}")
+                continue
+            name, path = entry.split("=", 1)
+            name, path = name.strip(), path.strip()
+            if not name or not path:
+                logger.warning(f"ADAPTER_PATHS 항목에 빈 이름 또는 경로: {entry!r}")
+                continue
+            result[name] = path
+        return result
 
 
 # ---------------------------------------------------------------------------
@@ -336,6 +365,7 @@ class RuntimeConfig:
         logger.info(f"  GPU Util      : {self.gpu_utilization}")
         logger.info(f"  Max Model Len : {self.max_model_len}")
         logger.info(f"  Model Path    : {self.model.model_path}")
+        logger.info(f"  Adapter Paths : {self.model.adapter_paths or '(none)'}")
         logger.info(f"  Skip Model    : {self.skip_model_load}")
         logger.info(f"  Request Timeout: {self.request_timeout_sec}s")
         logger.info(f"  Rate Limit    : {self.rate_limit_enabled}")

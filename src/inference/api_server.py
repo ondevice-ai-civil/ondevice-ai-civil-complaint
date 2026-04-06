@@ -25,6 +25,14 @@ except ImportError:
         AsyncLLM = None
         SamplingParams = None
 
+try:
+    from vllm.lora.request import LoRARequest
+except ImportError:
+    LoRARequest = None
+
+# Multi-LoRA adapter name → numeric ID 매핑 (vLLM LoRARequest에 전달)
+_LORA_ID_MAP: Dict[str, int] = {"civil": 1, "legal": 2}
+
 from .agent_loop import AgentLoop, AgentTrace
 from .agent_manager import AgentManager
 from .bm25_indexer import BM25Indexer
@@ -191,7 +199,7 @@ class vLLMEngineManager:
         # Multi-LoRA 서빙 시 --enable-lora --lora-modules 옵션 추가
         # HuggingFace Spaces L4 (24GB VRAM) 기준 ~20GB 점유
         try:
-            engine_args = AsyncEngineArgs(
+            engine_kwargs = dict(
                 model=MODEL_PATH,
                 trust_remote_code=TRUST_REMOTE_CODE,
                 gpu_memory_utilization=GPU_UTILIZATION,
@@ -199,6 +207,18 @@ class vLLMEngineManager:
                 dtype=runtime_config.model.dtype,
                 enforce_eager=runtime_config.model.enforce_eager,
             )
+            # Multi-LoRA 서빙: adapter_paths가 설정되어 있으면 활성화
+            lora_enabled = bool(runtime_config.model.adapter_paths)
+            if lora_enabled:
+                engine_kwargs.update(
+                    enable_lora=True,
+                    max_loras=4,
+                    max_lora_rank=64,
+                )
+                logger.info(
+                    f"Multi-LoRA 활성화: adapters={list(runtime_config.model.adapter_paths.keys())}"
+                )
+            engine_args = AsyncEngineArgs(**engine_kwargs)
             if hasattr(AsyncLLM, "from_engine_args"):
                 self.engine = AsyncLLM.from_engine_args(engine_args)
             else:
@@ -775,11 +795,19 @@ class vLLMEngineManager:
             search_results=search_results,
         )
 
-    async def _run_engine(self, prompt: str, sampling_params: SamplingParams, request_id: str):
+    async def _run_engine(
+        self,
+        prompt: str,
+        sampling_params: SamplingParams,
+        request_id: str,
+        lora_request=None,
+    ):
         if self.engine is None:
             return None
 
-        result = self.engine.generate(prompt, sampling_params, request_id)
+        result = self.engine.generate(
+            prompt, sampling_params, request_id, lora_request=lora_request
+        )
         if hasattr(result, "__aiter__"):
             final_output = None
             async for output in result:
@@ -802,9 +830,12 @@ class vLLMEngineManager:
         request_id: str,
         flags: Optional[FeatureFlags] = None,
         external_cases: Optional[List[dict]] = None,
+        lora_request=None,
     ) -> tuple[Any, List[dict], List[SearchResult]]:
         prepared = await self._prepare_civil_response_generation(request, flags, external_cases)
-        output = await self._run_engine(prepared.prompt, prepared.sampling_params, request_id)
+        output = await self._run_engine(
+            prepared.prompt, prepared.sampling_params, request_id, lora_request=lora_request
+        )
         return output, prepared.retrieved_cases, prepared.search_results
 
     async def generate_stream(
@@ -886,6 +917,12 @@ class vLLMEngineManager:
                         }
                     )
 
+            # Multi-LoRA: civil 어댑터가 설정되어 있으면 LoRARequest 생성
+            civil_adapter_path = runtime_config.model.adapter_paths.get("civil")
+            lora_req = None
+            if civil_adapter_path and LoRARequest is not None:
+                lora_req = LoRARequest("civil", _LORA_ID_MAP["civil"], civil_adapter_path)
+
             gen_request = GenerateCivilResponseRequest(
                 prompt=working_query,
                 max_tokens=512,
@@ -898,6 +935,7 @@ class vLLMEngineManager:
                     gen_request,
                     request_id,
                     external_cases=external_cases,
+                    lora_request=lora_req,
                 )
             )
             if final_output is None:
@@ -925,8 +963,66 @@ class vLLMEngineManager:
         ) -> dict:
             rag_data = context.get(ToolType.RAG_SEARCH.value, {})
             api_data = context.get(ToolType.API_LOOKUP.value, {})
+
+            # 기존 evidence 텍스트 (fallback용)
+            fallback_text = engine_ref._build_evidence_section(session, query, rag_data, api_data)
+
+            # LLM으로 evidence 보강 시도
+            enhanced_text = fallback_text
+            if engine_ref.engine is not None:
+                try:
+                    _, previous_answer = engine_ref._latest_prior_turns(session, query)
+                    existing_response = engine_ref._escape_special_tokens(previous_answer or "")
+                    rag_context = engine_ref._escape_special_tokens(
+                        rag_data.get("context_text", "")
+                    )
+                    api_context = ""
+                    for item in api_data.get("results", [])[:3]:
+                        title = item.get("title", "")
+                        content = item.get("content", "") or item.get("qnaContent", "")
+                        if title or content:
+                            api_context += (
+                                f"- {engine_ref._escape_special_tokens(title)}"
+                                f": {engine_ref._escape_special_tokens(content[:200])}\n"
+                            )
+
+                    evidence_prompt = (
+                        "[|system|]당신은 대한민국 공무원 민원 답변 보강 전문가입니다. "
+                        "법적 근거와 관련 규정을 정확하게 인용하여 evidence 섹션을 작성하세요."
+                        "[|endofturn|]\n"
+                        "[|user|]다음 민원 답변에 대해 법적 근거와 관련 규정을 보강하여 "
+                        "evidence 섹션을 작성하세요.\n\n"
+                        f"[기존 답변]\n{existing_response[:800]}\n\n"
+                        f"[검색 결과]\n{rag_context[:800]}\n\n"
+                        f"[API 조회 결과]\n{api_context[:800]}"
+                        "[|endofturn|]\n[|assistant|]"
+                    )
+
+                    # legal 어댑터 LoRA 설정
+                    legal_adapter_path = runtime_config.model.adapter_paths.get("legal")
+                    lora_req = None
+                    if legal_adapter_path and LoRARequest is not None:
+                        lora_req = LoRARequest("legal", _LORA_ID_MAP["legal"], legal_adapter_path)
+
+                    if SamplingParams is not None:
+                        sp = SamplingParams(
+                            max_tokens=512,
+                            temperature=0.5,
+                            top_p=0.9,
+                            stop=["[|endofturn|]"],
+                        )
+                        request_id = str(uuid.uuid4())
+                        output = await engine_ref._run_engine(
+                            evidence_prompt, sp, request_id, lora_request=lora_req
+                        )
+                        if output is not None and output.outputs:
+                            enhanced_text = engine_ref._strip_thought_blocks(output.outputs[0].text)
+                except Exception as exc:
+                    logger.warning(f"Evidence LLM 보강 실패, fallback 사용: {exc}")
+                    enhanced_text = fallback_text
+
             return {
-                "text": engine_ref._build_evidence_section(session, query, rag_data, api_data),
+                "text": enhanced_text,
                 "rag_results": rag_data.get("results", []),
                 "api_citations": api_data.get("citations", []),
             }

@@ -78,10 +78,21 @@ class IssueDetectorCapability(CapabilityBase):
                 evidence=EvidenceEnvelope(status="empty"),
             )
 
-        # 날짜 파라미터 추출
+        # 날짜 파라미터 추출 및 검증
         analysis_time = context.get("analysis_time", "")
         search_date = context.get("search_date", "")
         max_result = int(context.get("max_result", 5))
+
+        if not analysis_time and not search_date:
+            err = "analysis_time 또는 search_date 파라미터가 필요합니다"
+            return LookupResult(
+                success=False,
+                query=query,
+                provider=provider,
+                error=err,
+                empty_reason="validation_error",
+                evidence=EvidenceEnvelope(status="error", errors=[err]),
+            )
 
         try:
             rising, topics, top_kw = await asyncio.wait_for(

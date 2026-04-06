@@ -464,10 +464,16 @@ class MinwonAnalysisAction(BaseAction):
             if "returnObject" in body:
                 obj = body["returnObject"]
                 return obj if isinstance(obj, list) else []
+            # 에러 코드 화이트리스트 (기존 _call_similar_api와 동일)
             code = str(body.get("code", body.get("resultCode", "00")))
-            if code in ("500",):
-                logger.warning(f"[minwon_analysis] 서버 오류 ({endpoint}): code={code}")
+            if code not in ("00", "0", "200", ""):
+                logger.warning(
+                    f"[minwon_analysis] API 에러 ({endpoint}): code={code}, "
+                    f"msg={body.get('msg', body.get('resultMsg', ''))}"
+                )
                 return None
+            # body > items 경로 파싱 시도
+            return self._parse_similar_items(body)
 
         return None
 

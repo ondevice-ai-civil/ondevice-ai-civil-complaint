@@ -221,6 +221,14 @@ class RegexPlannerAdapter(PlannerAdapter):
     @staticmethod
     def _infer_task_type(tool_names: list[str]) -> TaskType:
         """tool 이름 목록에서 TaskType을 추론한다."""
+        if "issue_detector" in tool_names:
+            return TaskType.ISSUE_DETECTION
+        if "stats_lookup" in tool_names:
+            return TaskType.STATS_QUERY
+        if "keyword_analyzer" in tool_names:
+            return TaskType.KEYWORD_ANALYSIS
+        if "demographics_lookup" in tool_names:
+            return TaskType.DEMOGRAPHICS_QUERY
         if "append_evidence" in tool_names:
             return TaskType.APPEND_EVIDENCE
         if "draft_civil_response" in tool_names:

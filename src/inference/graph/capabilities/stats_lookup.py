@@ -253,9 +253,12 @@ class StatsLookupCapability(CapabilityBase):
         doc_count = results_map.get("doc_count")
         if doc_count and len(doc_count) > 0:
             item = doc_count[0]
-            pttn = int(item.get("pttn", 0))
-            dfpt = int(item.get("dfpt", 0))
-            saeol = int(item.get("saeol", 0))
+            try:
+                pttn = int(item.get("pttn") or 0)
+                dfpt = int(item.get("dfpt") or 0)
+                saeol = int(item.get("saeol") or 0)
+            except (ValueError, TypeError):
+                pttn, dfpt, saeol = 0, 0, 0
             total = pttn + dfpt + saeol
             parts.append(f"{period_str} 총 {total:,}건" if period_str else f"총 {total:,}건")
 

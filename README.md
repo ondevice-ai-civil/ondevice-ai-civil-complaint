@@ -188,7 +188,7 @@ stateDiagram-v2
 
 ## DORA Metrics
 
-![DORA Dashboard](metrics/reports/latest-dora.png)
+<!-- latest-dora.png는 워크플로우 첫 실행 후 자동 생성됩니다. 실시간 대시보드는 아래 Grafana 링크를 이용하세요. -->
 
 | 지표 | 설명 | 수집 방식 |
 |------|------|----------|

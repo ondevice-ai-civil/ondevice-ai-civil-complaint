@@ -7,8 +7,8 @@ DORA(DevOps Research and Assessment) 4대 지표를 GitHub Actions로 자동 수
 수집 시마다 주간 보고서(마크다운 + Chart.js HTML + PNG)를 자동 생성한다.
 
 - **Grafana 실시간 대시보드**: [GovOn DORA Dashboard](https://umyunsang.grafana.net/d/govon-dora/govon-dora-metrics-dashboard?orgId=1&from=now-7d&to=now&timezone=Asia%2FSeoul)
-- **Chart.js 보고서**: [`metrics/reports/latest-dora.html`](reports/latest-dora.html)
-- **주간 보고서**: [`metrics/reports/weekly-YYYYMMDD.md`](reports/)
+- **Chart.js 보고서**: `metrics/reports/latest-dora.html` (워크플로우 실행 후 생성됨)
+- **주간 보고서**: `metrics/reports/weekly-YYYYMMDD.md` (워크플로우 실행 후 생성됨)
 
 ## 아키텍처
 

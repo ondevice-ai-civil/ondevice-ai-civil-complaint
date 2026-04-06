@@ -10,10 +10,11 @@ metrics/dora/dora-*.json 파일들을 읽어 다음 3가지 산출물을 생성�
 """
 
 import glob
+import html
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 # matplotlib은 선택적 의존성
@@ -47,14 +48,17 @@ ELITE = {
 
 def extract_metrics(data: dict) -> dict:
     """JSON 데이터에서 DORA 지표를 추출. 3가지 스키마 호환."""
-    # 1. 현재 구조: {"main": {"deployment_frequency": ...}}
-    if "main" in data and isinstance(data["main"], dict):
+    # main 키 우선
+    if isinstance(data.get("main"), dict):
         return data["main"]
-    # 2. develop 구조: {"develop": {...}, "main": {...}}
-    if "develop" in data and isinstance(data["develop"], dict):
-        branch = data.get("primary_branch", "develop")
-        return data.get(branch, data.get("develop", {}))
-    # 3. 플랫 구조: {"deployment_frequency": ...}
+    # primary_branch fallback
+    branch = data.get("primary_branch")
+    if isinstance(branch, str) and isinstance(data.get(branch), dict):
+        return data[branch]
+    # develop fallback
+    if isinstance(data.get("develop"), dict):
+        return data["develop"]
+    # 플랫 구조: {"deployment_frequency": ...}
     if "deployment_frequency" in data:
         return data
     return {}
@@ -101,7 +105,7 @@ def normalize_metrics(raw: dict) -> dict:
 
 def compute_grade(m: dict) -> str:
     """DORA 등급 판정."""
-    if m["df_weekly"] >= 7 and m["lead_time_hours"] < 24:
+    if m["df_weekly"] >= ELITE["deployment_frequency"] and m["lead_time_hours"] < ELITE["lead_time_hours"]:
         return "Elite"
     if m["df_weekly"] >= 1:
         return "High"
@@ -129,7 +133,7 @@ def trend_arrow(current: float, previous: float, lower_is_better: bool = False) 
         arrow = "▼" if diff < 0 else "▲"
     else:
         arrow = "▲" if diff > 0 else "▼"
-    return f"{arrow}{diff:+.1f}"
+    return f"{arrow}{abs(diff):.1f}"
 
 
 def load_all_data() -> list[tuple[str, dict]]:
@@ -151,7 +155,7 @@ def load_all_data() -> list[tuple[str, dict]]:
             m["grade"] = data.get("grade", compute_grade(m))
             m["date"] = date_str
             results.append((date_str, m))
-        except (json.JSONDecodeError, KeyError) as e:
+        except (json.JSONDecodeError, KeyError, OSError) as e:
             print(f"  [WARN] {fname} 파싱 실패: {e}", file=sys.stderr)
     return results
 
@@ -208,6 +212,7 @@ def generate_html(history: list[tuple[str, dict]], grade: str) -> str:
     current = history[-1][1] if history else {}
     prev = history[-2][1] if len(history) >= 2 else current
 
+    grade_escaped = html.escape(grade)
     gc = grade_color(grade)
 
     # 레이더 차트 정규화 (0~100 스케일)
@@ -243,8 +248,8 @@ def generate_html(history: list[tuple[str, dict]], grade: str) -> str:
                 f'<span style="color:#cb2431">{"▲" if diff > 0 else "▼"}{abs(diff):.1f}</span>'
             )
         return f"""<div class="card">
-          <div class="card-label">{label}</div>
-          <div class="card-value">{val}</div>
+          <div class="card-label">{html.escape(label)}</div>
+          <div class="card-value">{html.escape(val)}</div>
           <div class="card-trend">{arrow_html} vs 이전</div>
         </div>"""
 
@@ -375,7 +380,7 @@ def generate_html(history: list[tuple[str, dict]], grade: str) -> str:
 </head>
 <body>
 <h1>GovOn DORA Metrics</h1>
-<div class="badge-wrap"><span class="badge">{grade}</span></div>
+<div class="badge-wrap"><span class="badge">{grade_escaped}</span></div>
 
 <div class="cards">
 {cards}
@@ -549,8 +554,9 @@ def main() -> None:
     current = history[-1][1]
     previous = history[-2][1] if len(history) >= 2 else None
     grade = current.get("grade", compute_grade(current))
-    today = datetime.now().strftime("%Y-%m-%d")
-    today_compact = datetime.now().strftime("%Y%m%d")
+    now_utc = datetime.now(timezone.utc)
+    today = now_utc.strftime("%Y-%m-%d")
+    today_compact = now_utc.strftime("%Y%m%d")
 
     # 1. 마크다운 보고서
     md = generate_markdown(current, previous, grade, today)
@@ -559,9 +565,9 @@ def main() -> None:
     print(f"  Markdown: {md_path}")
 
     # 2. Chart.js HTML
-    html = generate_html(history, grade)
+    html_content = generate_html(history, grade)
     html_path = REPORTS_DIR / "latest-dora.html"
-    html_path.write_text(html, encoding="utf-8")
+    html_path.write_text(html_content, encoding="utf-8")
     print(f"  HTML: {html_path}")
 
     # 3. matplotlib PNG

@@ -400,14 +400,29 @@ class TestStreamingStatusDisplay:
         with patch.object(renderer, "_RICH_AVAILABLE", True):
             with patch.object(renderer, "_console", mock_console):
                 with patch.object(renderer, "get_terminal_columns", return_value=30):
-                    with patch.object(renderer, "_LAST_NARROW_WARNING_COLUMNS", None):
-                        with renderer.StreamingStatusDisplay("초기") as display:
-                            display.update("planner 처리 중")
+                    with renderer.StreamingStatusDisplay("초기") as display:
+                        display.update("planner 처리 중")
 
         out = capsys.readouterr().out
         assert "plain mode" in out
         assert "planner 처리 중" in out
         mock_console.status.assert_not_called()
+
+    def test_narrow_terminal_warning_is_emitted_once_per_narrow_state(self, capsys):
+        """좁은 상태가 지속되는 동안 경고는 한 번만 출력되고, wide 후 다시 좁아지면 재출력된다."""
+        from src.cli import renderer
+
+        with patch.object(renderer, "_RICH_AVAILABLE", False):
+            with patch.object(renderer, "get_terminal_columns", side_effect=[30, 35, 80, 30]):
+                renderer.render_status("첫 상태")
+                renderer.render_status("둘째 상태")
+                renderer.render_status("셋째 상태")
+                renderer.render_status("넷째 상태")
+
+        out = capsys.readouterr().out
+        assert out.count("plain mode") == 2
+        assert "첫 상태" in out
+        assert "넷째 상태" in out
 
 
 # ---------------------------------------------------------------------------

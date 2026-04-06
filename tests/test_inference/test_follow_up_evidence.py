@@ -389,8 +389,7 @@ def test_render_result_rich_panel_uses_explicit_terminal_width():
     with patch.object(renderer, "_RICH_AVAILABLE", True):
         with patch.object(renderer, "_console", mock_console):
             with patch.object(renderer, "get_terminal_columns", return_value=80):
-                with patch.object(renderer, "_LAST_NARROW_WARNING_COLUMNS", None):
-                    renderer.render_result({"text": "답변 텍스트"})
+                renderer.render_result({"text": "답변 텍스트"})
 
     panel = mock_console.print.call_args.args[0]
     assert panel.width == 78
@@ -404,8 +403,7 @@ def test_render_result_rich_panel_scales_at_120_columns():
     with patch.object(renderer, "_RICH_AVAILABLE", True):
         with patch.object(renderer, "_console", mock_console):
             with patch.object(renderer, "get_terminal_columns", return_value=120):
-                with patch.object(renderer, "_LAST_NARROW_WARNING_COLUMNS", None):
-                    renderer.render_result({"text": "넓은 터미널 응답"})
+                renderer.render_result({"text": "넓은 터미널 응답"})
 
     panel = mock_console.print.call_args.args[0]
     assert panel.width == 118
@@ -419,8 +417,7 @@ def test_render_result_rich_panel_scales_at_40_columns():
     with patch.object(renderer, "_RICH_AVAILABLE", True):
         with patch.object(renderer, "_console", mock_console):
             with patch.object(renderer, "get_terminal_columns", return_value=40):
-                with patch.object(renderer, "_LAST_NARROW_WARNING_COLUMNS", None):
-                    renderer.render_result({"text": "40열 응답"})
+                renderer.render_result({"text": "40열 응답"})
 
     panel = mock_console.print.call_args.args[0]
     assert panel.width == 38
@@ -434,8 +431,7 @@ def test_render_result_falls_back_to_plain_on_narrow_terminal(capsys):
     with patch.object(renderer, "_RICH_AVAILABLE", True):
         with patch.object(renderer, "_console", mock_console):
             with patch.object(renderer, "get_terminal_columns", return_value=30):
-                with patch.object(renderer, "_LAST_NARROW_WARNING_COLUMNS", None):
-                    renderer.render_result({"text": "좁은 터미널 응답"})
+                renderer.render_result({"text": "좁은 터미널 응답"})
 
     captured = capsys.readouterr()
     assert "plain mode" in captured.out

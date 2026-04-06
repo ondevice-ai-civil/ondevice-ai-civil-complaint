@@ -5,10 +5,7 @@ Uses `rich` when available; falls back to plain print() otherwise.
 
 from __future__ import annotations
 
-import contextlib
-import sys
-from contextlib import contextmanager
-from typing import Generator, Optional
+from threading import Lock
 
 from src.cli.terminal import (
     get_narrow_terminal_warning,
@@ -29,7 +26,8 @@ except ImportError:  # pragma: no cover
     _console = None  # type: ignore[assignment]
     _RICH_AVAILABLE = False
 
-_LAST_NARROW_WARNING_COLUMNS: int | None = None
+_HAS_WARNED_NARROW_TERMINAL = False
+_NARROW_WARNING_LOCK = Lock()
 
 # ---------------------------------------------------------------------------
 # Node status message mapping
@@ -63,7 +61,7 @@ class StreamingStatusDisplay:
 
     def __init__(self, initial_message: str = "처리 중…") -> None:
         self._initial_message = initial_message
-        self._status: Optional["Status"] = None  # type: ignore[name-defined]
+        self._status: Status | None = None  # type: ignore[name-defined]
         self._use_rich = False
 
     def __enter__(self) -> "StreamingStatusDisplay":
@@ -89,14 +87,23 @@ class StreamingStatusDisplay:
 
 
 def _warn_narrow_terminal_once(columns: int) -> None:
-    """Emit the narrow-terminal fallback warning only once per width."""
-    global _LAST_NARROW_WARNING_COLUMNS
+    """Emit the narrow-terminal fallback warning once per narrow-state entry."""
+    global _HAS_WARNED_NARROW_TERMINAL
 
-    if _LAST_NARROW_WARNING_COLUMNS == columns:
-        return
+    with _NARROW_WARNING_LOCK:
+        if _HAS_WARNED_NARROW_TERMINAL:
+            return
+        _HAS_WARNED_NARROW_TERMINAL = True
 
     print(get_narrow_terminal_warning(columns), flush=True)
-    _LAST_NARROW_WARNING_COLUMNS = columns
+
+
+def _reset_narrow_warning() -> None:
+    """Reset narrow-terminal warning state for tests and wide-terminal recovery."""
+    global _HAS_WARNED_NARROW_TERMINAL
+
+    with _NARROW_WARNING_LOCK:
+        _HAS_WARNED_NARROW_TERMINAL = False
 
 
 def _resolve_render_mode() -> tuple[bool, int]:
@@ -105,6 +112,7 @@ def _resolve_render_mode() -> tuple[bool, int]:
     if not is_layout_supported(columns):
         _warn_narrow_terminal_once(columns)
         return False, columns
+    _reset_narrow_warning()
     return _RICH_AVAILABLE, columns
 
 

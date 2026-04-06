@@ -7,7 +7,6 @@ Falls back to a plain input() prompt if prompt_toolkit is not installed.
 from __future__ import annotations
 
 import unicodedata
-from typing import Optional
 
 from src.cli.terminal import (
     get_approval_box_width,
@@ -39,16 +38,15 @@ def _display_width(s: str) -> int:
     return w
 
 
-def _box_line(content: str = "", width: Optional[int] = None) -> str:
+def _box_line(content: str = "", *, width: int) -> str:
     """Return a single box line padded to *width* display columns."""
-    line_width = get_approval_box_width(get_terminal_columns()) if width is None else width
-    pad = line_width - _display_width(content)
+    pad = width - _display_width(content)
     inner = content + " " * max(pad, 0)
     return f"│ {inner} │"
 
 
 def _build_box_lines(
-    approval_request: dict, selected: int, box_width: Optional[int] = None
+    approval_request: dict, selected: int, box_width: int | None = None
 ) -> list[str]:
     """Build the raw text lines of the approval box (no ANSI needed here)."""
     goal: str = approval_request.get("goal", "")
@@ -153,15 +151,17 @@ def show_approval_prompt(approval_request: dict) -> bool:
     if not _PT_AVAILABLE:
         return _fallback_prompt(approval_request, columns=terminal_columns)
 
-    return _pt_prompt(approval_request)
+    return _pt_prompt(approval_request, columns=terminal_columns)
 
 
-def _pt_prompt(approval_request: dict) -> bool:
+def _pt_prompt(approval_request: dict, *, columns: int) -> bool:
     """prompt_toolkit–based arrow-key selection UI."""
     state = {"selected": 0, "result": None}
+    box_width = get_approval_box_width(columns)
 
     def get_text():
-        lines = _build_box_lines(approval_request, state["selected"])
+        # Keep a stable width for a single prompt interaction.
+        lines = _build_box_lines(approval_request, state["selected"], box_width=box_width)
         return "\n".join(lines) + "\n\n↑↓ 방향키로 선택, Enter로 확정"
 
     kb = KeyBindings()
@@ -203,16 +203,24 @@ def _pt_prompt(approval_request: dict) -> bool:
     return bool(state["result"])
 
 
-def _fallback_prompt(approval_request: dict, columns: Optional[int] = None) -> bool:
+def _fallback_prompt(approval_request: dict, columns: int | None = None) -> bool:
     """Plain input() fallback when prompt_toolkit is unavailable."""
     goal: str = approval_request.get("goal", "")
     reason: str = approval_request.get("reason", "")
     tool_summaries: list[str] = approval_request.get("tool_summaries") or []
     terminal_columns = get_terminal_columns() if columns is None else columns
     separator = "─" * max(terminal_columns - 2, 12)
+    title = " 작업 승인 요청 "
+    title_width = _display_width(title)
+    if terminal_columns > title_width:
+        fill_width = terminal_columns - title_width
+        left_fill = fill_width // 2
+        right_fill = fill_width - left_fill
+        title_line = f"{'─' * left_fill}{title}{'─' * right_fill}"
+    else:
+        title_line = title
 
-    print(f"\n{separator}")
-    print("작업 승인 요청")
+    print(f"\n{title_line}")
     if goal:
         print(f"  목표: {goal}")
     if reason:

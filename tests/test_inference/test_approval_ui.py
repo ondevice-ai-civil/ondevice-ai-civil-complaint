@@ -62,13 +62,26 @@ def test_show_approval_prompt_warns_and_falls_back_on_narrow_terminal(capsys):
     mock_pt_prompt.assert_not_called()
 
 
+def test_show_approval_prompt_reuses_resolved_columns_for_pt_prompt():
+    """prompt_toolkit 경로는 이미 구한 터미널 폭을 다시 전달한다."""
+    with patch("src.cli.approval_ui._PT_AVAILABLE", True):
+        with patch("src.cli.approval_ui.get_terminal_columns", return_value=80):
+            with patch("src.cli.approval_ui._pt_prompt", return_value=True) as mock_pt_prompt:
+                assert approval_ui.show_approval_prompt(_sample_request()) is True
+
+    mock_pt_prompt.assert_called_once_with(_sample_request(), columns=80)
+
+
 def test_fallback_prompt_uses_terminal_width_for_separator(capsys):
     """plain fallback separator도 현재 터미널 폭을 넘지 않는다."""
     with patch("builtins.input", return_value="n"):
         approval_ui._fallback_prompt(_sample_request(), columns=32)
 
     lines = [line for line in capsys.readouterr().out.splitlines() if line]
+    title_line = lines[0]
     separator_lines = [line for line in lines if set(line) == {"─"}]
+
+    assert "작업 승인 요청" in title_line
     assert separator_lines
-    max_width = max(approval_ui._display_width(line) for line in separator_lines)
+    max_width = max(approval_ui._display_width(line) for line in [title_line, *separator_lines])
     assert max_width <= 32

@@ -182,42 +182,42 @@ jobs:
           DORA_AVG_MTTR="$AVG_MTTR" DORA_AVG_MTTR_HOURS="$AVG_MTTR_HOURS" \
           DORA_MTTR_TIMES_COUNT="$MTTR_TIMES_COUNT" \
           python3 - << 'PYEOF'
-import json, os
-e = os.environ
-data = {
-  "timestamp": e["DORA_NOW"],
-  "period": "last_30_days",
-  "grade": e["DORA_GRADE"],
-  "primary_branch": "main",
-  "main": {
-    "deployment_frequency": {
-      "weekly": int(e["DORA_DEPLOYS_WEEK"]),
-      "monthly": int(e["DORA_DEPLOYS_MONTH"]),
-      "avg_per_week": float(e["DORA_DEPLOYS_PER_WEEK"])
-    },
-    "lead_time_for_changes": {
-      "method": "first_commit_to_merge",
-      "avg_seconds": int(e["DORA_AVG_LEAD_TIME"]),
-      "avg_hours": float(e["DORA_AVG_LEAD_HOURS"]),
-      "sample_count": int(e["DORA_LEAD_TIMES_COUNT"])
-    },
-    "change_failure_rate": {
-      "rate_percent": float(e["DORA_CFR"]),
-      "failure_commits": int(e["DORA_FAILURE_COMMITS"]),
-      "total_commits": int(e["DORA_TOTAL_COMMITS"])
-    },
-    "mean_time_to_recovery": {
-      "avg_seconds": int(e["DORA_AVG_MTTR"]),
-      "avg_hours": float(e["DORA_AVG_MTTR_HOURS"]),
-      "sample_count": int(e["DORA_MTTR_TIMES_COUNT"])
-    }
-  }
-}
-filename = e["DORA_FILENAME"]
-with open(filename, "w") as f:
-  json.dump(data, f, indent=2, ensure_ascii=False)
-print(f"JSON 저장: {filename}")
-PYEOF
+          import json, os
+          e = os.environ
+          data = {
+            "timestamp": e["DORA_NOW"],
+            "period": "last_30_days",
+            "grade": e["DORA_GRADE"],
+            "primary_branch": "main",
+            "main": {
+              "deployment_frequency": {
+                "weekly": int(e["DORA_DEPLOYS_WEEK"]),
+                "monthly": int(e["DORA_DEPLOYS_MONTH"]),
+                "avg_per_week": float(e["DORA_DEPLOYS_PER_WEEK"])
+              },
+              "lead_time_for_changes": {
+                "method": "first_commit_to_merge",
+                "avg_seconds": int(e["DORA_AVG_LEAD_TIME"]),
+                "avg_hours": float(e["DORA_AVG_LEAD_HOURS"]),
+                "sample_count": int(e["DORA_LEAD_TIMES_COUNT"])
+              },
+              "change_failure_rate": {
+                "rate_percent": float(e["DORA_CFR"]),
+                "failure_commits": int(e["DORA_FAILURE_COMMITS"]),
+                "total_commits": int(e["DORA_TOTAL_COMMITS"])
+              },
+              "mean_time_to_recovery": {
+                "avg_seconds": int(e["DORA_AVG_MTTR"]),
+                "avg_hours": float(e["DORA_AVG_MTTR_HOURS"]),
+                "sample_count": int(e["DORA_MTTR_TIMES_COUNT"])
+              }
+            }
+          }
+          filename = e["DORA_FILENAME"]
+          with open(filename, "w") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+          print(f"JSON 저장: {filename}")
+          PYEOF
 
           # GitHub Actions 출력
           {
@@ -241,21 +241,21 @@ PYEOF
           MTTR: ${{ steps.dora.outputs.mttr_hours }}
           GRADE: ${{ steps.dora.outputs.grade }}
         run: |
-          cat >> $GITHUB_STEP_SUMMARY << EOF
-## DORA Metrics Report
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## DORA Metrics Report
 
-### main 브랜치
-| 지표 | 값 | 등급 기준 |
-|------|-----|----------|
-| **배포 빈도** | 주 ${DEPLOYS_WEEK}건 / 월 ${DEPLOYS_MONTH}건 | Elite: 일 1회+ |
-| **리드 타임** | ${LEAD_TIME}시간 (${LEAD_METHOD}) | Elite: < 1일 |
-| **변경 실패율** | ${CFR}% | Elite: < 15% |
-| **평균 복구 시간** | ${MTTR}시간 | Elite: < 1시간 |
+          ### main 브랜치
+          | 지표 | 값 | 등급 기준 |
+          |------|-----|----------|
+          | **배포 빈도** | 주 ${DEPLOYS_WEEK}건 / 월 ${DEPLOYS_MONTH}건 | Elite: 일 1회+ |
+          | **리드 타임** | ${LEAD_TIME}시간 (${LEAD_METHOD}) | Elite: < 1일 |
+          | **변경 실패율** | ${CFR}% | Elite: < 15% |
+          | **평균 복구 시간** | ${MTTR}시간 | Elite: < 1시간 |
 
-**종합 등급: ${GRADE}**
+          **종합 등급: ${GRADE}**
 
-> 리드 타임 측정 방식: PR의 첫 커밋 시점 → 머지 시점 (실제 개발 시작 반영)
-EOF
+          > 리드 타임 측정 방식: PR의 첫 커밋 시점 → 머지 시점 (실제 개발 시작 반영)
+          EOF
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -304,17 +304,17 @@ EOF
           BADGES="${BADGES}\n![MTTR](https://img.shields.io/badge/MTTR-$(encode "${MTTR}h")-${MTTR_COLOR})"
 
           DORA_BADGES="$BADGES" python3 - << 'PYEOF'
-import re, os
-with open("README.md", "r") as f:
-    content = f.read()
-badges = os.environ["DORA_BADGES"]
-pattern = r"<!-- DORA-BADGES:START -->.*?<!-- DORA-BADGES:END -->"
-replacement = f"<!-- DORA-BADGES:START -->\n{badges}\n<!-- DORA-BADGES:END -->"
-content = re.sub(pattern, replacement, content, flags=re.DOTALL)
-with open("README.md", "w") as f:
-    f.write(content)
-print("README DORA badges updated")
-PYEOF
+          import re, os
+          with open("README.md", "r") as f:
+              content = f.read()
+          badges = os.environ["DORA_BADGES"]
+          pattern = r"<!-- DORA-BADGES:START -->.*?<!-- DORA-BADGES:END -->"
+          replacement = f"<!-- DORA-BADGES:START -->\n{badges}\n<!-- DORA-BADGES:END -->"
+          content = re.sub(pattern, replacement, content, flags=re.DOTALL)
+          with open("README.md", "w") as f:
+              f.write(content)
+          print("README DORA badges updated")
+          PYEOF
 
       - name: Commit metrics, reports and README to main
         run: |
@@ -357,73 +357,72 @@ PYEOF
           DORA_MTTR="$MTTR" \
           DORA_GRADE_NUM="$GRADE_NUM" \
           python3 - << 'PYEOF'
-import subprocess, time, os
-import base64
+          import subprocess, time, os, base64
 
-e = os.environ
-METRICS = {
-    "dora_deployment_frequency,project=govon,branch=main,period=weekly": float(e["DORA_DEPLOYS_WEEK"]),
-    "dora_deployment_frequency,project=govon,branch=main,period=monthly": float(e["DORA_DEPLOYS_MONTH"]),
-    "dora_lead_time_hours,project=govon,branch=main": float(e["DORA_LEAD_TIME"]),
-    "dora_change_failure_rate,project=govon,branch=main": float(e["DORA_CFR"]),
-    "dora_mttr_hours,project=govon,branch=main": float(e["DORA_MTTR"]),
-    "dora_grade,project=govon,branch=main": float(e["DORA_GRADE_NUM"]),
-}
+          e = os.environ
+          METRICS = {
+              "dora_deployment_frequency,project=govon,branch=main,period=weekly": float(e["DORA_DEPLOYS_WEEK"]),
+              "dora_deployment_frequency,project=govon,branch=main,period=monthly": float(e["DORA_DEPLOYS_MONTH"]),
+              "dora_lead_time_hours,project=govon,branch=main": float(e["DORA_LEAD_TIME"]),
+              "dora_change_failure_rate,project=govon,branch=main": float(e["DORA_CFR"]),
+              "dora_mttr_hours,project=govon,branch=main": float(e["DORA_MTTR"]),
+              "dora_grade,project=govon,branch=main": float(e["DORA_GRADE_NUM"]),
+          }
 
-URL = e["GRAFANA_INFLUX_URL"]
-token = base64.b64encode(f"{e['GRAFANA_USER']}:{e['GRAFANA_TOKEN']}".encode()).decode()
-auth_header = f"Basic {token}"
+          URL = e["GRAFANA_INFLUX_URL"]
+          token = base64.b64encode(f"{e['GRAFANA_USER']}:{e['GRAFANA_TOKEN']}".encode()).decode()
+          auth_header = f"Basic {token}"
 
-NOW = int(time.time())
-INTERVAL = 300
-DURATION = 7 * 24 * 3600
-START = NOW - DURATION
-POINTS = DURATION // INTERVAL
-print(f"Pushing {POINTS} data points (7d backfill, 5min intervals) for main...")
+          NOW = int(time.time())
+          INTERVAL = 300
+          DURATION = 7 * 24 * 3600
+          START = NOW - DURATION
+          POINTS = DURATION // INTERVAL
+          print(f"Pushing {POINTS} data points (7d backfill, 5min intervals) for main...")
 
-batch_size = 500
-lines = []
-sent = 0
+          batch_size = 500
+          lines = []
+          sent = 0
 
-for i in range(POINTS + 1):
-    ts = (START + i * INTERVAL) * 1_000_000_000
-    for metric, value in METRICS.items():
-        lines.append(f"{metric} value={value} {ts}")
+          for i in range(POINTS + 1):
+              ts = (START + i * INTERVAL) * 1_000_000_000
+              for metric, value in METRICS.items():
+                  lines.append(f"{metric} value={value} {ts}")
 
-    if len(lines) >= batch_size * len(METRICS):
-        tmp = "/tmp/metrics_batch.txt"
-        with open(tmp, "w") as f:
-            f.write("\n".join(lines))
-        subprocess.run(
-            ["curl", "-s", "-o", "/dev/null",
-             "-X", "POST", URL,
-             "-H", f"Authorization: {auth_header}",
-             "-H", "Content-Type: text/plain",
-             "--data-binary", f"@{tmp}"],
-            capture_output=True
-        )
-        sent += len(lines) // len(METRICS)
-        lines = []
+              if len(lines) >= batch_size * len(METRICS):
+                  tmp = "/tmp/metrics_batch.txt"
+                  with open(tmp, "w") as f:
+                      f.write("\n".join(lines))
+                  subprocess.run(
+                      ["curl", "-s", "-o", "/dev/null",
+                       "-X", "POST", URL,
+                       "-H", f"Authorization: {auth_header}",
+                       "-H", "Content-Type: text/plain",
+                       "--data-binary", f"@{tmp}"],
+                      capture_output=True
+                  )
+                  sent += len(lines) // len(METRICS)
+                  lines = []
 
-if lines:
-    tmp = "/tmp/metrics_batch.txt"
-    with open(tmp, "w") as f:
-        f.write("\n".join(lines))
-    result = subprocess.run(
-        ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-         "-X", "POST", URL,
-         "-H", f"Authorization: {auth_header}",
-         "-H", "Content-Type: text/plain",
-         "--data-binary", f"@{tmp}"],
-        capture_output=True, text=True
-    )
-    sent += len(lines) // len(METRICS)
-    code = result.stdout.strip()
-else:
-    code = "204"
+          if lines:
+              tmp = "/tmp/metrics_batch.txt"
+              with open(tmp, "w") as f:
+                  f.write("\n".join(lines))
+              result = subprocess.run(
+                  ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+                   "-X", "POST", URL,
+                   "-H", f"Authorization: {auth_header}",
+                   "-H", "Content-Type: text/plain",
+                   "--data-binary", f"@{tmp}"],
+                  capture_output=True, text=True
+              )
+              sent += len(lines) // len(METRICS)
+              code = result.stdout.strip()
+          else:
+              code = "204"
 
-print(f"Grafana Cloud 메트릭 전송 완료 ({sent} points, HTTP {code})")
-PYEOF
+          print(f"Grafana Cloud 메트릭 전송 완료 ({sent} points, HTTP {code})")
+          PYEOF
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7

@@ -21,7 +21,7 @@ services:
       LOG_LEVEL: INFO
       RELOAD: "false"
       API_KEY: ci-test-key
-      MODEL_PATH: umyunsang/GovOn-EXAONE-AWQ-v2
+      MODEL_PATH: LGAI-EXAONE/EXAONE-4.0-32B-AWQ
       TRUST_REMOTE_CODE: "true"
       MODEL_DTYPE: half
       ENFORCE_EAGER: "true"

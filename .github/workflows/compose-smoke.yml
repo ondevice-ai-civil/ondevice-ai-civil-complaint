@@ -141,7 +141,7 @@ jobs:
             'SKIP_MODEL_LOAD=false' \
             'GPU_UTILIZATION=0.5' \
             'MAX_MODEL_LEN=2048' \
-            'MODEL_PATH=umyunsang/GovOn-EXAONE-AWQ-v2' \
+            'MODEL_PATH=LGAI-EXAONE/EXAONE-4.0-32B-AWQ' \
             > /tmp/govon-gpu.env
 
       - name: 호스트 GPU 인식 확인

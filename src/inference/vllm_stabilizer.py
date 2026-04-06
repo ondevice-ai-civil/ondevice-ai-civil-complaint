@@ -53,7 +53,7 @@ def test_exaone_generation(engine):
 
 
 if __name__ == "__main__":
-    MODEL_ID = "umyunsang/civil-complaint-exaone-awq"
+    MODEL_ID = "LGAI-EXAONE/EXAONE-4.0-32B-AWQ"
 
     try:
         engine = start_vllm_engine(MODEL_ID)

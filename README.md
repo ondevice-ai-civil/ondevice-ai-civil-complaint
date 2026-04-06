@@ -178,6 +178,21 @@ stateDiagram-v2
 - workstream의 하위: `task`
 - 세부 작업 내용은 `task` 이슈 본문에만 작성한다.
 
+## DORA Metrics
+
+![DORA Dashboard](metrics/reports/latest-dora.png)
+
+| 지표 | 설명 | 수집 방식 |
+|------|------|----------|
+| Deployment Frequency | main 머지 PR 수 / 주 | GitHub API |
+| Lead Time | PR 첫 커밋 → 머지 평균 시간 | GitHub API |
+| Change Failure Rate | hotfix/revert 커밋 비율 | git log |
+| MTTR | bug 이슈 open → close 평균 시간 | GitHub API |
+
+- **실시간 대시보드**: [Grafana Cloud](https://umyunsang.grafana.net/d/govon-dora/govon-dora-metrics-dashboard?orgId=1&from=now-7d&to=now&timezone=Asia%2FSeoul)
+- **주간 보고서**: [`metrics/reports/`](metrics/reports/)
+- **수집 워크플로우**: [`.github/workflows/dora-metrics.yml`](.github/workflows/dora-metrics.yml)
+
 ## 개발 규칙
 
 기여 전 아래 문서를 먼저 본다.

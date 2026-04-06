@@ -244,13 +244,18 @@ jobs:
           > 리드 타임 측정 방식: PR의 첫 커밋 시점 → 머지 시점 (실제 개발 시작 반영)
           EOF
 
-      - name: Commit metrics data to main
+      - name: Install report dependencies
+        run: pip install matplotlib
+
+      - name: Generate Weekly Report
+        run: python metrics/scripts/generate_report.py
+
+      - name: Commit metrics and reports to main
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          git add metrics/dora/
-          git diff --staged --quiet || git commit -m "chore: DORA 메트릭 수집 $(date -u +%Y-%m-%d)"
+          git add metrics/dora/ metrics/reports/ metrics/grafana-cloud/
+          git diff --staged --quiet || git commit -m "chore: DORA 메트릭 수집 및 주간 보고서 $(date -u +%Y-%m-%d)"
           git push origin main || echo "No changes to push"
 
       - name: Push to Grafana Cloud
@@ -345,5 +350,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: dora-metrics-${{ github.run_number }}
-          path: metrics/dora/
+          path: |
+            metrics/dora/
+            metrics/reports/
           retention-days: 90

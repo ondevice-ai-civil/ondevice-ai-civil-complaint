@@ -5,10 +5,14 @@ Uses `rich` when available; falls back to plain print() otherwise.
 
 from __future__ import annotations
 
-import contextlib
-import sys
-from contextlib import contextmanager
-from typing import Generator, Optional
+from threading import Lock
+
+from src.cli.terminal import (
+    get_narrow_terminal_warning,
+    get_panel_width,
+    get_terminal_columns,
+    is_layout_supported,
+)
 
 try:
     from rich.console import Console
@@ -21,6 +25,9 @@ try:
 except ImportError:  # pragma: no cover
     _console = None  # type: ignore[assignment]
     _RICH_AVAILABLE = False
+
+_HAS_WARNED_NARROW_TERMINAL = False
+_NARROW_WARNING_LOCK = Lock()
 
 # ---------------------------------------------------------------------------
 # Node status message mapping
@@ -54,10 +61,12 @@ class StreamingStatusDisplay:
 
     def __init__(self, initial_message: str = "처리 중…") -> None:
         self._initial_message = initial_message
-        self._status: Optional["Status"] = None  # type: ignore[name-defined]
+        self._status: Status | None = None  # type: ignore[name-defined]
+        self._use_rich = False
 
     def __enter__(self) -> "StreamingStatusDisplay":
-        if _RICH_AVAILABLE:
+        self._use_rich, _ = _resolve_render_mode()
+        if self._use_rich:
             self._status = _console.status(self._initial_message, spinner="dots")
             self._status.__enter__()
         else:
@@ -66,15 +75,50 @@ class StreamingStatusDisplay:
 
     def update(self, message: str) -> None:
         """Update the displayed status message."""
-        if _RICH_AVAILABLE and self._status is not None:
+        if self._use_rich and self._status is not None:
             self._status.update(message)
         else:
             print(f"→ {message}", flush=True)
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        if _RICH_AVAILABLE and self._status is not None:
+        if self._use_rich and self._status is not None:
             self._status.__exit__(exc_type, exc_val, exc_tb)
             self._status = None
+
+
+def _warn_narrow_terminal_once(columns: int) -> None:
+    """Emit the narrow-terminal fallback warning once per narrow-state entry."""
+    global _HAS_WARNED_NARROW_TERMINAL
+
+    with _NARROW_WARNING_LOCK:
+        if _HAS_WARNED_NARROW_TERMINAL:
+            return
+        _HAS_WARNED_NARROW_TERMINAL = True
+
+    print(get_narrow_terminal_warning(columns), flush=True)
+
+
+def _reset_narrow_warning() -> None:
+    """Reset narrow-terminal warning state for tests and wide-terminal recovery."""
+    global _HAS_WARNED_NARROW_TERMINAL
+
+    with _NARROW_WARNING_LOCK:
+        _HAS_WARNED_NARROW_TERMINAL = False
+
+
+def _resolve_render_mode() -> tuple[bool, int]:
+    """Return (use_rich, terminal_columns) for the current render call."""
+    columns = get_terminal_columns()
+    if not is_layout_supported(columns):
+        _warn_narrow_terminal_once(columns)
+        return False, columns
+    _reset_narrow_warning()
+    return _RICH_AVAILABLE, columns
+
+
+def _plain_rule(columns: int) -> str:
+    """Return a separator that fits within the current terminal."""
+    return "─" * max(columns - 2, 12)
 
 
 def render_evidence_section(evidence_items: list) -> str:
@@ -149,7 +193,9 @@ def render_result(result: dict) -> None:
     evidence_items: list = result.get("evidence_items") or []
     citations: list = result.get("citations") or result.get("sources") or []
 
-    if _RICH_AVAILABLE:
+    use_rich, columns = _resolve_render_mode()
+
+    if use_rich:
         content = Text(text_body)
         if evidence_items:
             evidence_text = render_evidence_section(evidence_items)
@@ -159,9 +205,18 @@ def render_result(result: dict) -> None:
             content.append("\n\n출처\n", style="bold")
             for idx, src in enumerate(citations, 1):
                 content.append(f"  {idx}. {src}\n", style="dim")
-        _console.print(Panel(content, title="[bold green]GovOn[/bold green]", border_style="green"))
+        _console.print(
+            Panel(
+                content,
+                title="[bold green]GovOn[/bold green]",
+                border_style="green",
+                width=get_panel_width(columns),
+            )
+        )
     else:
-        print("\n── GovOn ──────────────────────────────────")
+        rule = _plain_rule(columns)
+        print(f"\n{rule}")
+        print("GovOn")
         print(text_body)
         if evidence_items:
             evidence_text = render_evidence_section(evidence_items)
@@ -171,12 +226,13 @@ def render_result(result: dict) -> None:
             print("\n출처")
             for idx, src in enumerate(citations, 1):
                 print(f"  {idx}. {src}")
-        print("───────────────────────────────────────────\n")
+        print(f"{rule}\n")
 
 
 def render_status(message: str) -> None:
     """Render a transient status / progress message."""
-    if _RICH_AVAILABLE:
+    use_rich, _ = _resolve_render_mode()
+    if use_rich:
         _console.print(f"[dim]→ {message}[/dim]")
     else:
         print(f"→ {message}")
@@ -184,7 +240,8 @@ def render_status(message: str) -> None:
 
 def render_error(message: str) -> None:
     """Render an error message in red."""
-    if _RICH_AVAILABLE:
+    use_rich, _ = _resolve_render_mode()
+    if use_rich:
         _console.print(f"[bold red]오류:[/bold red] {message}")
     else:
         print(f"오류: {message}")
@@ -193,7 +250,8 @@ def render_error(message: str) -> None:
 def render_session_info(session_id: str) -> None:
     """Render session resume hint at shell exit."""
     hint = f"[session: {session_id}]  govon --session {session_id} 로 재개 가능"
-    if _RICH_AVAILABLE:
+    use_rich, _ = _resolve_render_mode()
+    if use_rich:
         _console.print(f"[dim]{hint}[/dim]")
     else:
         print(hint)

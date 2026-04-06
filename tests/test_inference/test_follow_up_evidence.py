@@ -15,7 +15,7 @@ import io
 import os
 import sys
 import tempfile
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from langchain_core.messages import HumanMessage
@@ -379,6 +379,64 @@ def test_render_result_no_evidence_no_citations(capsys):
     captured = capsys.readouterr()
     assert "단순 답변" in captured.out
     assert "[로컬 문서]" not in captured.out
+
+
+def test_render_result_rich_panel_uses_explicit_terminal_width():
+    """Rich Panel 렌더링은 현재 터미널 폭을 기준으로 width를 명시한다."""
+    from src.cli import renderer
+
+    mock_console = MagicMock()
+    with patch.object(renderer, "_RICH_AVAILABLE", True):
+        with patch.object(renderer, "_console", mock_console):
+            with patch.object(renderer, "get_terminal_columns", return_value=80):
+                renderer.render_result({"text": "답변 텍스트"})
+
+    panel = mock_console.print.call_args.args[0]
+    assert panel.width == 78
+
+
+def test_render_result_rich_panel_scales_at_120_columns():
+    """120열 터미널에서는 Rich Panel width가 현재 폭에 맞춰 확장된다."""
+    from src.cli import renderer
+
+    mock_console = MagicMock()
+    with patch.object(renderer, "_RICH_AVAILABLE", True):
+        with patch.object(renderer, "_console", mock_console):
+            with patch.object(renderer, "get_terminal_columns", return_value=120):
+                renderer.render_result({"text": "넓은 터미널 응답"})
+
+    panel = mock_console.print.call_args.args[0]
+    assert panel.width == 118
+
+
+def test_render_result_rich_panel_scales_at_40_columns():
+    """40열 터미널에서도 Rich Panel이 현재 폭 안에서 렌더링된다."""
+    from src.cli import renderer
+
+    mock_console = MagicMock()
+    with patch.object(renderer, "_RICH_AVAILABLE", True):
+        with patch.object(renderer, "_console", mock_console):
+            with patch.object(renderer, "get_terminal_columns", return_value=40):
+                renderer.render_result({"text": "40열 응답"})
+
+    panel = mock_console.print.call_args.args[0]
+    assert panel.width == 38
+
+
+def test_render_result_falls_back_to_plain_on_narrow_terminal(capsys):
+    """40열 미만에서는 경고 후 plain mode로 결과를 출력한다."""
+    from src.cli import renderer
+
+    mock_console = MagicMock()
+    with patch.object(renderer, "_RICH_AVAILABLE", True):
+        with patch.object(renderer, "_console", mock_console):
+            with patch.object(renderer, "get_terminal_columns", return_value=30):
+                renderer.render_result({"text": "좁은 터미널 응답"})
+
+    captured = capsys.readouterr()
+    assert "plain mode" in captured.out
+    assert "좁은 터미널 응답" in captured.out
+    mock_console.print.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

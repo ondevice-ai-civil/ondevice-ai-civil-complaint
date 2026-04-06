@@ -160,15 +160,24 @@ class MinwonAnalysisAction(BaseAction):
         self,
         query: str,
         context: Dict[str, Any],
+        ret_count: Optional[int] = None,
+        min_score: Optional[int] = None,
     ) -> Dict[str, Any]:
         """유사 민원 사례 검색에 필요한 payload를 구성한다.
 
         api_lookup capability 내부에서 minSimilarInfo5 호출 경로를
         공용으로 재사용할 수 있도록 공개 helper로 제공한다.
+
+        Parameters
+        ----------
+        ret_count : Optional[int]
+            반환 건수 오버라이드.
+        min_score : Optional[int]
+            최소 유사도 오버라이드.
         """
         search_query = self._enrich_query(query, context)
         logger.debug(f"[minwon_analysis] 보강된 검색어: {search_query!r}")
-        items = await self._call_similar_api(search_query)
+        items = await self._call_similar_api(search_query, ret_count=ret_count, min_score=min_score)
 
         return {
             "query": search_query,
@@ -178,13 +187,22 @@ class MinwonAnalysisAction(BaseAction):
             "citations": self._build_citations(items or []),
         }
 
-    async def _call_similar_api(self, search_query: str) -> Optional[List[Dict[str, Any]]]:
+    async def _call_similar_api(
+        self,
+        search_query: str,
+        ret_count: Optional[int] = None,
+        min_score: Optional[int] = None,
+    ) -> Optional[List[Dict[str, Any]]]:
         """공공데이터포털 유사민원정보 API를 호출한다.
 
         Parameters
         ----------
         search_query : str
             API에 전달할 검색어.
+        ret_count : Optional[int]
+            반환 건수 오버라이드. None이면 인스턴스 기본값.
+        min_score : Optional[int]
+            최소 유사도 오버라이드. None이면 인스턴스 기본값.
 
         Returns
         -------
@@ -195,11 +213,11 @@ class MinwonAnalysisAction(BaseAction):
         params = {
             "serviceKey": self._api_key,
             "startPos": 1,
-            "retCount": self._ret_count,
+            "retCount": ret_count if ret_count is not None else self._ret_count,
             "target": "qna,qna_origin",
-            "minScore": self._min_score,
+            "minScore": min_score if min_score is not None else self._min_score,
             "dataType": "json",
-            "searchWord": search_query,
+            "searchword": search_query,
         }
 
         try:
@@ -217,11 +235,24 @@ class MinwonAnalysisAction(BaseAction):
             logger.error(f"[minwon_analysis] API 호출 오류: {exc}", exc_info=True)
             return None
 
-        # resultCode 검사
-        result_code = str(body.get("resultCode", "00"))
-        if result_code not in ("00", "0", "200"):
+        # 실제 API는 최상위 배열([]) 또는 returnObject 래핑으로 응답
+        if isinstance(body, list):
+            return body
+
+        if not isinstance(body, dict):
+            logger.warning(f"[minwon_analysis] 예상치 못한 응답 타입: {type(body)}")
+            return None
+
+        # returnObject 래핑
+        if "returnObject" in body:
+            obj = body["returnObject"]
+            return obj if isinstance(obj, list) else []
+
+        # 에러 응답 검사
+        code = str(body.get("code", body.get("resultCode", "00")))
+        if code in ("500",):
             logger.warning(
-                f"[minwon_analysis] API resultCode={result_code}: " f"{body.get('resultMsg', '')}"
+                f"[minwon_analysis] API 에러: {body.get('msg', body.get('resultMsg', ''))}"
             )
             return None
 
@@ -285,11 +316,13 @@ class MinwonAnalysisAction(BaseAction):
 
         lines = [f"### 공공데이터포털 유사 민원 사례 (검색어: {query})\n"]
         for i, item in enumerate(items[:5], 1):
-            title = item.get("title", item.get("qnaTitle", ""))
-            content = item.get("content", item.get("qnaContent", item.get("question", "")))
-            answer = item.get("answer", item.get("qnaAnswer", ""))
-            category = item.get("category", item.get("minCategory", ""))
-            date = item.get("regDate", item.get("date", ""))
+            title = item.get("title") or item.get("qnaTitle") or ""
+            content = item.get("content") or item.get("qnaContent") or item.get("question") or ""
+            answer = item.get("answer") or item.get("qnaAnswer") or ""
+            category = (
+                item.get("category") or item.get("minCategory") or item.get("main_sub_name") or ""
+            )
+            date = item.get("regDate") or item.get("date") or item.get("create_date") or ""
 
             lines.append(f"{i}. [{category}] {title}")
             if date:
@@ -319,10 +352,10 @@ class MinwonAnalysisAction(BaseAction):
         """
         citations = []
         for item in items:
-            title = item.get("title", item.get("qnaTitle", ""))
-            url = item.get("url", item.get("detailUrl", ""))
-            date = item.get("regDate", item.get("date", ""))
-            content = item.get("content", item.get("qnaContent", item.get("question", "")))
+            title = item.get("title") or item.get("qnaTitle") or ""
+            url = item.get("url") or item.get("detailUrl") or ""
+            date = item.get("regDate") or item.get("date") or item.get("create_date") or ""
+            content = item.get("content") or item.get("qnaContent") or item.get("question") or ""
             snippet = content[:150] + "..." if len(content) > 150 else content
 
             # 제목 없는 항목은 스킵
@@ -358,7 +391,7 @@ class MinwonAnalysisAction(BaseAction):
         query_variants = context.get("query_variants", {})
         if isinstance(query_variants, dict):
             prepared_query = str(query_variants.get("api_lookup", "")).strip()
-            if prepared_query and prepared_query == str(query).strip():
+            if prepared_query:
                 return prepared_query
 
         session_context = str(context.get("session_context", "")).strip()

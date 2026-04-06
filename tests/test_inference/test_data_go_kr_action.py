@@ -10,30 +10,26 @@ from src.inference.agent_loop import AgentLoop
 from src.inference.session_context import SessionContext
 from src.inference.tool_router import ToolRouter, ToolType
 
+# 실제 API 응답 구조 (2026-04-06 테스트 기준 — 최상위 배열)
 _SAMPLE_ITEMS = [
     {
         "title": "도로 포장 파손 민원",
         "content": "인근 도로 포장이 심하게 파손되어 차량 통행에 위험합니다.",
-        "answer": "해당 구역 도로 보수 작업을 2주 내 완료하겠습니다.",
-        "category": "교통",
-        "regDate": "2025-01-15",
-        "url": "https://example.com/case-1",
+        "create_date": "20250115120000",
+        "main_sub_name": "서울특별시 도로관리과",
+        "dep_name": "도로보수팀",
     },
     {
         "title": "보도블록 파손 민원",
         "content": "보도블록이 깨져 보행자 안전이 우려됩니다.",
-        "answer": "보도블록 교체 공사를 진행할 예정입니다.",
-        "category": "교통",
-        "regDate": "2025-02-10",
-        "url": "https://example.com/case-2",
+        "create_date": "20250210150000",
+        "main_sub_name": "경기도 고양시",
+        "dep_name": "건설과",
     },
 ]
 
-_SAMPLE_API_RESPONSE = {
-    "resultCode": "00",
-    "resultMsg": "NORMAL SERVICE.",
-    "body": {"items": _SAMPLE_ITEMS, "totalCount": 2, "pageNo": 1},
-}
+# 실제 API는 최상위 배열로 응답 (resultCode/body 래핑 없음)
+_SAMPLE_API_RESPONSE = _SAMPLE_ITEMS
 
 
 class TestMinwonAnalysisAction:

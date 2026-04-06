@@ -36,14 +36,28 @@ class ApiLookupParams:
     @classmethod
     def from_context(cls, query: str, context: Dict[str, Any]) -> "ApiLookupParams":
         """context에서 파라미터를 추출하고 alias를 정규화한다."""
+
+        def _first_not_none(*values, default):
+            for v in values:
+                if v is not None:
+                    return v
+            return default
+
         ret_count = int(
-            context.get("api_lookup_count") or context.get("ret_count") or context.get("count") or 5
+            _first_not_none(
+                context.get("api_lookup_count"),
+                context.get("ret_count"),
+                context.get("count"),
+                default=5,
+            )
         )
         min_score = int(
-            context.get("api_lookup_min_score")
-            or context.get("min_score")
-            or context.get("score_threshold")
-            or 2
+            _first_not_none(
+                context.get("api_lookup_min_score"),
+                context.get("min_score"),
+                context.get("score_threshold"),
+                default=2,
+            )
         )
         return cls(
             query=query.strip(),
@@ -77,7 +91,6 @@ class ApiLookupCapability(CapabilityBase):
 
     def __init__(self, action: Optional[Any] = None) -> None:
         self._action = action
-        self._lock = asyncio.Lock()
 
     @property
     def metadata(self) -> CapabilityMetadata:
@@ -125,16 +138,17 @@ class ApiLookupCapability(CapabilityBase):
                 evidence=EvidenceEnvelope(status="empty"),
             )
 
-        # action에 파라미터 반영 (Lock으로 동시 접근 직렬화)
-        # shared state(_ret_count, _min_score) 변경과 API 호출을 원자적으로 수행
+        # 파라미터를 인자로 전달 (shared state 변경 없이 thread-safe)
         try:
-            async with self._lock:
-                self._action._ret_count = params.ret_count
-                self._action._min_score = params.min_score
-                payload = await asyncio.wait_for(
-                    self._action.fetch_similar_cases(params.query, context),
-                    timeout=self.metadata.timeout_sec,
-                )
+            payload = await asyncio.wait_for(
+                self._action.fetch_similar_cases(
+                    params.query,
+                    context,
+                    ret_count=params.ret_count,
+                    min_score=params.min_score,
+                ),
+                timeout=self.metadata.timeout_sec,
+            )
         except asyncio.TimeoutError:
             timeout_msg = f"API 호출 타임아웃 ({self.metadata.timeout_sec}초 초과)"
             logger.warning(f"[api_lookup] 타임아웃 ({self.metadata.timeout_sec}s 초과)")

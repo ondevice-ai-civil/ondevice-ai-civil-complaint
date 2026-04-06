@@ -320,7 +320,7 @@ class TestApiLookupCapabilityWithAction:
     async def test_result_when_action_returns_results(self):
         """action이 결과를 반환하면 LookupResult로 변환된다."""
 
-        async def _fetch(q, ctx):
+        async def _fetch(q, ctx, **kwargs):
             return {
                 "results": [{"title": "사례1"}],
                 "context_text": "컨텍스트",
@@ -339,7 +339,7 @@ class TestApiLookupCapabilityWithAction:
     async def test_empty_results_returns_no_match(self):
         """action이 빈 results를 반환하면 no_match로 처리한다."""
 
-        async def _fetch(q, ctx):
+        async def _fetch(q, ctx, **kwargs):
             return {"results": [], "citations": [], "query": q}
 
         action = MagicMock()
@@ -354,7 +354,7 @@ class TestApiLookupCapabilityWithAction:
     async def test_action_exception_returns_failure(self):
         """action에서 예외 발생 시 success=False를 반환한다."""
 
-        async def _fetch(q, ctx):
+        async def _fetch(q, ctx, **kwargs):
             raise RuntimeError("연결 오류")
 
         action = MagicMock()
@@ -368,7 +368,7 @@ class TestApiLookupCapabilityWithAction:
     async def test_action_none_payload_returns_failure(self):
         """action이 results=None인 payload를 반환하면 failure."""
 
-        async def _fetch(q, ctx):
+        async def _fetch(q, ctx, **kwargs):
             return {"results": None}
 
         action = MagicMock()

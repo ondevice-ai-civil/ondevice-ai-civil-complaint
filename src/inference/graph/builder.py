@@ -13,7 +13,6 @@ Graph topology:
 
 from __future__ import annotations
 
-import asyncio
 from typing import TYPE_CHECKING, Optional
 
 from langgraph.graph import END, START, StateGraph
@@ -89,32 +88,24 @@ def build_govon_graph(
 
     graph = StateGraph(GovOnGraphState)
 
-    # --- 노드 등록 (closure로 adapter와 session_store 주입) ---
+    # --- 노드 등록 (async 노드를 closure로 adapter와 session_store 주입) ---
+    # Issue #495: sync _run_async() wrapper 제거 → async 노드 직접 등록.
+    # FastAPI ainvoke()/astream() 경로에서 running event loop 충돌 없음.
 
-    def _run_async(coro):
-        # TODO(#409): 이 sync wrapper는 MVP invoke() 전용이다.
-        # FastAPI ainvoke() 전환 시 이미 running loop가 존재하므로
-        # RuntimeError가 발생한다. ainvoke() 전환 시 async 노드를 직접 등록해야 한다.
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return asyncio.run(coro)
-        raise RuntimeError("GovOn graph sync wrappers must run outside an active event loop.")
+    async def _session_load(state: GovOnGraphState) -> dict:
+        return await session_load_node(state, session_store=session_store)
 
-    def _session_load(state: GovOnGraphState) -> dict:
-        return _run_async(session_load_node(state, session_store=session_store))
+    async def _planner(state: GovOnGraphState) -> dict:
+        return await planner_node(state, planner_adapter=planner_adapter)
 
-    def _planner(state: GovOnGraphState) -> dict:
-        return _run_async(planner_node(state, planner_adapter=planner_adapter))
+    async def _tool_execute(state: GovOnGraphState) -> dict:
+        return await tool_execute_node(state, executor_adapter=executor_adapter)
 
-    def _tool_execute(state: GovOnGraphState) -> dict:
-        return _run_async(tool_execute_node(state, executor_adapter=executor_adapter))
+    async def _synthesis(state: GovOnGraphState) -> dict:
+        return await synthesis_node(state)
 
-    def _synthesis(state: GovOnGraphState) -> dict:
-        return _run_async(synthesis_node(state))
-
-    def _persist(state: GovOnGraphState) -> dict:
-        return _run_async(persist_node(state, session_store=session_store))
+    async def _persist(state: GovOnGraphState) -> dict:
+        return await persist_node(state, session_store=session_store)
 
     graph.add_node("session_load", _session_load)
     graph.add_node("planner", _planner)

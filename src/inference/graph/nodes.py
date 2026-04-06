@@ -279,10 +279,19 @@ async def tool_execute_node(
     tool_latencies: Dict[str, float] = {}
 
     # --- 독립 도구와 의존 도구를 분리하여 병렬/순차 실행 ---
-    # 새로운 독립 capability를 추가할 때는 이 집합에도 등록해야 한다.
     # 독립 도구란 다른 도구의 실행 결과(accumulated_context)에 의존하지 않아
     # 병렬 실행이 안전한 capability를 의미한다.
-    INDEPENDENT_TOOLS = {"rag_search", "api_lookup"}
+    # 새로운 독립 capability를 추가할 때는 이 집합에도 등록해야 한다.
+    # issue_detector / stats_lookup / keyword_analyzer / demographics_lookup은
+    # 외부 API 직접 호출로만 동작하므로 독립 도구로 분류한다. (#486-489)
+    INDEPENDENT_TOOLS = {
+        "rag_search",
+        "api_lookup",
+        "issue_detector",
+        "stats_lookup",
+        "keyword_analyzer",
+        "demographics_lookup",
+    }
 
     independent = [t for t in planned_tools if t in INDEPENDENT_TOOLS]
     dependent = [t for t in planned_tools if t not in INDEPENDENT_TOOLS]

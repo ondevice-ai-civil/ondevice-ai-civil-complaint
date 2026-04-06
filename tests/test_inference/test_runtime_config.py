@@ -119,7 +119,7 @@ class TestModelConfig:
     def test_defaults(self):
         with patch.dict(os.environ, {}, clear=True):
             mc = ModelConfig.from_env()
-        assert mc.model_path == "umyunsang/GovOn-EXAONE-AWQ-v2"
+        assert mc.model_path == "LGAI-EXAONE/EXAONE-4.0-32B-AWQ"
         assert mc.trust_remote_code is True
         assert mc.dtype == "half"
         assert mc.enforce_eager is True
@@ -216,3 +216,55 @@ class TestLogSummary:
         with patch.dict(os.environ, {}, clear=True):
             config = RuntimeConfig.from_env()
         config.log_summary()
+
+
+class TestModelConfigAdapterPaths:
+    """ModelConfig.from_env() — ADAPTER_PATHS 파싱 테스트."""
+
+    def test_empty_adapter_paths_by_default(self):
+        """ADAPTER_PATHS 미설정 시 adapter_paths는 빈 dict이다."""
+        with patch.dict(os.environ, {}, clear=True):
+            mc = ModelConfig.from_env()
+        assert mc.adapter_paths == {}
+
+    def test_single_adapter_path(self):
+        """단일 어댑터 경로를 파싱한다."""
+        env = {"ADAPTER_PATHS": "civil=/models/civil-adapter"}
+        with patch.dict(os.environ, env, clear=True):
+            mc = ModelConfig.from_env()
+        assert mc.adapter_paths == {"civil": "/models/civil-adapter"}
+
+    def test_multiple_adapter_paths(self):
+        """복수 어댑터 경로를 쉼표 구분으로 파싱한다."""
+        env = {"ADAPTER_PATHS": "civil=/models/civil,legal=/models/legal"}
+        with patch.dict(os.environ, env, clear=True):
+            mc = ModelConfig.from_env()
+        assert mc.adapter_paths == {"civil": "/models/civil", "legal": "/models/legal"}
+
+    def test_adapter_paths_with_spaces(self):
+        """키와 값 주변 공백을 제거한다."""
+        env = {"ADAPTER_PATHS": " civil = /models/civil , legal = /models/legal "}
+        with patch.dict(os.environ, env, clear=True):
+            mc = ModelConfig.from_env()
+        assert mc.adapter_paths == {"civil": "/models/civil", "legal": "/models/legal"}
+
+    def test_empty_adapter_paths_string(self):
+        """빈 문자열을 전달하면 빈 dict를 반환한다."""
+        env = {"ADAPTER_PATHS": ""}
+        with patch.dict(os.environ, env, clear=True):
+            mc = ModelConfig.from_env()
+        assert mc.adapter_paths == {}
+
+    def test_whitespace_only_adapter_paths(self):
+        """공백만 있는 경우 빈 dict를 반환한다."""
+        env = {"ADAPTER_PATHS": "   "}
+        with patch.dict(os.environ, env, clear=True):
+            mc = ModelConfig.from_env()
+        assert mc.adapter_paths == {}
+
+    def test_adapter_paths_hf_hub_path(self):
+        """HuggingFace Hub 경로 형식을 파싱한다."""
+        env = {"ADAPTER_PATHS": "civil=umyunsang/govon-civil-adapter"}
+        with patch.dict(os.environ, env, clear=True):
+            mc = ModelConfig.from_env()
+        assert mc.adapter_paths == {"civil": "umyunsang/govon-civil-adapter"}

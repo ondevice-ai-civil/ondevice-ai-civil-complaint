@@ -155,26 +155,37 @@ class ModelConfig:
       학습 데이터: neuralfoundry-coder/korean-legal-instruction-sample (232K건), QLoRA on AWQ base
     - 나머지 capability (rag_search, api_lookup, synthesis 등)는 LoRA 없이 base model 사용
 
-    adapter_paths: vLLM --lora-modules 형식으로 전달할 어댑터 경로 목록.
-      예: ["civil-adapter=/path/to/civil", "legal-adapter=/path/to/legal"]
+    adapter_paths: 어댑터 이름 → 경로 매핑. ADAPTER_PATHS 환경변수에서 파싱.
+      형식: "civil=/path/to/civil,legal=/path/to/legal"
+      예: {"civil": "/models/civil-adapter", "legal": "/models/legal-adapter"}
     """
 
     model_path: str = "LGAI-EXAONE/EXAONE-4.0-32B-AWQ"
     trust_remote_code: bool = True
     dtype: str = "half"
     enforce_eager: bool = True
-    # Multi-LoRA: vLLM --lora-modules 형식으로 전달할 어댑터 경로 목록
-    # 예: ["civil-adapter=/path/to/civil", "legal-adapter=/path/to/legal"]
-    adapter_paths: List[str] = field(default_factory=list)
+    # Multi-LoRA: 어댑터 이름 → 경로 매핑.
+    # 환경변수 ADAPTER_PATHS에서 파싱한다.
+    # 예: {"civil": "/path/to/civil-adapter", "legal": "/path/to/legal-adapter"}
+    adapter_paths: Dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def from_env(cls) -> "ModelConfig":
+        adapter_paths: Dict[str, str] = {}
+        adapter_paths_raw = os.getenv("ADAPTER_PATHS", "")
+        if adapter_paths_raw.strip():
+            for pair in adapter_paths_raw.split(","):
+                pair = pair.strip()
+                if "=" in pair:
+                    name, path = pair.split("=", 1)
+                    adapter_paths[name.strip()] = path.strip()
         return cls(
             model_path=os.getenv("MODEL_PATH", "LGAI-EXAONE/EXAONE-4.0-32B-AWQ"),
             trust_remote_code=os.getenv("TRUST_REMOTE_CODE", "true").lower()
             in ("true", "1", "yes"),
             dtype=os.getenv("MODEL_DTYPE", "half"),
             enforce_eager=os.getenv("ENFORCE_EAGER", "true").lower() in ("true", "1", "yes"),
+            adapter_paths=adapter_paths,
         )
 
 
@@ -337,6 +348,7 @@ class RuntimeConfig:
         logger.info(f"  Max Model Len : {self.max_model_len}")
         logger.info(f"  Model Path    : {self.model.model_path}")
         logger.info(f"  Skip Model    : {self.skip_model_load}")
+        logger.info(f"  Adapters      : {list(self.model.adapter_paths.keys()) or '(없음)'}")
         logger.info(f"  Request Timeout: {self.request_timeout_sec}s")
         logger.info(f"  Rate Limit    : {self.rate_limit_enabled}")
         logger.info(f"  CORS Origins  : {self.cors_origins}")

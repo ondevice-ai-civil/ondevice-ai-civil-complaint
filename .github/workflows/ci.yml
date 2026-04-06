@@ -90,9 +90,34 @@ jobs:
 
   lint:
     needs: detect-changes
-    uses: ./.github/workflows/reusable-lint.yml
-    with:
-      python-version: '3.12'
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.runtime == 'true' ||
+      needs.detect-changes.outputs.packaging == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Python with uv
+        uses: ./.github/actions/setup-python-uv
+        with:
+          python-version: '3.12'
+          extras: '--extra dev'
+
+      - name: Black
+        run: uv run black --check .
+
+      - name: isort
+        run: uv run isort --check .
+
+      - name: Flake8
+        run: |
+          uv run flake8 . \
+            --count \
+            --select=E9,F63,F7,F82 \
+            --show-source \
+            --statistics \
+            --exclude=.venv,.git,__pycache__,build,dist
 
   test:
     needs: detect-changes

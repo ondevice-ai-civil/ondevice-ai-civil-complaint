@@ -1,9 +1,7 @@
 import asyncio
 import json
 import os
-import queue
 import re
-import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -147,6 +145,16 @@ def _extract_content_by_type(result: dict, index_type: IndexType) -> str:
     else:
         text = ""
     return text or result.get("title", "")
+
+
+def _extract_approval_request(graph_state: Any) -> Any:
+    """LangGraph interrupt state에서 approval payload를 추출한다."""
+    if not graph_state or not getattr(graph_state, "tasks", None):
+        return None
+    task = graph_state.tasks[0]
+    if not getattr(task, "interrupts", None):
+        return None
+    return task.interrupts[0].value
 
 
 class vLLMEngineManager:
@@ -1468,7 +1476,7 @@ async def v2_agent_stream(
 ):
     """LangGraph 기반 agent SSE 스트리밍 실행.
 
-    graph.stream()을 asyncio.to_thread()로 감싸 노드별 완료 이벤트를 SSE로 전송한다.
+    graph.astream()을 사용해 노드별 완료 이벤트를 SSE로 전송한다.
 
     이벤트 형식 (각 줄: ``data: <JSON>\\n\\n``):
       - 노드 진행: ``{"node": "<name>", "status": "completed", ...}``
@@ -1501,88 +1509,55 @@ async def v2_agent_stream(
     }
 
     async def _generate() -> AsyncGenerator[str, None]:
-        event_queue: "queue.Queue[dict | None]" = queue.Queue()
-
-        def _stream_in_thread():
-            """graph.stream()을 별도 스레드에서 실행하고 결과를 queue에 넣는다."""
-            try:
-                for chunk in manager.graph.stream(initial_state, config, stream_mode="updates"):
-                    # chunk: {node_name: state_delta}
-                    for node_name, state_delta in chunk.items():
-                        event: dict = {
-                            "node": node_name,
-                            "status": "completed",
-                        }
-                        # synthesis 완료 시 evidence_items와 task_type을 이벤트에 포함.
-                        # 전제: stream_mode="updates"에서 state_delta는 노드의 raw return dict다.
-                        # LangGraph 버전 업그레이드 시 이 구조가 변경될 수 있으므로 주의.
-                        # evidence_items 스키마: EvidenceItem.to_dict() 필드를 따른다.
-                        #   source_type: "rag" | "api" | "llm_generated"
-                        #   title, excerpt, link_or_path, page, score, provider_meta
-                        #   (웹 프론트엔드에서 직접 렌더링 시 XSS 방지를 위해 이스케이프 필요)
-                        if node_name == "synthesis" and isinstance(state_delta, dict):
-                            if state_delta.get("final_text"):
-                                event["final_text"] = state_delta["final_text"]
-                            if state_delta.get("evidence_items"):
-                                event["evidence_items"] = state_delta["evidence_items"]
-                            if state_delta.get("task_type"):
-                                event["task_type"] = state_delta["task_type"]
-                        # approval_wait가 interrupt()를 호출하면 stream이 끝나기 전에
-                        # 이 이벤트가 마지막으로 전송된다.
-                        if node_name == "approval_wait":
-                            # interrupt 상태 확인
-                            try:
-                                graph_state = manager.graph.get_state(config)
-                                if graph_state.next:
-                                    approval_value = None
-                                    if graph_state.tasks and graph_state.tasks[0].interrupts:
-                                        approval_value = graph_state.tasks[0].interrupts[0].value
-                                    event = {
-                                        "node": "approval_wait",
-                                        "status": "awaiting_approval",
-                                        "approval_request": approval_value,
-                                        "thread_id": thread_id,
-                                        "session_id": session_id,
-                                    }
-                            except Exception as exc:
-                                logger.warning(f"[v2/agent/stream] get_state 실패: {exc}")
-                                # get_state 실패해도 approval_wait 이벤트는 전송
-                                event["status"] = "awaiting_approval"
-                                event["approval_request"] = {
-                                    "prompt": "승인 정보를 불러올 수 없습니다. /v2/agent/approve로 진행하세요."
+        try:
+            async for chunk in manager.graph.astream(initial_state, config, stream_mode="updates"):
+                # chunk: {node_name: state_delta}
+                for node_name, state_delta in chunk.items():
+                    event: dict = {
+                        "node": node_name,
+                        "status": "completed",
+                    }
+                    # synthesis 완료 시 evidence_items와 task_type을 이벤트에 포함.
+                    # 전제: stream_mode="updates"에서 state_delta는 노드의 raw return dict다.
+                    # LangGraph 버전 업그레이드 시 이 구조가 변경될 수 있으므로 주의.
+                    # evidence_items 스키마: EvidenceItem.to_dict() 필드를 따른다.
+                    #   source_type: "rag" | "api" | "llm_generated"
+                    #   title, excerpt, link_or_path, page, score, provider_meta
+                    #   (웹 프론트엔드에서 직접 렌더링 시 XSS 방지를 위해 이스케이프 필요)
+                    if node_name == "synthesis" and isinstance(state_delta, dict):
+                        if state_delta.get("final_text"):
+                            event["final_text"] = state_delta["final_text"]
+                        if state_delta.get("evidence_items"):
+                            event["evidence_items"] = state_delta["evidence_items"]
+                        if state_delta.get("task_type"):
+                            event["task_type"] = state_delta["task_type"]
+                    if node_name == "approval_wait":
+                        try:
+                            graph_state = await manager.graph.aget_state(config)
+                            if graph_state.next:
+                                event = {
+                                    "node": "approval_wait",
+                                    "status": "awaiting_approval",
+                                    "approval_request": _extract_approval_request(graph_state),
+                                    "thread_id": thread_id,
+                                    "session_id": session_id,
                                 }
-                        event_queue.put(event)
-            except Exception as exc:
-                logger.error(f"[v2/agent/stream] 스레드 예외: {exc}")
-                event_queue.put({"node": "error", "status": "error", "error": str(exc)})
-            finally:
-                event_queue.put(None)  # sentinel
+                        except Exception as exc:
+                            logger.warning(f"[v2/agent/stream] aget_state 실패: {exc}")
+                            event["status"] = "awaiting_approval"
+                            event["approval_request"] = {
+                                "prompt": "승인 정보를 불러올 수 없습니다. /v2/agent/approve로 진행하세요."
+                            }
 
-        thread = threading.Thread(target=_stream_in_thread, daemon=True)
-        thread.start()
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
-        while True:
-            try:
-                event = await asyncio.to_thread(event_queue.get, True, 0.5)
-            except queue.Empty:
-                # timeout — check if thread is still alive
-                if not thread.is_alive() and event_queue.empty():
-                    break
-                continue
-
-            if event is None:
-                # sentinel: stream complete
-                break
-
-            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-
-            # Stop streaming after awaiting_approval (client must call /v2/agent/approve)
-            if event.get("status") == "awaiting_approval" or event.get("node") == "error":
-                break
-
-        thread.join(timeout=1.0)
-        if thread.is_alive():
-            logger.warning("[v2/agent/stream] 스트리밍 스레드가 1초 내에 종료되지 않았습니다.")
+                    # Stop streaming after awaiting_approval (client must call /v2/agent/approve)
+                    if event.get("status") == "awaiting_approval":
+                        return
+        except Exception as exc:
+            logger.error(f"[v2/agent/stream] 스트림 예외: {exc}")
+            error_event = {"node": "error", "status": "error", "error": str(exc)}
+            yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(_generate(), media_type="text/event-stream")
 
@@ -1635,22 +1610,18 @@ async def v2_agent_run(
     }
 
     try:
-        # interrupt()는 sync invoke 경로에서 가장 안정적으로 동작한다.
-        await asyncio.to_thread(manager.graph.invoke, initial_state, config)
+        await manager.graph.ainvoke(initial_state, config)
 
         # interrupt 상태 확인
-        graph_state = await asyncio.to_thread(manager.graph.get_state, config)
+        graph_state = await manager.graph.aget_state(config)
         if graph_state.next:
             # interrupt 대기 중: approval_request 정보를 클라이언트에 반환
-            approval_value = None
-            if graph_state.tasks and graph_state.tasks[0].interrupts:
-                approval_value = graph_state.tasks[0].interrupts[0].value
             return {
                 "status": "awaiting_approval",
                 "thread_id": thread_id,
                 "session_id": session_id,
                 "graph_run_id": request_id,
-                "approval_request": approval_value,
+                "approval_request": _extract_approval_request(graph_state),
             }
 
         # interrupt 없이 완료된 경우 (rejected 또는 오류)
@@ -1712,9 +1683,7 @@ async def v2_agent_approve(
     config = {"configurable": {"thread_id": thread_id}}
 
     try:
-        # resume도 동일한 sync invoke 경로로 처리한다.
-        result = await asyncio.to_thread(
-            manager.graph.invoke,
+        result = await manager.graph.ainvoke(
             Command(resume={"approved": approved}),
             config,
         )
@@ -1744,7 +1713,7 @@ async def v2_agent_approve(
         request_id = ""
         try:
             if manager.session_store:
-                graph_state = await asyncio.to_thread(manager.graph.get_state, config)
+                graph_state = await manager.graph.aget_state(config)
                 state_values = graph_state.values if graph_state else {}
                 session_id = state_values.get("session_id", "")
                 request_id = state_values.get("request_id", "")
@@ -1794,7 +1763,7 @@ async def v2_agent_cancel(
 
     try:
         # interrupt 상태 확인
-        graph_state = await asyncio.to_thread(manager.graph.get_state, config)
+        graph_state = await manager.graph.aget_state(config)
         if not graph_state or not graph_state.next:
             raise HTTPException(
                 status_code=409,
@@ -1804,8 +1773,7 @@ async def v2_agent_cancel(
         session_id = graph_state.values.get("session_id", "")
 
         # 강제 거절 + interrupt_reason 전달로 resume
-        result = await asyncio.to_thread(
-            manager.graph.invoke,
+        result = await manager.graph.ainvoke(
             Command(resume={"approved": False, "cancel": True}),
             config,
         )

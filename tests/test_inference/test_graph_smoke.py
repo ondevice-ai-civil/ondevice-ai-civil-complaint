@@ -127,7 +127,8 @@ class TestGraphSmoke:
         # START와 END는 별도이므로 expected가 node_names의 부분집합인지 확인
         assert expected.issubset(node_names), f"누락된 노드: {expected - node_names}"
 
-    def test_graph_runs_to_approval_interrupt(self, graph):
+    @pytest.mark.asyncio
+    async def test_graph_runs_to_approval_interrupt(self, graph):
         """graph가 approval_wait 노드에서 interrupt된다.
 
         planner 실행 후 graph가 approval_wait에서 멈추고
@@ -140,13 +141,14 @@ class TestGraphSmoke:
             "messages": [HumanMessage(content="이 민원에 대한 답변 초안 작성해줘")],
         }
 
-        graph.invoke(initial, config=config)
+        await graph.ainvoke(initial, config=config)
 
         # interrupt 상태 확인: graph가 approval_wait에서 멈춰있어야 한다
-        state = graph.get_state(config)
+        state = await graph.aget_state(config)
         assert state.next, "graph가 approval_wait에서 interrupt되어야 합니다"
 
-    def test_graph_completes_after_approval(self, graph):
+    @pytest.mark.asyncio
+    async def test_graph_completes_after_approval(self, graph):
         """승인 후 graph가 끝까지 실행되고 final_text가 생성된다.
 
         1단계: interrupt까지 실행
@@ -162,10 +164,10 @@ class TestGraphSmoke:
         }
 
         # 1단계: interrupt까지 실행
-        graph.invoke(initial, config=config)
+        await graph.ainvoke(initial, config=config)
 
         # 2단계: 승인으로 resume
-        result = graph.invoke(
+        result = await graph.ainvoke(
             Command(resume={"approved": True}),
             config=config,
         )
@@ -175,7 +177,8 @@ class TestGraphSmoke:
             result.get("approval_status") == ApprovalStatus.APPROVED.value
         ), f"approval_status가 APPROVED여야 합니다. 실제: {result.get('approval_status')}"
 
-    def test_graph_ends_on_rejection(self, graph):
+    @pytest.mark.asyncio
+    async def test_graph_ends_on_rejection(self, graph):
         """거절 시 graph가 tool_execute 없이 종료된다.
 
         1단계: interrupt까지 실행
@@ -191,10 +194,10 @@ class TestGraphSmoke:
         }
 
         # 1단계: interrupt까지 실행
-        graph.invoke(initial, config=config)
+        await graph.ainvoke(initial, config=config)
 
         # 2단계: 거절로 resume
-        result = graph.invoke(
+        result = await graph.ainvoke(
             Command(resume={"approved": False}),
             config=config,
         )
@@ -204,7 +207,8 @@ class TestGraphSmoke:
         ), f"approval_status가 REJECTED여야 합니다. 실제: {result.get('approval_status')}"
         assert not result.get("tool_results"), "거절 후 tool_results가 비어있어야 합니다"
 
-    def test_persist_logs_graph_run(self, graph, session_store):
+    @pytest.mark.asyncio
+    async def test_persist_logs_graph_run(self, graph, session_store):
         """승인 후 전체 실행 완료 시 SessionStore에 graph_run 레코드가 기록된다.
 
         plan_summary, approval_status, executed_capabilities가 포함되어야 한다.
@@ -221,10 +225,10 @@ class TestGraphSmoke:
         }
 
         # 1단계: interrupt까지 실행
-        graph.invoke(initial, config=config)
+        await graph.ainvoke(initial, config=config)
 
         # 2단계: 승인으로 resume
-        graph.invoke(
+        await graph.ainvoke(
             Command(resume={"approved": True}),
             config=config,
         )
@@ -240,7 +244,8 @@ class TestGraphSmoke:
         assert len(run.executed_capabilities) > 0, "executed_capabilities가 있어야 합니다"
         assert run.status == "completed"
 
-    def test_persist_logs_tool_runs_with_request_id(self, graph, session_store):
+    @pytest.mark.asyncio
+    async def test_persist_logs_tool_runs_with_request_id(self, graph, session_store):
         """tool_runs가 올바른 graph_run_request_id로 기록된다."""
         from langgraph.types import Command
 
@@ -254,10 +259,10 @@ class TestGraphSmoke:
         }
 
         # 1단계: interrupt까지 실행
-        graph.invoke(initial, config=config)
+        await graph.ainvoke(initial, config=config)
 
         # 2단계: 승인으로 resume
-        graph.invoke(
+        await graph.ainvoke(
             Command(resume={"approved": True}),
             config=config,
         )
@@ -273,7 +278,8 @@ class TestGraphSmoke:
                 f"실제: {tr.graph_run_request_id}"
             )
 
-    def test_persist_logs_graph_run_on_rejection(self, graph, session_store):
+    @pytest.mark.asyncio
+    async def test_persist_logs_graph_run_on_rejection(self, graph, session_store):
         """거절 시에도 graph_run 레코드가 기록된다.
 
         거절 경로도 persist 노드를 거치므로 graph_run이 남아야 한다.
@@ -290,10 +296,10 @@ class TestGraphSmoke:
         }
 
         # 1단계: interrupt까지 실행
-        graph.invoke(initial, config=config)
+        await graph.ainvoke(initial, config=config)
 
         # 2단계: 거절로 resume
-        graph.invoke(
+        await graph.ainvoke(
             Command(resume={"approved": False}),
             config=config,
         )
@@ -308,7 +314,8 @@ class TestGraphSmoke:
         assert run.status == "rejected"
         assert len(run.executed_capabilities) == 0, "거절 시 executed_capabilities가 비어야 합니다"
 
-    def test_follow_up_queries_use_context_aware_variants(self, session_store):
+    @pytest.mark.asyncio
+    async def test_follow_up_queries_use_context_aware_variants(self, session_store):
         """follow-up 요청에서 rag/api query가 각각 다른 variant를 사용한다."""
         from langgraph.types import Command
 
@@ -337,8 +344,8 @@ class TestGraphSmoke:
             "messages": [HumanMessage(content="이 답변의 근거를 붙여줘")],
         }
 
-        graph.invoke(initial, config=config)
-        graph.invoke(Command(resume={"approved": True}), config=config)
+        await graph.ainvoke(initial, config=config)
+        await graph.ainvoke(Command(resume={"approved": True}), config=config)
 
         assert "도로 포장이 파손되어 위험합니다" in executor.seen_queries["rag_search"]
         assert "도로 보수 접수를 진행하겠습니다." in executor.seen_queries["rag_search"]
@@ -429,7 +436,8 @@ class TestToolExecuteApprovalGuard:
 class TestRejectionIdleRecovery:
     """거절 후 graph idle 상태 복귀 테스트."""
 
-    def test_rejection_produces_clean_idle_state(self, graph, session_store):
+    @pytest.mark.asyncio
+    async def test_rejection_produces_clean_idle_state(self, graph, session_store):
         """거절 후 graph가 error 없이 clean idle 상태로 복귀한다."""
         from langgraph.types import Command
 
@@ -439,13 +447,13 @@ class TestRejectionIdleRecovery:
             "request_id": "test-idle-req",
             "messages": [HumanMessage(content="답변 작성해줘")],
         }
-        graph.invoke(initial, config=config)
-        result = graph.invoke(Command(resume={"approved": False}), config=config)
+        await graph.ainvoke(initial, config=config)
+        result = await graph.ainvoke(Command(resume={"approved": False}), config=config)
 
         # idle 조건:
         assert result.get("approval_status") == ApprovalStatus.REJECTED.value
         assert not result.get("tool_results"), "거절 후 tool이 실행되면 안 됩니다"
         assert not result.get("error"), "거절 후 error가 없어야 합니다"
 
-        state = graph.get_state(config)
+        state = await graph.aget_state(config)
         assert not state.next, "거절 후 graph가 idle 상태여야 합니다"

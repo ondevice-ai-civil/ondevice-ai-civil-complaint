@@ -248,7 +248,8 @@ def evidence_graph():
         yield graph, store
 
 
-def test_graph_follow_up_evidence_preserves_draft(evidence_graph):
+@pytest.mark.asyncio
+async def test_graph_follow_up_evidence_preserves_draft(evidence_graph):
     """2턴 그래프: 초안 후 근거 요청 시 Turn 1 초안이 Turn 2 final_text에 포함된다.
 
     검증:
@@ -272,11 +273,11 @@ def test_graph_follow_up_evidence_preserves_draft(evidence_graph):
         "request_id": "req-1",
         "messages": [HumanMessage(content="도로 파손 민원 답변 작성해줘")],
     }
-    graph.invoke(initial_state, config)
+    await graph.ainvoke(initial_state, config)
     # approval interrupt 후 승인
-    graph.invoke(Command(resume={"approved": True}), config)
+    await graph.ainvoke(Command(resume={"approved": True}), config)
 
-    turn1_state = graph.get_state(config).values
+    turn1_state = (await graph.aget_state(config)).values
     assert (
         turn1_state.get("final_text") == TURN1_DRAFT
     ), "Turn 1 final_text가 stub 응답과 일치해야 한다"
@@ -288,10 +289,10 @@ def test_graph_follow_up_evidence_preserves_draft(evidence_graph):
         "request_id": "req-2",
         "messages": [HumanMessage(content="근거를 보여줘")],
     }
-    graph.invoke(initial_state2, config2)
-    graph.invoke(Command(resume={"approved": True}), config2)
+    await graph.ainvoke(initial_state2, config2)
+    await graph.ainvoke(Command(resume={"approved": True}), config2)
 
-    turn2_state = graph.get_state(config2).values
+    turn2_state = (await graph.aget_state(config2)).values
     evidence_items = turn2_state.get("evidence_items", [])
     assert isinstance(evidence_items, list), "evidence_items는 리스트여야 한다"
     assert len(evidence_items) > 0, "Turn 2에서 근거 보강 후 evidence_items가 비어있으면 안 된다"

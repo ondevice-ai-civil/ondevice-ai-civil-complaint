@@ -56,6 +56,9 @@ jobs:
           uv tool install bandit && uv tool install pip-audit
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      - name: Add uv tool bin to PATH
+        run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: Run Bandit (Static Analysis)
         env:
           BANDIT_TARGET: ${{ inputs.bandit-target }}

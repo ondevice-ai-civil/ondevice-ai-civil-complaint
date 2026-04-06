@@ -33,8 +33,13 @@ jobs:
       - name: Install MkDocs dependencies
         run: pip install -r site/requirements-docs.txt
 
+      - name: Build docs (strict)
+        if: inputs.strict
+        run: cd site && mkdocs build --strict
+
       - name: Build docs
-        run: cd site && mkdocs build ${{ inputs.strict && '--strict' || '' }}
+        if: ${{ !inputs.strict }}
+        run: cd site && mkdocs build
 
       - name: Upload pages artifact
         if: inputs.upload-pages-artifact

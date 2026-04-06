@@ -50,7 +50,9 @@ jobs:
           key: uv-tools-${{ runner.os }}-bandit-pip-audit
 
       - name: Install security tools
-        run: uv tool install bandit && uv tool install pip-audit
+        run: |
+          uv tool install bandit && uv tool install pip-audit
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Run Bandit (Static Analysis)
         env:

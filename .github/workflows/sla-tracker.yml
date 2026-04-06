@@ -1,0 +1,87 @@
+name: SLA Tracker
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  check-sla:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check issue response SLA
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const SLA = {
+              'priority:high': 24,
+              'bug': 48,
+              'enhancement': 72,
+              'default': 72
+            };
+
+            const now = new Date();
+            const issues = await github.rest.issues.listForRepo({
+              owner, repo,
+              state: 'open',
+              labels: 'triage',
+              per_page: 50,
+              sort: 'created',
+              direction: 'asc',
+            });
+
+            const breached = [];
+
+            for (const issue of issues.data) {
+              const created = new Date(issue.created_at);
+              const hoursOpen = (now - created) / (1000 * 60 * 60);
+              const issueLabels = issue.labels.map(l => l.name);
+
+              let slaHours = SLA.default;
+              for (const [label, hours] of Object.entries(SLA)) {
+                if (issueLabels.includes(label) && hours < slaHours) {
+                  slaHours = hours;
+                }
+              }
+
+              if (hoursOpen > slaHours) {
+                breached.push({
+                  number: issue.number,
+                  title: issue.title,
+                  hoursOpen: Math.round(hoursOpen),
+                  slaHours: slaHours,
+                });
+
+                if (!issueLabels.includes('sla:breached')) {
+                  await github.rest.issues.addLabels({
+                    owner, repo,
+                    issue_number: issue.number,
+                    labels: ['sla:breached'],
+                  });
+                }
+              }
+            }
+
+            if (breached.length > 0) {
+              const table = breached.map(b =>
+                `| #${b.number} | ${b.title} | ${b.hoursOpen}h | ${b.slaHours}h |`
+              ).join('\n');
+
+              core.summary
+                .addHeading('SLA Breach Report', 2)
+                .addRaw(`| Issue | Title | Open | SLA |\n|---|---|---|---|\n${table}`)
+                .write();
+
+              core.warning(`${breached.length}건의 이슈가 SLA를 초과했습니다.`);
+            } else {
+              core.summary.addHeading('SLA Status', 2)
+                .addRaw('모든 이슈가 SLA 내에 있습니다.')
+                .write();
+            }

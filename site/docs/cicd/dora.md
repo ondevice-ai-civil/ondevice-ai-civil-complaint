@@ -43,8 +43,8 @@ GitHub Actions (매주 월요일 09:00 KST + main push 시)
 ## 대시보드
 
 - **Grafana Cloud 실시간**: [GovOn DORA Dashboard](https://umyunsang.grafana.net/d/govon-dora/govon-dora-metrics-dashboard?orgId=1&from=now-7d&to=now&timezone=Asia%2FSeoul)
-- **Chart.js 보고서**: [`metrics/reports/latest-dora.html`](../../../metrics/reports/latest-dora.html)
-- **대시보드 JSON**: [`metrics/grafana-cloud/dora-dashboard.json`](../../../metrics/grafana-cloud/dora-dashboard.json)
+- **Chart.js 보고서**: `metrics/reports/latest-dora.html`
+- **대시보드 JSON**: `metrics/grafana-cloud/dora-dashboard.json`
 
 ## 보고서 생성
 
@@ -107,8 +107,8 @@ python metrics/scripts/generate_report.py
 
 ## 관련 파일
 
-- 워크플로우: [`.github/workflows/dora-metrics.yml`](../../../.github/workflows/dora-metrics.yml)
-- 보고서 생성: [`metrics/scripts/generate_report.py`](../../../metrics/scripts/generate_report.py)
-- 대시보드 JSON: [`metrics/grafana-cloud/dora-dashboard.json`](../../../metrics/grafana-cloud/dora-dashboard.json)
-- 수집 데이터: [`metrics/dora/`](../../../metrics/dora/)
-- 보고서 출력: [`metrics/reports/`](../../../metrics/reports/)
+- 워크플로우: `.github/workflows/dora-metrics.yml`
+- 보고서 생성: `metrics/scripts/generate_report.py`
+- 대시보드 JSON: `metrics/grafana-cloud/dora-dashboard.json`
+- 수집 데이터: `metrics/dora/`
+- 보고서 출력: `metrics/reports/`

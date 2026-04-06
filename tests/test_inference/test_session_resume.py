@@ -18,7 +18,6 @@ import time
 
 import pytest
 from langchain_core.messages import HumanMessage
-from langgraph.checkpoint.memory import MemorySaver
 
 from src.inference.graph.builder import build_govon_graph
 from src.inference.graph.executor_adapter import ExecutorAdapter
@@ -27,6 +26,7 @@ from src.inference.graph.planner_adapter import (  # CI fallback: 실제 운영�
 )
 from src.inference.graph.state import ApprovalStatus
 from src.inference.session_context import SessionStore
+
 try:
     from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 except ImportError:  # pragma: no cover - optional dependency

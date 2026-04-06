@@ -43,7 +43,7 @@ jobs:
           path: site/site
 
       - name: Upload regular artifact
-        if: "!inputs.upload-pages-artifact"
+        if: ${{ !inputs.upload-pages-artifact }}
         uses: actions/upload-artifact@v7
         with:
           name: docs-site-preview

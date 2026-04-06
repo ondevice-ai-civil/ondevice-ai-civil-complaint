@@ -30,8 +30,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write
-      issues: write
+      security-events: ${{ inputs.upload-sarif && 'write' || 'read' }}
+      issues: ${{ inputs.create-issue-on-vuln && 'write' || 'read' }}
     steps:
       - uses: actions/checkout@v6
 
@@ -50,14 +50,21 @@ jobs:
         run: python -m pip install bandit pip-audit
 
       - name: Run Bandit (Static Analysis)
+        env:
+          BANDIT_TARGET: ${{ inputs.bandit-target }}
+          BANDIT_SEVERITY: ${{ inputs.bandit-severity }}
         run: |
-          bandit -r ${{ inputs.bandit-target }} ${{ inputs.bandit-severity }} -x tests
+          bandit -r "$BANDIT_TARGET" $BANDIT_SEVERITY -x tests
+
+      - name: Compile dependency lockfile
+        if: inputs.pip-audit-enabled
+        run: |
+          uv pip compile pyproject.toml -o /tmp/requirements-lock.txt 2>/dev/null || true
 
       - name: Run Dependency Audit
         if: inputs.pip-audit-enabled
         continue-on-error: true
         run: |
-          uv pip compile pyproject.toml -o /tmp/requirements-lock.txt 2>/dev/null || true
           if [ -f /tmp/requirements-lock.txt ]; then
             pip-audit -r /tmp/requirements-lock.txt
           elif [ -f requirements.txt ]; then
@@ -69,8 +76,11 @@ jobs:
       - name: Run Bandit with SARIF output
         if: inputs.upload-sarif
         continue-on-error: true
+        env:
+          BANDIT_TARGET: ${{ inputs.bandit-target }}
+          BANDIT_SEVERITY: ${{ inputs.bandit-severity }}
         run: |
-          bandit -r ${{ inputs.bandit-target }} ${{ inputs.bandit-severity }} -x tests -f sarif -o bandit-results.sarif 2>/dev/null || true
+          bandit -r "$BANDIT_TARGET" $BANDIT_SEVERITY -x tests -f sarif -o bandit-results.sarif 2>/dev/null || true
 
       - name: Upload Bandit SARIF to Code Scanning
         if: inputs.upload-sarif && hashFiles('bandit-results.sarif') != ''
@@ -84,7 +94,6 @@ jobs:
         id: audit
         continue-on-error: true
         run: |
-          uv pip compile pyproject.toml -o /tmp/requirements-lock.txt 2>/dev/null || true
           AUDIT_EXIT=0
           if [ -f /tmp/requirements-lock.txt ]; then
             pip-audit -r /tmp/requirements-lock.txt -f json -o audit-results.json 2>/dev/null || AUDIT_EXIT=$?

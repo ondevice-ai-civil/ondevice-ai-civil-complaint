@@ -111,6 +111,7 @@ jobs:
       pip-audit-enabled: false
       upload-sarif: false
       create-issue-on-vuln: false
+    secrets: inherit
 
   runtime-contract:
     needs: [detect-changes, test]

@@ -34,8 +34,6 @@ jobs:
     permissions:
       contents: read
     uses: ./.github/workflows/reusable-docs-build.yml
-    permissions:
-      contents: read
     with:
       strict: true
       upload-pages-artifact: true

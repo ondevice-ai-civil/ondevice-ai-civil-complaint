@@ -49,7 +49,7 @@ jobs:
           path: |
             ~/.local/share/uv/tools
             ~/.local/bin
-          key: uv-tools-${{ runner.os }}-bandit-pip-audit
+          key: uv-tools-${{ runner.os }}-bandit-pip-audit-v2
 
       - name: Install security tools
         run: |

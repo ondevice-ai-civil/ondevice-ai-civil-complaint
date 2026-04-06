@@ -177,7 +177,11 @@ class LLMPlannerAdapter(PlannerAdapter):
         if context.get("session_context"):
             parts.append(f"[세션 맥락]\n{context['session_context']}")
         if context.get("previous_assistant_response"):
-            parts.append(f"[이전 답변]\n{context['previous_assistant_response']}")
+            # planner는 intent 분류만 하므로 앞 400자로 충분하다.
+            prev = str(context["previous_assistant_response"])[:400]
+            if len(str(context["previous_assistant_response"])) > 400:
+                prev += "… (생략)"
+            parts.append(f"[이전 답변]\n{prev}")
         user_query = messages[-1].content if messages else ""
         parts.append(f"[사용자 요청]\n{user_query}")
         return "\n\n".join(parts)

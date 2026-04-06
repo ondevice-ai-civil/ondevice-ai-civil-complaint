@@ -249,15 +249,26 @@ def evidence_graph():
 
 
 def test_graph_follow_up_evidence_preserves_draft(evidence_graph):
-    """2턴 그래프: 초안 후 근거 요청 시 synthesis에 evidence_items가 채워진다."""
+    """2턴 그래프: 초안 후 근거 요청 시 Turn 1 초안이 Turn 2 final_text에 포함된다.
+
+    검증:
+      - Turn 1 final_text가 session store에 저장된다
+      - Turn 2 session_load_node가 동일 session_id로 previous_assistant_response를 복원
+      - Turn 2 final_text는 Turn 1 초안 + 근거 섹션으로 구성된다
+      - Turn 2 evidence_items가 비어있지 않다
+    """
     graph, store = evidence_graph
 
-    thread_id = "test-evidence-flow"
-    config = {"configurable": {"thread_id": thread_id}}
+    # Turn 1과 Turn 2는 같은 session_id를 공유하지만
+    # LangGraph checkpointer thread_id는 분리해 독립적인 그래프 실행을 보장한다
+    session_id = "test-evidence-flow"
+    TURN1_DRAFT = "도로 파손 민원을 접수해드리겠습니다."
+
+    config = {"configurable": {"thread_id": session_id}}
 
     # Turn 1: 초안 요청
     initial_state = {
-        "session_id": thread_id,
+        "session_id": session_id,
         "request_id": "req-1",
         "messages": [HumanMessage(content="도로 파손 민원 답변 작성해줘")],
     }
@@ -266,12 +277,14 @@ def test_graph_follow_up_evidence_preserves_draft(evidence_graph):
     graph.invoke(Command(resume={"approved": True}), config)
 
     turn1_state = graph.get_state(config).values
-    assert turn1_state.get("final_text"), "Turn 1 final_text가 있어야 한다"
+    assert (
+        turn1_state.get("final_text") == TURN1_DRAFT
+    ), "Turn 1 final_text가 stub 응답과 일치해야 한다"
 
-    # Turn 2: 근거 보강 요청
-    config2 = {"configurable": {"thread_id": thread_id + "-ev"}}
+    # Turn 2: 근거 보강 요청 — 같은 session_id로 previous_assistant_response 주입 확인
+    config2 = {"configurable": {"thread_id": session_id + "-ev"}}
     initial_state2 = {
-        "session_id": thread_id,
+        "session_id": session_id,  # 같은 세션: persist_node가 Turn 1 응답을 저장했음
         "request_id": "req-2",
         "messages": [HumanMessage(content="근거를 보여줘")],
     }
@@ -281,6 +294,13 @@ def test_graph_follow_up_evidence_preserves_draft(evidence_graph):
     turn2_state = graph.get_state(config2).values
     evidence_items = turn2_state.get("evidence_items", [])
     assert isinstance(evidence_items, list), "evidence_items는 리스트여야 한다"
+    assert len(evidence_items) > 0, "Turn 2에서 근거 보강 후 evidence_items가 비어있으면 안 된다"
+
+    final_text2 = turn2_state.get("final_text", "")
+    assert TURN1_DRAFT in final_text2, (
+        "Turn 2 final_text는 Turn 1 초안을 포함해야 한다 "
+        "(session_load → previous_assistant_response → _extract_final_text prepend 검증)"
+    )
 
 
 # ---------------------------------------------------------------------------

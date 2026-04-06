@@ -388,6 +388,31 @@ async def persist_node(
     return {}
 
 
+def _safe_score(item: dict) -> float:
+    """evidence item의 score를 안전하게 float으로 변환한다.
+
+    외부 API 결과의 score가 문자열이거나 None일 수 있으므로
+    변환 실패 시 0.0을 반환한다.
+    """
+    try:
+        return float(item.get("score", 0.0))
+    except (ValueError, TypeError):
+        return 0.0
+
+
+# accumulated 컨텍스트 탐색 시 스킵할 메타 키 목록 (모듈 레벨 상수)
+_CONTEXT_META_KEYS: frozenset[str] = frozenset(
+    {
+        "session_context",
+        "query",
+        "query_variants",
+        "previous_user_query",
+        "previous_assistant_response",
+        "recent_tool_summary",
+    }
+)
+
+
 def _collect_evidence_items(accumulated: Dict[str, Any]) -> list[dict]:
     """accumulated 컨텍스트에서 모든 EvidenceItem dict를 수집한다.
 
@@ -404,17 +429,9 @@ def _collect_evidence_items(accumulated: Dict[str, Any]) -> list[dict]:
     list[dict]
         EvidenceItem.to_dict() 형태의 dict 리스트.
     """
-    _SKIP_KEYS = {
-        "session_context",
-        "query",
-        "query_variants",
-        "previous_user_query",
-        "previous_assistant_response",
-        "recent_tool_summary",
-    }
     items: list[dict] = []
     for key, payload in accumulated.items():
-        if key in _SKIP_KEYS:
+        if key in _CONTEXT_META_KEYS:
             continue
         if not isinstance(payload, dict):
             continue
@@ -423,8 +440,8 @@ def _collect_evidence_items(accumulated: Dict[str, Any]) -> list[dict]:
             for item in ev["items"]:
                 if isinstance(item, dict):
                     items.append(item)
-    # score 내림차순, 최대 10개
-    items.sort(key=lambda x: float(x.get("score", 0.0)), reverse=True)
+    # score 내림차순, 최대 10개 — 외부 값이므로 _safe_score로 방어적 변환
+    items.sort(key=_safe_score, reverse=True)
     return items[:10]
 
 
@@ -526,6 +543,12 @@ def _build_evidence_section(accumulated: Dict[str, Any]) -> str:
     append_evidence capability의 직접 텍스트가 있으면 우선 사용하고,
     없으면 evidence items에서 구조화된 텍스트를 생성한다.
 
+    계약(contract):
+      - 이 함수는 **근거 섹션만** 반환한다. 기존 답변(previous_draft)은 포함하지 않는다.
+      - 호출자(_extract_final_text)가 previous_draft와 병합하여 반환한다.
+      - AppendEvidenceCapability.execute()의 text 필드도 근거 섹션만 담아야 한다.
+        (기존 답변을 포함한 완전 응답을 text에 넣으면 _extract_final_text에서 중복된다.)
+
     Parameters
     ----------
     accumulated : Dict[str, Any]
@@ -537,6 +560,7 @@ def _build_evidence_section(accumulated: Dict[str, Any]) -> str:
         근거 섹션 텍스트. 근거가 없으면 빈 문자열.
     """
     # append_evidence capability의 직접 생성 텍스트 우선 사용
+    # 이 텍스트는 근거 섹션만 담아야 한다 (기존 답변 포함 금지).
     ae_payload = accumulated.get("append_evidence", {})
     if isinstance(ae_payload, dict) and ae_payload.get("text"):
         return str(ae_payload["text"])

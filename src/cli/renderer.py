@@ -134,7 +134,7 @@ def render_evidence_section(evidence_items: list) -> str:
             lines.append(f"  {idx}. {title}: {excerpt}" if title else f"  {idx}. {excerpt}")
             idx += 1
 
-    return "\n".join(lines) if idx > 1 else ""
+    return "\n".join(lines) if len(lines) > 1 else ""
 
 
 def render_result(result: dict) -> None:

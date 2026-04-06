@@ -1397,7 +1397,13 @@ async def v2_agent_stream(
                             "node": node_name,
                             "status": "completed",
                         }
-                        # synthesis 완료 시 evidence_items와 task_type을 이벤트에 포함
+                        # synthesis 완료 시 evidence_items와 task_type을 이벤트에 포함.
+                        # 전제: stream_mode="updates"에서 state_delta는 노드의 raw return dict다.
+                        # LangGraph 버전 업그레이드 시 이 구조가 변경될 수 있으므로 주의.
+                        # evidence_items 스키마: EvidenceItem.to_dict() 필드를 따른다.
+                        #   source_type: "rag" | "api" | "llm_generated"
+                        #   title, excerpt, link_or_path, page, score, provider_meta
+                        #   (웹 프론트엔드에서 직접 렌더링 시 XSS 방지를 위해 이스케이프 필요)
                         if node_name == "synthesis" and isinstance(state_delta, dict):
                             if state_delta.get("final_text"):
                                 event["final_text"] = state_delta["final_text"]

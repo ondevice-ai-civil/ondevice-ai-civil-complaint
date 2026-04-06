@@ -80,30 +80,9 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.runtime == 'true' ||
       needs.detect-changes.outputs.packaging == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup Python with uv
-        uses: ./.github/actions/setup-python-uv
-        with:
-          python-version: '3.12'
-          extras: '--extra dev'
-
-      - name: Black
-        run: uv run black --check .
-
-      - name: isort
-        run: uv run isort --check .
-
-      - name: Flake8
-        run: |
-          uv run flake8 . \
-            --count \
-            --select=E9,F63,F7,F82 \
-            --show-source \
-            --statistics \
-            --exclude=.venv,.git,__pycache__,build,dist
+    uses: ./.github/workflows/reusable-lint.yml
+    with:
+      python-version: '3.12'
 
   test:
     needs: detect-changes
@@ -125,17 +104,13 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.runtime == 'true' ||
       needs.detect-changes.outputs.packaging == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup Python with uv
-        uses: ./.github/actions/setup-python-uv
-        with:
-          extras: '--extra dev'
-
-      - name: Run Bandit on runtime code
-        run: uv run bandit -r src/inference -lll -x tests
+    uses: ./.github/workflows/reusable-security-scan.yml
+    with:
+      bandit-target: src/inference
+      bandit-severity: '-lll'
+      pip-audit-enabled: false
+      upload-sarif: false
+      create-issue-on-vuln: false
 
   runtime-contract:
     needs: [detect-changes, test]
@@ -234,34 +209,14 @@ jobs:
           retention-days: 7
 
   docs-build:
-    needs: detect-changes
     if: |
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.docs == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.10'
-          cache: 'pip'
-          cache-dependency-path: 'site/requirements-docs.txt'
-
-      - name: Install MkDocs dependencies
-        run: pip install -r site/requirements-docs.txt
-
-      - name: Build docs with strict mode
-        run: cd site && mkdocs build --strict
-
-      - name: Upload docs artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: docs-site-preview
-          path: site/site
-          retention-days: 7
+    needs: [detect-changes]
+    uses: ./.github/workflows/reusable-docs-build.yml
+    with:
+      strict: true
+      upload-pages-artifact: false
 
   build:
     needs: [detect-changes, lint, test]

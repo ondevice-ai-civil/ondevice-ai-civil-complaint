@@ -42,8 +42,7 @@ class IssueDetectorCapability(CapabilityBase):
         return CapabilityMetadata(
             name="issue_detector",
             description=(
-                "급증키워드, 오늘이슈, 최다키워드를 조합하여 "
-                "현재 주요 민원 이슈를 탐지합니다."
+                "급증키워드, 오늘이슈, 최다키워드를 조합하여 " "현재 주요 민원 이슈를 탐지합니다."
             ),
             approval_summary="공공데이터포털에서 민원 이슈 현황을 조회합니다.",
             provider="data.go.kr",
@@ -156,8 +155,7 @@ class IssueDetectorCapability(CapabilityBase):
                     EvidenceItem(
                         source_type="api",
                         title=item.get("term", ""),
-                        excerpt=f"최다키워드: {item.get('term', '')}, "
-                        f"빈도={item.get('df', 0)}",
+                        excerpt=f"최다키워드: {item.get('term', '')}, " f"빈도={item.get('df', 0)}",
                         provider_meta={"provider": provider, "api": "top_keyword"},
                     )
                 )
@@ -172,9 +170,7 @@ class IssueDetectorCapability(CapabilityBase):
                 provider=provider,
                 empty_reason="no_match" if len(errors) < 3 else "provider_error",
                 error="; ".join(errors) if errors else None,
-                evidence=EvidenceEnvelope(
-                    items=[], status=status, errors=errors
-                ),
+                evidence=EvidenceEnvelope(items=[], status=status, errors=errors),
             )
 
         context_text = self._build_context_text(rising, topics, top_kw)
@@ -202,27 +198,33 @@ class IssueDetectorCapability(CapabilityBase):
     ) -> tuple:
         """3개 API를 병렬 호출한다."""
         tasks = [
-            self._safe_call(
-                self._action.get_rising_keywords,
-                analysis_time=analysis_time,
-                max_result=max_result,
-            )
-            if analysis_time
-            else self._noop(),
-            self._safe_call(
-                self._action.get_today_topics,
-                search_date=search_date,
-                top_n=max_result,
-            )
-            if search_date
-            else self._noop(),
-            self._safe_call(
-                self._action.get_top_keywords_by_period,
-                analysis_time=analysis_time or search_date,
-                max_result=max_result,
-            )
-            if (analysis_time or search_date)
-            else self._noop(),
+            (
+                self._safe_call(
+                    self._action.get_rising_keywords,
+                    analysis_time=analysis_time,
+                    max_result=max_result,
+                )
+                if analysis_time
+                else self._noop()
+            ),
+            (
+                self._safe_call(
+                    self._action.get_today_topics,
+                    search_date=search_date,
+                    top_n=max_result,
+                )
+                if search_date
+                else self._noop()
+            ),
+            (
+                self._safe_call(
+                    self._action.get_top_keywords_by_period,
+                    analysis_time=analysis_time or search_date,
+                    max_result=max_result,
+                )
+                if (analysis_time or search_date)
+                else self._noop()
+            ),
         ]
         return await asyncio.gather(*tasks)
 

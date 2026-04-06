@@ -41,8 +41,7 @@ class DemographicsLookupCapability(CapabilityBase):
         return CapabilityMetadata(
             name="demographics_lookup",
             description=(
-                "성별, 연령, 인구대비 비율을 조합하여 "
-                "민원 인구통계 분석 결과를 제공합니다."
+                "성별, 연령, 인구대비 비율을 조합하여 " "민원 인구통계 분석 결과를 제공합니다."
             ),
             approval_summary="공공데이터포털에서 민원 인구통계를 분석합니다.",
             provider="data.go.kr",
@@ -135,8 +134,7 @@ class DemographicsLookupCapability(CapabilityBase):
                     EvidenceItem(
                         source_type="api",
                         title=item.get("label", ""),
-                        excerpt=f"성별: {item.get('label', '')}, "
-                        f"건수={item.get('hits', 0)}",
+                        excerpt=f"성별: {item.get('label', '')}, " f"건수={item.get('hits', 0)}",
                         provider_meta={"provider": provider, "api": "gender"},
                     )
                 )
@@ -151,8 +149,7 @@ class DemographicsLookupCapability(CapabilityBase):
                     EvidenceItem(
                         source_type="api",
                         title=f"{item.get('label', '')}대",
-                        excerpt=f"연령: {item.get('label', '')}대, "
-                        f"건수={item.get('hits', 0)}",
+                        excerpt=f"연령: {item.get('label', '')}대, " f"건수={item.get('hits', 0)}",
                         provider_meta={"provider": provider, "api": "age"},
                     )
                 )

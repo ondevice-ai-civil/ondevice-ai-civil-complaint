@@ -40,8 +40,7 @@ class StatsLookupCapability(CapabilityBase):
         return CapabilityMetadata(
             name="stats_lookup",
             description=(
-                "민원 통계, 트렌드, 건수, 기관/지역 순위를 조합하여 "
-                "민원 현황 통계를 제공합니다."
+                "민원 통계, 트렌드, 건수, 기관/지역 순위를 조합하여 " "민원 현황 통계를 제공합니다."
             ),
             approval_summary="공공데이터포털에서 민원 통계 현황을 조회합니다.",
             provider="data.go.kr",
@@ -247,7 +246,9 @@ class StatsLookupCapability(CapabilityBase):
         parts: List[str] = []
         period_str = ""
         if date_from and date_to:
-            period_str = f"{date_from[:4]}/{date_from[4:6]}/{date_from[6:8]}~{date_to[4:6]}/{date_to[6:8]}"
+            period_str = (
+                f"{date_from[:4]}/{date_from[4:6]}/{date_from[6:8]}~{date_to[4:6]}/{date_to[6:8]}"
+            )
 
         doc_count = results_map.get("doc_count")
         if doc_count and len(doc_count) > 0:
@@ -273,15 +274,11 @@ class StatsLookupCapability(CapabilityBase):
         region = results_map.get("region_ranking")
         if region and len(region) > 0:
             top = region[0]
-            parts.append(
-                f"{top.get('label', '')} 최다({int(top.get('hits', 0)):,}건)"
-            )
+            parts.append(f"{top.get('label', '')} 최다({int(top.get('hits', 0)):,}건)")
 
         org = results_map.get("org_ranking")
         if org and len(org) > 0:
             top = org[0]
-            parts.append(
-                f"기관 최다: {top.get('label', '')}({int(top.get('hits', 0)):,}건)"
-            )
+            parts.append(f"기관 최다: {top.get('label', '')}({int(top.get('hits', 0)):,}건)")
 
         return ", ".join(parts) if parts else ""

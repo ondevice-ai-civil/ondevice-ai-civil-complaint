@@ -445,8 +445,7 @@ class MinwonAnalysisAction(BaseAction):
             return None
         except httpx.HTTPStatusError as exc:
             logger.warning(
-                f"[minwon_analysis] HTTP 오류 ({endpoint}) "
-                f"{exc.response.status_code}: {exc}"
+                f"[minwon_analysis] HTTP 오류 ({endpoint}) " f"{exc.response.status_code}: {exc}"
             )
             return None
         except Exception as exc:

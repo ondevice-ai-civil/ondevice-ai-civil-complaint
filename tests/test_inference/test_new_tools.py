@@ -24,7 +24,6 @@ from src.inference.graph.capabilities.registry import (
 )
 from src.inference.graph.capabilities.stats_lookup import StatsLookupCapability
 
-
 # ---------------------------------------------------------------------------
 # 공용 fixture
 # ---------------------------------------------------------------------------
@@ -340,7 +339,9 @@ class TestDemographicsLookup:
         """searchword가 없으면 에러를 반환한다."""
         action = FakeAction()
         cap = DemographicsLookupCapability(action=action)
-        result = await cap.execute("인구통계", {"date_from": "20220220", "date_to": "20220310"}, None)
+        result = await cap.execute(
+            "인구통계", {"date_from": "20220220", "date_to": "20220310"}, None
+        )
         assert result.success is False
         assert "searchword" in result.error
 
@@ -444,9 +445,7 @@ class TestCallApiHelper:
         action = MinwonAnalysisAction(api_key="test_key")
 
         mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "returnObject": [{"keyword": "test", "df": 5}]
-        }
+        mock_response.json.return_value = {"returnObject": [{"keyword": "test", "df": 5}]}
         mock_response.raise_for_status = MagicMock()
 
         mock_client = AsyncMock()

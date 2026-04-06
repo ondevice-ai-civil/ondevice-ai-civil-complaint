@@ -128,8 +128,14 @@ class TestMvpCapabilityIds:
     def test_expected_ids(self):
         """MVP capability 8개가 정확히 등록되어 있다."""
         expected = {
-            "rag_search", "api_lookup", "draft_civil_response", "append_evidence",
-            "issue_detector", "stats_lookup", "keyword_analyzer", "demographics_lookup",
+            "rag_search",
+            "api_lookup",
+            "draft_civil_response",
+            "append_evidence",
+            "issue_detector",
+            "stats_lookup",
+            "keyword_analyzer",
+            "demographics_lookup",
         }
         assert MVP_CAPABILITY_IDS == expected
 

@@ -40,10 +40,7 @@ class KeywordAnalyzerCapability(CapabilityBase):
     def metadata(self) -> CapabilityMetadata:
         return CapabilityMetadata(
             name="keyword_analyzer",
-            description=(
-                "핵심키워드와 연관어를 조합하여 "
-                "민원 키워드 분석 결과를 제공합니다."
-            ),
+            description=("핵심키워드와 연관어를 조합하여 " "민원 키워드 분석 결과를 제공합니다."),
             approval_summary="공공데이터포털에서 민원 키워드를 분석합니다.",
             provider="data.go.kr",
             timeout_sec=get_timeout("keyword_analyzer"),
@@ -138,8 +135,7 @@ class KeywordAnalyzerCapability(CapabilityBase):
                     EvidenceItem(
                         source_type="api",
                         title=item.get("label", ""),
-                        excerpt=f"연관어: {item.get('label', '')}, "
-                        f"점수={item.get('value', 0)}",
+                        excerpt=f"연관어: {item.get('label', '')}, " f"점수={item.get('value', 0)}",
                         provider_meta={"provider": provider, "api": "related_word"},
                     )
                 )

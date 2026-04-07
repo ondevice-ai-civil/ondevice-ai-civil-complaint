@@ -5,7 +5,8 @@ ENV PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive \
     SERVING_PROFILE=container \
     PORT=7860 \
-    HOST=0.0.0.0
+    HOST=0.0.0.0 \
+    HF_HOME=/app/.cache/huggingface
 
 WORKDIR /app
 

@@ -14,7 +14,7 @@ echo "Space: $SPACE_REPO"
 python3 -c "
 import os
 from huggingface_hub import create_repo
-create_repo(os.environ['SPACE_REPO'], repo_type='space', space_sdk='docker', exist_ok=True, token=os.environ['HF_TOKEN'], private=True)
+create_repo(os.environ['SPACE_REPO'], repo_type='space', space_sdk='docker', exist_ok=True, token=os.environ['HF_TOKEN'], private=False)
 print('Space repo ready')
 "
 
@@ -52,12 +52,25 @@ import os
 from huggingface_hub import HfApi
 api = HfApi(token=os.environ['HF_TOKEN'])
 api.add_space_secret(os.environ['SPACE_REPO'], 'HF_TOKEN', os.environ['HF_TOKEN'])
+# ADAPTER_PATHS: HF Hub repo ID 방식 (vLLM이 자동 다운로드)
+adapter_paths = os.environ.get('ADAPTER_PATHS', 'civil=umyunsang/govon-civil-adapter,legal=siwo/govon-legal-adapter')
+api.add_space_secret(os.environ['SPACE_REPO'], 'ADAPTER_PATHS', adapter_paths)
 print('Secrets configured')
 "
 
+# 4. 하드웨어 설정 (L4 24GB — base 20GB + adapters ~1GB)
+python3 -c "
+import os
+from huggingface_hub import HfApi
+api = HfApi(token=os.environ['HF_TOKEN'])
+api.request_space_hardware(os.environ['SPACE_REPO'], 'l4x1')
+print('Hardware set to l4x1 (24GB VRAM)')
+"
+
 echo ""
-echo "배포 완료"
-echo "https://huggingface.co/spaces/$SPACE_REPO"
+echo "=== 배포 완료 ==="
+echo "Space URL: https://huggingface.co/spaces/$SPACE_REPO"
+echo "하드웨어: L4 24GB (자동 설정됨)"
 echo ""
-echo "하드웨어를 설정하려면:"
-echo "  python3 -c \"from huggingface_hub import HfApi; HfApi(token=<HF_TOKEN>).request_space_hardware('$SPACE_REPO', 'a100-large')\""
+echo "GPU 검증 실행:"
+echo "  GOVON_RUNTIME_URL=https://<space-url> python3 scripts/verify_lora_serving.py"

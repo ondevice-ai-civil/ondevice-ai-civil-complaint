@@ -35,11 +35,14 @@ MODEL_PATH=LGAI-EXAONE/EXAONE-4.0-32B-AWQ
 | `civil-adapter` | 민원 초안 생성 | ✅ 운영 중 |
 | [`legal-adapter`](https://huggingface.co/siwo/govon-legal-adapter) | 법률 근거 조회 | ✅ 운영 중 |
 
-어댑터 경로는 `ADAPTER_PATHS` 환경변수로 설정합니다:
+어댑터 경로는 `ADAPTER_PATHS` 환경변수로 설정합니다 (`name=path` 형식):
 
 ```bash
-# 콤마로 구분하여 여러 어댑터 지정
-ADAPTER_PATHS=/app/models/adapters/civil-adapter,/app/models/adapters/legal-adapter
+# 폐쇄망(에어갭) 환경: 컨테이너 내부 로컬 경로
+ADAPTER_PATHS=civil=/app/models/adapters/civil-adapter,legal=/app/models/adapters/legal-adapter
+
+# HuggingFace Spaces / 온라인 환경: HF Hub repo ID (vLLM이 자동 다운로드)
+ADAPTER_PATHS=civil=umyunsang/govon-civil-adapter,legal=siwo/govon-legal-adapter
 ```
 
 ---

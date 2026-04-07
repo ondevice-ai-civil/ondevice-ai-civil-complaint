@@ -42,7 +42,7 @@ class TaskType(str, Enum):
 
     DRAFT_RESPONSE = "draft_response"  # 민원 답변 초안 작성
     REVISE_RESPONSE = "revise_response"  # 답변 수정
-    APPEND_EVIDENCE = "append_evidence"  # 근거 보강
+
     LOOKUP_STATS = "lookup_stats"  # 통계/사례 조회
     ISSUE_DETECTION = "issue_detection"  # 이슈 탐지
     STATS_QUERY = "stats_query"  # 통계 조회
@@ -64,10 +64,10 @@ class ToolPlan:
         이 작업이 필요한 이유 (한국어, 1문장).
     tools : List[str]
         실행할 tool 이름 목록 (순서대로).
-        예: ["rag_search", "api_lookup", "draft_civil_response"]
+        예: ["rag_search", "api_lookup", "draft_response"]
     tool_args : Dict[str, Dict[str, Any]]
         tool별 인자 매핑. tool_name → arguments dict.
-        예: {"draft_civil_response": {"query": "...", "adapter": "civil"}}
+        예: {"draft_response": {"query": "...", "adapter": "public_admin"}}
     tool_summaries : List[str]
         각 tool의 human-readable approval_summary.
         CLI 렌더링과 approval prompt에 사용된다.

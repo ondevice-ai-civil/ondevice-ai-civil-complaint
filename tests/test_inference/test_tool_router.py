@@ -9,13 +9,13 @@ class TestToolRouter:
 
     def test_default_request_routes_to_drafting_loop(self):
         plan = self.router.plan("도로 포장이 파손되어 위험합니다")
-        assert plan.tool_names == ["rag_search", "api_lookup", "draft_civil_response"]
+        assert plan.tool_names == ["rag_search", "api_lookup", "draft_response"]
         assert "drafting loop" in plan.reason or "답변 작성" in plan.reason
 
-    def test_evidence_request_routes_to_append_flow(self):
+    def test_evidence_request_routes_to_drafting_loop(self):
         plan = self.router.plan("이 답변의 근거를 붙여줘")
-        assert plan.tool_names == ["rag_search", "api_lookup", "append_evidence"]
-        assert "근거" in plan.reason
+        assert plan.tool_names == ["rag_search", "api_lookup", "draft_response"]
+        assert "답변 작성" in plan.reason or "drafting loop" in plan.reason
 
     def test_lookup_only_request_routes_to_api_lookup(self):
         plan = self.router.plan("민원 통계와 최근 이슈를 조회해줘")
@@ -23,7 +23,7 @@ class TestToolRouter:
 
     def test_revision_request_keeps_drafting_loop(self):
         plan = self.router.plan("조금 더 정중하게 다시 써줘", has_context=True)
-        assert plan.tool_names == ["rag_search", "api_lookup", "draft_civil_response"]
+        assert plan.tool_names == ["rag_search", "api_lookup", "draft_response"]
 
     def test_force_tools_overrides_pattern_matching(self):
         plan = self.router.plan("무시", force_tools=[ToolType.API_LOOKUP])
@@ -52,5 +52,5 @@ class TestToolStep:
         assert step.step_id == "custom_tool"
 
     def test_depends_on_is_preserved(self):
-        step = ToolStep(tool=ToolType.APPEND_EVIDENCE, depends_on="api_lookup")
+        step = ToolStep(tool=ToolType.DRAFT_RESPONSE, depends_on="api_lookup")
         assert step.depends_on == "api_lookup"

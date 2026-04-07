@@ -43,7 +43,6 @@ except ImportError:  # pragma: no cover
 TASK_TYPE_STYLES = {
     "draft_response": "cyan",
     "revise_response": "blue",
-    "append_evidence": "green",
     "lookup_stats": "magenta",
     "issue_detection": "yellow",
     "stats_query": "magenta",
@@ -54,7 +53,6 @@ TASK_TYPE_STYLES = {
 TASK_TYPE_LABELS = {
     "draft_response": "답변 초안 작성",
     "revise_response": "답변 수정",
-    "append_evidence": "근거 보강",
     "lookup_stats": "통계 조회",
     "issue_detection": "이슈 탐지",
     "stats_query": "통계 조회",

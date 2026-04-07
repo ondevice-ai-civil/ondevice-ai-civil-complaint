@@ -145,7 +145,7 @@ class TestAgentLoopApiLookupIntegration:
             tool_registry={
                 ToolType.RAG_SEARCH: mock_rag_search,
                 ToolType.API_LOOKUP: mock_api_lookup,
-                ToolType.DRAFT_CIVIL_RESPONSE: mock_draft,
+                ToolType.DRAFT_RESPONSE: mock_draft,
             }
         )
         session = SessionContext()
@@ -153,6 +153,6 @@ class TestAgentLoopApiLookupIntegration:
         trace = await loop.run("민원 답변 작성", session)
 
         assert trace.error is None
-        assert trace.plan.tool_names == ["rag_search", "api_lookup", "draft_civil_response"]
+        assert trace.plan.tool_names == ["rag_search", "api_lookup", "draft_response"]
         assert trace.tool_results[1].tool == ToolType.API_LOOKUP
         assert "최종 초안" in trace.final_text

@@ -99,14 +99,13 @@ class TestRegistry:
         registry = build_mvp_registry(
             rag_search_fn=dummy_fn,
             api_lookup_action=None,
-            draft_civil_response_fn=dummy_fn,
-            append_evidence_fn=dummy_fn,
+            draft_response_fn=dummy_fn,
         )
         assert "issue_detector" in registry
         assert "stats_lookup" in registry
         assert "keyword_analyzer" in registry
         assert "demographics_lookup" in registry
-        assert len(registry) == 8
+        assert len(registry) == 7
 
     def test_all_capabilities_are_capability_base(self):
         """모든 등록된 capability가 CapabilityBase 인스턴스이다."""
@@ -117,8 +116,7 @@ class TestRegistry:
         registry = build_mvp_registry(
             rag_search_fn=dummy_fn,
             api_lookup_action=None,
-            draft_civil_response_fn=dummy_fn,
-            append_evidence_fn=dummy_fn,
+            draft_response_fn=dummy_fn,
         )
         for name, cap in registry.items():
             assert isinstance(cap, CapabilityBase), f"{name}이 CapabilityBase가 아닙니다"

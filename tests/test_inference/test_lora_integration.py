@@ -23,16 +23,16 @@ class TestAdapterPathsParsing:
     """ModelConfig.from_env()의 ADAPTER_PATHS 파싱 동작 검증."""
 
     def test_normal_case(self):
-        """정상 형식: 'civil=/path/civil,legal=/path/legal'"""
+        """정상 형식: 'public_admin=/path/public_admin,legal=/path/legal'"""
         with patch.dict(
             os.environ,
-            {"ADAPTER_PATHS": "civil=/models/civil,legal=/models/legal"},
+            {"ADAPTER_PATHS": "public_admin=/models/public_admin,legal=/models/legal"},
         ):
             from src.inference.runtime_config import ModelConfig
 
             config = ModelConfig.from_env()
             assert config.adapter_paths == {
-                "civil": "/models/civil",
+                "public_admin": "/models/public_admin",
                 "legal": "/models/legal",
             }
 
@@ -58,35 +58,35 @@ class TestAdapterPathsParsing:
         """'=' 없는 항목은 경고 후 무시."""
         with patch.dict(
             os.environ,
-            {"ADAPTER_PATHS": "civil=/ok,broken_entry,legal=/also_ok"},
+            {"ADAPTER_PATHS": "public_admin=/ok,broken_entry,legal=/also_ok"},
         ):
             from src.inference.runtime_config import ModelConfig
 
             config = ModelConfig.from_env()
             assert config.adapter_paths == {
-                "civil": "/ok",
+                "public_admin": "/ok",
                 "legal": "/also_ok",
             }
 
     def test_single_adapter(self):
         """단일 어댑터만 설정."""
-        with patch.dict(os.environ, {"ADAPTER_PATHS": "civil=/path/to/civil"}):
+        with patch.dict(os.environ, {"ADAPTER_PATHS": "public_admin=/path/to/public_admin"}):
             from src.inference.runtime_config import ModelConfig
 
             config = ModelConfig.from_env()
-            assert config.adapter_paths == {"civil": "/path/to/civil"}
+            assert config.adapter_paths == {"public_admin": "/path/to/public_admin"}
 
     def test_whitespace_trimmed(self):
         """공백이 포함된 항목도 정상 파싱."""
         with patch.dict(
             os.environ,
-            {"ADAPTER_PATHS": " civil = /path/civil , legal = /path/legal "},
+            {"ADAPTER_PATHS": " public_admin = /path/public_admin , legal = /path/legal "},
         ):
             from src.inference.runtime_config import ModelConfig
 
             config = ModelConfig.from_env()
             assert config.adapter_paths == {
-                "civil": "/path/civil",
+                "public_admin": "/path/public_admin",
                 "legal": "/path/legal",
             }
 
@@ -119,7 +119,7 @@ class TestRunEngineLora:
         manager.engine = mock_engine
 
         mock_lora = MagicMock()
-        mock_lora.lora_name = "civil"
+        mock_lora.lora_name = "public_admin"
 
         mock_sp = MagicMock()
         result = await manager._run_engine("prompt", mock_sp, "req-1", lora_request=mock_lora)
@@ -239,7 +239,7 @@ class TestLoraEngineConfig:
             patch("src.inference.api_server.AsyncLLM", mock_async_llm),
             patch(
                 "src.inference.api_server.runtime_config.model.adapter_paths",
-                {"civil": "/path/to/civil"},
+                {"public_admin": "/path/to/public_admin"},
             ),
             patch("src.inference.api_server.CivilComplaintRetriever", MagicMock()),
         ):
@@ -317,7 +317,7 @@ class TestLoRARequestImportGuard:
             adapter_path = "/some/path"
             lora_req = None
             if adapter_path and api_server.LoRARequest is not None:
-                lora_req = api_server.LoRARequest("civil", 1, adapter_path)
+                lora_req = api_server.LoRARequest("public_admin", 2, adapter_path)
 
             assert lora_req is None
         finally:
@@ -330,13 +330,13 @@ class TestLoRARequestImportGuard:
 
 
 class TestClosureLevelLoraCreation:
-    """_append_evidence_tool / _draft_civil_response_tool closure에서
-    LoRARequest가 올바르게 생성되어 _run_engine에 전달되는지 검증."""
+    """LoRA closure에서 LoRARequest가 올바르게 생성되어 _run_engine에 전달되는지 검증."""
 
     @pytest.mark.asyncio
-    async def test_append_evidence_creates_legal_lora_request(self):
-        """_append_evidence_tool이 legal LoRARequest를 생성하여 _run_engine에 전달해야 한다."""
+    async def test_legal_creates_lora_request(self):
+        """legal LoRARequest를 생성하여 _run_engine에 전달해야 한다."""
         from src.inference import api_server
+        from src.inference.adapter_registry import AdapterRegistry
 
         original_lora = api_server.LoRARequest
         try:
@@ -354,20 +354,25 @@ class TestClosureLevelLoraCreation:
             ):
                 # closure 로직의 핵심: legal adapter path 획득 → LoRARequest 생성 조건 검증
                 legal_adapter_path = api_server.runtime_config.model.adapter_paths.get("legal")
+                AdapterRegistry.reset()
+                reg = AdapterRegistry.get_instance()
+                lora_id = reg.get_lora_id("legal")
                 lora_req = None
-                if legal_adapter_path and api_server.LoRARequest is not None:
-                    lora_req = api_server.LoRARequest(
-                        "legal", api_server._LORA_ID_MAP["legal"], legal_adapter_path
-                    )
+                if (
+                    legal_adapter_path
+                    and api_server.LoRARequest is not None
+                    and lora_id is not None
+                ):
+                    lora_req = api_server.LoRARequest("legal", lora_id, legal_adapter_path)
 
-            # LoRARequest("legal", 2, "siwo/govon-legal-adapter") 호출 확인
-            mock_lora_cls.assert_called_once_with("legal", 2, "siwo/govon-legal-adapter")
+            # LoRARequest("legal", 1, "siwo/govon-legal-adapter") 호출 확인
+            mock_lora_cls.assert_called_once_with("legal", 1, "siwo/govon-legal-adapter")
             assert lora_req is mock_lora_instance
         finally:
             api_server.LoRARequest = original_lora
 
     @pytest.mark.asyncio
-    async def test_append_evidence_no_lora_when_path_missing(self):
+    async def test_legal_no_lora_when_path_missing(self):
         """legal adapter 경로 미설정 시 lora_req가 None이어야 한다."""
         from src.inference import api_server
 
@@ -379,15 +384,14 @@ class TestClosureLevelLoraCreation:
             legal_adapter_path = api_server.runtime_config.model.adapter_paths.get("legal")
             lora_req = None
             if legal_adapter_path and api_server.LoRARequest is not None:
-                lora_req = api_server.LoRARequest(
-                    "legal", api_server._LORA_ID_MAP["legal"], legal_adapter_path
-                )
+                lora_req = api_server.LoRARequest("legal", 1, legal_adapter_path)
 
         assert lora_req is None
 
-    def test_draft_civil_creates_civil_lora_request(self):
-        """_draft_civil_response_tool 패턴: civil LoRARequest 생성 확인."""
+    def test_public_admin_creates_lora_request(self):
+        """public_admin LoRARequest 생성 확인."""
         from src.inference import api_server
+        from src.inference.adapter_registry import AdapterRegistry
 
         original_lora = api_server.LoRARequest
         try:
@@ -396,14 +400,23 @@ class TestClosureLevelLoraCreation:
             mock_lora_cls.return_value = mock_lora_instance
             api_server.LoRARequest = mock_lora_cls
 
-            civil_adapter_path = "umyunsang/govon-civil-adapter"
+            AdapterRegistry.reset()
+            reg = AdapterRegistry.get_instance()
+            lora_id = reg.get_lora_id("public_admin")
+            public_admin_adapter_path = "umyunsang/govon-civil-adapter"
             lora_req = None
-            if civil_adapter_path and api_server.LoRARequest is not None:
+            if (
+                public_admin_adapter_path
+                and api_server.LoRARequest is not None
+                and lora_id is not None
+            ):
                 lora_req = api_server.LoRARequest(
-                    "civil", api_server._LORA_ID_MAP["civil"], civil_adapter_path
+                    "public_admin", lora_id, public_admin_adapter_path
                 )
 
-            mock_lora_cls.assert_called_once_with("civil", 1, "umyunsang/govon-civil-adapter")
+            mock_lora_cls.assert_called_once_with(
+                "public_admin", 2, "umyunsang/govon-civil-adapter"
+            )
             assert lora_req is mock_lora_instance
         finally:
             api_server.LoRARequest = original_lora
@@ -415,30 +428,35 @@ class TestClosureLevelLoraCreation:
 
 
 class TestMultiLoraPerRequestSwitching:
-    """civil/legal 어댑터가 서로 다른 ID를 사용하여 per-request 스위칭이 가능한지 확인."""
+    """public_admin/legal 어댑터가 서로 다른 ID를 사용하여 per-request 스위칭이 가능한지 확인."""
 
-    def test_lora_id_map_no_duplicates(self):
-        """_LORA_ID_MAP에 중복 ID가 없어야 한다."""
-        from src.inference.api_server import _LORA_ID_MAP
+    def test_lora_id_no_duplicates(self):
+        """AdapterRegistry에 중복 LoRA ID가 없어야 한다."""
+        from src.inference.adapter_registry import AdapterRegistry
 
-        ids = list(_LORA_ID_MAP.values())
-        assert len(ids) == len(set(ids)), f"중복 LoRA ID 발견: {_LORA_ID_MAP}"
+        AdapterRegistry.reset()
+        reg = AdapterRegistry.get_instance()
+        ids = [reg.get_lora_id(name) for name in reg.list_available()]
+        assert len(ids) == len(set(ids)), f"중복 LoRA ID 발견: {ids}"
 
-    def test_civil_and_legal_use_different_ids(self):
-        """civil과 legal 어댑터가 서로 다른 numeric ID를 사용해야 한다."""
-        from src.inference.api_server import _LORA_ID_MAP
+    def test_public_admin_and_legal_use_different_ids(self):
+        """public_admin과 legal 어댑터가 서로 다른 numeric ID를 사용해야 한다."""
+        from src.inference.adapter_registry import AdapterRegistry
 
-        assert "civil" in _LORA_ID_MAP
-        assert "legal" in _LORA_ID_MAP
-        assert _LORA_ID_MAP["civil"] == 1
-        assert _LORA_ID_MAP["legal"] == 2
-        assert _LORA_ID_MAP["civil"] != _LORA_ID_MAP["legal"]
+        AdapterRegistry.reset()
+        reg = AdapterRegistry.get_instance()
+        assert reg.get_lora_id("legal") == 1
+        assert reg.get_lora_id("public_admin") == 2
+        assert reg.get_lora_id("legal") != reg.get_lora_id("public_admin")
 
     @pytest.mark.asyncio
-    async def test_civil_then_legal_use_correct_ids(self):
-        """civil→legal 순서로 요청 시 각각 올바른 ID의 LoRARequest가 생성되어야 한다."""
+    async def test_public_admin_then_legal_use_correct_ids(self):
+        """public_admin→legal 순서로 요청 시 각각 올바른 ID의 LoRARequest가 생성되어야 한다."""
         from src.inference import api_server
+        from src.inference.adapter_registry import AdapterRegistry
 
+        AdapterRegistry.reset()
+        reg = AdapterRegistry.get_instance()
         original_lora = api_server.LoRARequest
         try:
             calls = []
@@ -452,21 +470,19 @@ class TestMultiLoraPerRequestSwitching:
 
             api_server.LoRARequest = mock_lora
 
-            # civil adapter 생성 시뮬레이션
-            civil_path = "umyunsang/govon-civil-adapter"
-            civil_req = api_server.LoRARequest(
-                "civil", api_server._LORA_ID_MAP["civil"], civil_path
+            # public_admin adapter 생성 시뮬레이션
+            public_admin_path = "umyunsang/govon-civil-adapter"
+            public_admin_req = api_server.LoRARequest(
+                "public_admin", reg.get_lora_id("public_admin"), public_admin_path
             )
 
             # legal adapter 생성 시뮬레이션
             legal_path = "siwo/govon-legal-adapter"
-            legal_req = api_server.LoRARequest(
-                "legal", api_server._LORA_ID_MAP["legal"], legal_path
-            )
+            legal_req = api_server.LoRARequest("legal", reg.get_lora_id("legal"), legal_path)
 
-            assert calls[0] == ("civil", 1, civil_path)
-            assert calls[1] == ("legal", 2, legal_path)
-            assert civil_req.lora_int_id != legal_req.lora_int_id
+            assert calls[0] == ("public_admin", 2, public_admin_path)
+            assert calls[1] == ("legal", 1, legal_path)
+            assert public_admin_req.lora_int_id != legal_req.lora_int_id
         finally:
             api_server.LoRARequest = original_lora
 
@@ -477,16 +493,19 @@ class TestMultiLoraPerRequestSwitching:
 
 
 class TestAppendEvidenceLLMPath:
-    """append_evidence 경로에서 사용하는 _LORA_ID_MAP 유효성 검증."""
+    """AdapterRegistry를 통한 LoRA ID 유효성 검증."""
 
     def test_legal_lora_id_is_positive_int(self):
-        """_LORA_ID_MAP에 'legal' 키가 존재하고 값이 양의 정수여야 한다.
+        """AdapterRegistry에 'legal' 어댑터가 존재하고 lora_id가 양의 정수여야 한다.
 
         frozen dataclass 패치의 어려움으로 인해 실제 LLM 경로 대신
-        LoRA ID 맵의 유효성을 직접 검증한다.
+        LoRA ID의 유효성을 직접 검증한다.
         """
-        from src.inference.api_server import _LORA_ID_MAP
+        from src.inference.adapter_registry import AdapterRegistry
 
-        assert "legal" in _LORA_ID_MAP
-        assert isinstance(_LORA_ID_MAP["legal"], int)
-        assert _LORA_ID_MAP["legal"] > 0
+        AdapterRegistry.reset()
+        reg = AdapterRegistry.get_instance()
+        lora_id = reg.get_lora_id("legal")
+        assert lora_id is not None
+        assert isinstance(lora_id, int)
+        assert lora_id > 0

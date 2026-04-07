@@ -79,8 +79,8 @@ class TestLLMPlannerToolCalling:
         mock_response.tool_calls = [
             {"name": "rag_search", "args": {"query": "소음 민원"}},
             {
-                "name": "draft_civil_response",
-                "args": {"query": "소음 민원 답변", "adapter": "civil"},
+                "name": "draft_response",
+                "args": {"query": "소음 민원 답변", "adapter": "public_admin"},
             },
         ]
         mock_response.content = ""
@@ -97,12 +97,10 @@ class TestLLMPlannerToolCalling:
         plan = await adapter.plan(messages=[mock_msg], context={})
 
         assert "rag_search" in plan.tools, f"rag_search가 plan.tools에 없음: {plan.tools}"
+        assert "draft_response" in plan.tools, f"draft_response가 plan.tools에 없음: {plan.tools}"
         assert (
-            "draft_civil_response" in plan.tools
-        ), f"draft_civil_response가 plan.tools에 없음: {plan.tools}"
-        assert (
-            plan.tool_args.get("draft_civil_response", {}).get("adapter") == "civil"
-        ), f"adapter가 civil이어야 함: {plan.tool_args}"
+            plan.tool_args.get("draft_response", {}).get("adapter") == "public_admin"
+        ), f"adapter가 public_admin이어야 함: {plan.tool_args}"
         assert (
             "tool_calling" in plan.adapter_mode
         ), f"adapter_mode에 tool_calling 포함 필요: {plan.adapter_mode}"
@@ -117,7 +115,7 @@ class TestLLMPlannerToolCalling:
                 "task_type": "draft_response",
                 "goal": "민원 답변 작성",
                 "reason": "사용자가 답변을 요청함",
-                "tools": ["rag_search", "draft_civil_response"],
+                "tools": ["rag_search", "draft_response"],
             }
         )
 
@@ -136,7 +134,7 @@ class TestLLMPlannerToolCalling:
 
         plan = await adapter.plan(messages=[mock_msg], context={})
 
-        assert plan.tools == ["rag_search", "draft_civil_response"], f"tools 불일치: {plan.tools}"
+        assert plan.tools == ["rag_search", "draft_response"], f"tools 불일치: {plan.tools}"
         assert plan.adapter_mode == "llm", f"adapter_mode는 llm이어야 함: {plan.adapter_mode}"
 
     @pytest.mark.asyncio
@@ -200,15 +198,17 @@ class TestDirectEnginePlannerToolCalling:
 
         text = (
             '<tool_call>{"name": "rag_search", "arguments": {"query": "소음 민원"}}</tool_call>\n'
-            '<tool_call>{"name": "draft_civil_response", "arguments": {"query": "답변", "adapter": "civil"}}</tool_call>'
+            '<tool_call>{"name": "draft_response", "arguments": {"query": "답변", "adapter": "public_admin"}}</tool_call>'
         )
 
         result = DirectEnginePlannerAdapter._parse_hermes_tool_calls(text)
 
         assert len(result) == 2, f"tool_call 2개 예상: {len(result)}"
         assert result[0]["name"] == "rag_search", f"첫 번째 tool: {result[0]['name']}"
-        assert result[1]["name"] == "draft_civil_response", f"두 번째 tool: {result[1]['name']}"
-        assert result[1]["arguments"]["adapter"] == "civil", f"adapter: {result[1]['arguments']}"
+        assert result[1]["name"] == "draft_response", f"두 번째 tool: {result[1]['name']}"
+        assert (
+            result[1]["arguments"]["adapter"] == "public_admin"
+        ), f"adapter: {result[1]['arguments']}"
 
     def test_parse_hermes_empty(self):
         """tool_call 태그가 없으면 빈 리스트를 반환한다."""
@@ -251,11 +251,11 @@ class TestToolPlanWithArgs:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="test",
             reason="test",
-            tools=["draft_civil_response"],
-            tool_args={"draft_civil_response": {"query": "test", "adapter": "civil"}},
+            tools=["draft_response"],
+            tool_args={"draft_response": {"query": "test", "adapter": "public_admin"}},
         )
         assert (
-            plan.tool_args["draft_civil_response"]["adapter"] == "civil"
+            plan.tool_args["draft_response"]["adapter"] == "public_admin"
         ), f"adapter 불일치: {plan.tool_args}"
 
 
@@ -272,13 +272,12 @@ class TestBuildToolDefinitions:
         registry = build_mvp_registry(
             rag_search_fn=AsyncMock(return_value={"text": "", "results": []}),
             api_lookup_action=None,
-            draft_civil_response_fn=AsyncMock(return_value={"text": "", "results": []}),
-            append_evidence_fn=AsyncMock(return_value={"text": "", "results": []}),
+            draft_response_fn=AsyncMock(return_value={"text": "", "results": []}),
         )
 
         definitions = build_tool_definitions(registry)
 
-        assert len(definitions) == 8, f"tool definition 8개 예상: {len(definitions)}"
+        assert len(definitions) == 7, f"tool definition 7개 예상: {len(definitions)}"
         for defn in definitions:
             assert defn["type"] == "function", f"type은 function: {defn}"
             assert "name" in defn["function"], f"name 누락: {defn}"
@@ -286,7 +285,7 @@ class TestBuildToolDefinitions:
             assert "parameters" in defn["function"], f"parameters 누락: {defn}"
 
     def test_adapter_tools_have_adapter_param(self):
-        """draft_civil_response, append_evidence에 adapter 파라미터가 있다."""
+        """draft_response에 adapter 파라미터가 있다."""
         from src.inference.graph.capabilities.registry import (
             build_mvp_registry,
             build_tool_definitions,
@@ -295,15 +294,14 @@ class TestBuildToolDefinitions:
         registry = build_mvp_registry(
             rag_search_fn=AsyncMock(return_value={"text": "", "results": []}),
             api_lookup_action=None,
-            draft_civil_response_fn=AsyncMock(return_value={"text": "", "results": []}),
-            append_evidence_fn=AsyncMock(return_value={"text": "", "results": []}),
+            draft_response_fn=AsyncMock(return_value={"text": "", "results": []}),
         )
 
         definitions = build_tool_definitions(registry)
         adapter_tools = {
             d["function"]["name"]: d
             for d in definitions
-            if d["function"]["name"] in ("draft_civil_response", "append_evidence")
+            if d["function"]["name"] in ("draft_response",)
         }
 
         for name, defn in adapter_tools.items():

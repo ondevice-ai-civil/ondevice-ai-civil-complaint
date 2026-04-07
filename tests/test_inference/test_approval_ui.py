@@ -9,7 +9,7 @@ from src.cli import approval_ui
 
 def _sample_request() -> dict:
     return {
-        "task_type": "append_evidence",
+        "task_type": "draft_response",
         "goal": "도로 파손 민원을 담당 부서에 전달하고 처리 상태를 안내합니다",
         "reason": "현장 점검과 조치 일정 확인이 필요합니다",
         "tool_summaries": [
@@ -77,10 +77,10 @@ def test_build_approval_panel_uses_task_type_style_and_selection():
     summary = panel.renderable.renderables[0]
     choices = panel.renderable.renderables[2]
     assert panel.width == 59
-    assert panel.border_style == approval_ui._get_task_type_style("append_evidence")
+    assert panel.border_style == approval_ui._get_task_type_style("draft_response")
     assert panel.title.plain == "작업 승인 요청"
     assert summary.rows[0][0] == "유형"
-    assert summary.rows[0][1].plain == approval_ui._get_task_type_label("append_evidence")
+    assert summary.rows[0][1].plain == approval_ui._get_task_type_label("draft_response")
     assert choices.rows[0][0].plain == "● 승인"
     assert choices.rows[0][0].style == "bold green"
     assert choices.rows[1][0].plain == "○ 거절"
@@ -144,7 +144,7 @@ def test_fallback_prompt_uses_terminal_width_for_separator(capsys):
     separator_lines = [line for line in lines if set(line) == {"─"}]
 
     assert "작업 승인 요청" in title_line
-    assert "근거 보강" in type_line
+    assert "답변 초안 작성" in type_line
     assert separator_lines
     max_width = max(approval_ui._display_width(line) for line in [title_line, *separator_lines])
     assert max_width <= 32

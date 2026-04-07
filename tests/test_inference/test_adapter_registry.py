@@ -18,8 +18,8 @@ class TestAdapterRegistryLoading:
         AdapterRegistry.reset()
         reg = AdapterRegistry.get_instance()
         available = reg.list_available()
-        # civil, legal이 포함되어야 함
-        assert "civil" in available
+        # public_admin, legal이 포함되어야 함
+        assert "public_admin" in available
         assert "legal" in available
 
     def test_env_override_path(self):
@@ -27,9 +27,11 @@ class TestAdapterRegistryLoading:
         from src.inference.adapter_registry import AdapterRegistry
 
         AdapterRegistry.reset()
-        with patch.dict(os.environ, {"ADAPTER_PATHS": "civil=/custom/path,legal=/other/path"}):
+        with patch.dict(
+            os.environ, {"ADAPTER_PATHS": "public_admin=/custom/path,legal=/other/path"}
+        ):
             reg = AdapterRegistry.get_instance()
-            meta = reg.get_meta("civil")
+            meta = reg.get_meta("public_admin")
             assert meta is not None
             assert meta.path == "/custom/path"
 
@@ -38,7 +40,7 @@ class TestAdapterRegistryLoading:
         from src.inference.adapter_registry import AdapterRegistry
 
         AdapterRegistry.reset()
-        with patch.dict(os.environ, {"ADAPTER_PATHS": "civil=/p1,legal=/p2,env=/p3"}):
+        with patch.dict(os.environ, {"ADAPTER_PATHS": "public_admin=/p1,legal=/p2,env=/p3"}):
             reg = AdapterRegistry.get_instance()
             assert "env" in reg.list_available()
 
@@ -52,9 +54,9 @@ class TestAdapterRegistryIds:
 
         AdapterRegistry.reset()
         reg = AdapterRegistry.get_instance()
-        # civil < legal alphabetically → civil=1, legal=2
-        assert reg.get_lora_id("civil") == 1
-        assert reg.get_lora_id("legal") == 2
+        # legal < public_admin alphabetically → legal=1, public_admin=2
+        assert reg.get_lora_id("legal") == 1
+        assert reg.get_lora_id("public_admin") == 2
 
     def test_unknown_adapter_returns_none(self):
         """존재하지 않는 어댑터는 None을 반환한다."""
@@ -75,7 +77,7 @@ class TestAdapterRegistryToolDefs:
         AdapterRegistry.reset()
         reg = AdapterRegistry.get_instance()
         enum = reg.build_adapter_enum()
-        assert "civil" in enum
+        assert "public_admin" in enum
         assert "legal" in enum
         assert "none" in enum
 
@@ -86,7 +88,7 @@ class TestAdapterRegistryToolDefs:
         AdapterRegistry.reset()
         reg = AdapterRegistry.get_instance()
         desc = reg.build_adapter_description()
-        assert "civil" in desc
+        assert "public_admin" in desc
         assert "legal" in desc
 
 
@@ -101,7 +103,7 @@ class TestAdapterRegistryLoraRequest:
         AdapterRegistry.reset()
         monkeypatch.setattr(adapter_registry_module, "LoRARequest", None)
         reg = AdapterRegistry.get_instance()
-        assert reg.get_lora_request("civil") is None, "vllm 미설치 시 None이어야 함"
+        assert reg.get_lora_request("public_admin") is None, "vllm 미설치 시 None이어야 함"
 
     def test_none_adapter_returns_none(self):
         """'none' 어댑터는 항상 None을 반환한다."""

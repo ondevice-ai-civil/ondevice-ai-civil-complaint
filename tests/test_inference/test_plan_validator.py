@@ -26,7 +26,7 @@ def valid_plan() -> ToolPlan:
         task_type=TaskType.DRAFT_RESPONSE,
         goal="민원 답변 초안을 작성합니다.",
         reason="사용자가 민원 답변을 요청했습니다.",
-        tools=["rag_search", "draft_civil_response"],
+        tools=["rag_search", "draft_response"],
     )
 
 

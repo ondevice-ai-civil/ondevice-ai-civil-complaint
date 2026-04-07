@@ -6,10 +6,9 @@ Issue #155: mixed evidence 응답 스키마 정규화.
   1. EvidenceItem/EvidenceEnvelope 직렬화
   2. RagSearchCapability evidence 필드 채워지는지 확인
   3. ApiLookupCapability evidence 필드 채워지는지 확인
-  4. AppendEvidenceCapability evidence 합산 확인
-  5. DraftCivilResponseCapability evidence 확인
-  6. 정상/빈결과/부분결과/에러 4케이스
-  7. synthesis _extract_final_text evidence 소비 확인
+  4. DraftResponseCapability evidence 확인
+  5. 정상/빈결과/부분결과/에러 4케이스
+  6. synthesis _extract_final_text evidence 소비 확인
 """
 
 from __future__ import annotations
@@ -292,112 +291,19 @@ class TestApiLookupCapabilityEvidence:
 
 
 # ---------------------------------------------------------------------------
-# 4. AppendEvidenceCapability evidence 합산
+# 4. DraftResponseCapability evidence
 # ---------------------------------------------------------------------------
 
 
-class TestAppendEvidenceCapabilityEvidence:
-    @pytest.mark.asyncio
-    async def test_merges_rag_and_api_evidence(self):
-        from src.inference.graph.capabilities.append_evidence import (
-            AppendEvidenceCapability,
-        )
-
-        execute_fn = AsyncMock(
-            return_value={
-                "text": "보강된 답변",
-                "rag_results": [
-                    {
-                        "title": "법령 근거",
-                        "content": "조문 내용",
-                        "score": 0.9,
-                        "metadata": {"file_path": "/laws/a.pdf"},
-                    }
-                ],
-                "api_citations": [
-                    {
-                        "qnaTitle": "유사 사례",
-                        "qnaContent": "사례 내용",
-                        "detailUrl": "https://example.com/case",
-                    }
-                ],
-            }
-        )
-        cap = AppendEvidenceCapability(execute_fn)
-        result = await cap.execute("민원 질문", {}, MagicMock())
-
-        assert result.evidence is not None
-        assert result.evidence.status == "ok"
-        rag_items = [i for i in result.evidence.items if i.source_type == "rag"]
-        api_items = [i for i in result.evidence.items if i.source_type == "api"]
-        assert len(rag_items) == 1
-        assert len(api_items) == 1
-        assert rag_items[0].title == "법령 근거"
-        assert api_items[0].title == "유사 사례"
-
-    @pytest.mark.asyncio
-    async def test_empty_results_status_empty(self):
-        from src.inference.graph.capabilities.append_evidence import (
-            AppendEvidenceCapability,
-        )
-
-        execute_fn = AsyncMock(return_value={"text": "", "rag_results": [], "api_citations": []})
-        cap = AppendEvidenceCapability(execute_fn)
-        result = await cap.execute("질문", {}, MagicMock())
-
-        assert result.evidence is not None
-        assert result.evidence.status == "empty"
-
-    @pytest.mark.asyncio
-    async def test_error_returns_error_envelope(self):
-        from src.inference.graph.capabilities.append_evidence import (
-            AppendEvidenceCapability,
-        )
-
-        execute_fn = AsyncMock(return_value={"error": "외부 서비스 오류"})
-        cap = AppendEvidenceCapability(execute_fn)
-        result = await cap.execute("질문", {}, MagicMock())
-
-        assert result.success is False
-        assert result.evidence is not None
-        assert result.evidence.status == "error"
-
-    @pytest.mark.asyncio
-    async def test_partial_status_when_errors_present(self):
-        from src.inference.graph.capabilities.append_evidence import (
-            AppendEvidenceCapability,
-        )
-
-        execute_fn = AsyncMock(
-            return_value={
-                "text": "일부 결과",
-                "rag_results": [{"title": "doc", "content": "내용", "score": 0.5, "metadata": {}}],
-                "api_citations": [],
-                "errors": ["API provider timeout"],
-            }
-        )
-        cap = AppendEvidenceCapability(execute_fn)
-        result = await cap.execute("질문", {}, MagicMock())
-
-        assert result.evidence is not None
-        assert result.evidence.status == "partial"
-        assert "API provider timeout" in result.evidence.errors
-
-
-# ---------------------------------------------------------------------------
-# 5. DraftCivilResponseCapability evidence
-# ---------------------------------------------------------------------------
-
-
-class TestDraftCivilResponseCapabilityEvidence:
+class TestDraftResponseCapabilityEvidence:
     @pytest.mark.asyncio
     async def test_ok_result_has_envelope(self):
-        from src.inference.graph.capabilities.draft_civil_response import (
-            DraftCivilResponseCapability,
+        from src.inference.graph.capabilities.draft_response import (
+            DraftResponseCapability,
         )
 
         execute_fn = AsyncMock(return_value={"text": "민원 답변 초안입니다.", "citations": []})
-        cap = DraftCivilResponseCapability(execute_fn)
+        cap = DraftResponseCapability(execute_fn)
         result = await cap.execute("민원 내용", {}, MagicMock())
 
         assert result.evidence is not None
@@ -406,8 +312,8 @@ class TestDraftCivilResponseCapabilityEvidence:
 
     @pytest.mark.asyncio
     async def test_citations_converted_to_evidence_items(self):
-        from src.inference.graph.capabilities.draft_civil_response import (
-            DraftCivilResponseCapability,
+        from src.inference.graph.capabilities.draft_response import (
+            DraftResponseCapability,
         )
 
         execute_fn = AsyncMock(
@@ -422,7 +328,7 @@ class TestDraftCivilResponseCapabilityEvidence:
                 ],
             }
         )
-        cap = DraftCivilResponseCapability(execute_fn)
+        cap = DraftResponseCapability(execute_fn)
         result = await cap.execute("질문", {}, MagicMock())
 
         assert result.evidence is not None
@@ -433,12 +339,12 @@ class TestDraftCivilResponseCapabilityEvidence:
 
     @pytest.mark.asyncio
     async def test_error_result_has_error_envelope(self):
-        from src.inference.graph.capabilities.draft_civil_response import (
-            DraftCivilResponseCapability,
+        from src.inference.graph.capabilities.draft_response import (
+            DraftResponseCapability,
         )
 
         execute_fn = AsyncMock(return_value={"error": "LLM 오류"})
-        cap = DraftCivilResponseCapability(execute_fn)
+        cap = DraftResponseCapability(execute_fn)
         result = await cap.execute("질문", {}, MagicMock())
 
         assert result.success is False
@@ -524,7 +430,7 @@ class TestExtractFinalTextEvidenceConsumption:
 
         accumulated: Dict[str, Any] = {
             "query": "테스트",
-            "draft_civil_response": {
+            "draft_response": {
                 "text": "최종 답변 텍스트입니다.",
                 "evidence": {
                     "items": [

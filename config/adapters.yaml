@@ -1,9 +1,25 @@
 adapters:
-  civil:
+  public_admin:
     path: "umyunsang/govon-civil-adapter"
-    description: "민원 답변 초안 생성에 특화. 74K건 민원-답변 쌍으로 학습."
-    domain: "민원 답변"
+    description: "공공행정 민원 답변 초안 생성에 특화. 74K건 민원-답변 쌍으로 학습."
+    domain: "공공행정"
+    keywords:
+      - 민원
+      - 행정
+      - 공공
+      - 처분
+      - 신청
+      - 허가
+      - 이의신청
   legal:
     path: "siwo/govon-legal-adapter"
-    description: "법령 근거 인용 및 법적 해석에 특화. 243K건 법률 문서로 학습."
-    domain: "법률/법령"
+    description: "법률 초안 생성 및 법령 근거 인용에 특화. 270K건 법률 문서로 학습."
+    domain: "법률"
+    keywords:
+      - 법률
+      - 법령
+      - 판례
+      - 조례
+      - 시행령
+      - 법적
+      - 소송

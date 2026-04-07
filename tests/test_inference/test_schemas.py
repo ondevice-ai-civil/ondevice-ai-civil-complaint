@@ -145,7 +145,7 @@ class TestAgentSchemas:
         trace = AgentTraceSchema(
             request_id="req-100",
             session_id="session-100",
-            plan=["rag_search", "api_lookup", "draft_civil_response"],
+            plan=["rag_search", "api_lookup", "draft_response"],
             plan_reason="민원 답변 작성 또는 수정 작업으로 판단",
             tool_results=[
                 ToolResultSchema(tool="rag_search", success=True, latency_ms=10.5, data={}),

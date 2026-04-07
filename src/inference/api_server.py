@@ -1430,7 +1430,9 @@ async def chat_completions(
         raise HTTPException(status_code=503, detail="Model engine not initialized.")
 
     request_id = str(uuid.uuid4())
-    logger.info(f"chat_completions request_id={request_id} messages={len(messages)} max_tokens={max_tokens}")
+    logger.info(
+        f"chat_completions request_id={request_id} messages={len(messages)} max_tokens={max_tokens}"
+    )
     sampling_params = SamplingParams(
         max_tokens=max_tokens,
         temperature=temperature,

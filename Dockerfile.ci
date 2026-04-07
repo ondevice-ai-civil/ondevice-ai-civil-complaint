@@ -8,6 +8,7 @@ LABEL org.opencontainers.image.description="GovOn CI smoke-test image (no ML pac
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     SERVING_PROFILE="container" \
+    SKIP_MODEL_LOAD="true" \
     MODEL_PATH="LGAI-EXAONE/EXAONE-4.0-32B-AWQ" \
     DATA_PATH="/app/data/processed/v2_train.jsonl" \
     INDEX_PATH="/app/models/faiss_index/complaints.index"
@@ -47,7 +48,6 @@ RUN uv pip install --system --no-cache \
     sqlalchemy \
     psycopg2-binary \
     "faiss-cpu>=1.7.4" \
-    "sentence-transformers>=3.0.0" \
     "sentence-transformers>=3.0.0"
 
 COPY src/ ./src/

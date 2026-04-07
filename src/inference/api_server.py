@@ -1747,6 +1747,7 @@ async def v2_agent_stream(
                             event["node"] = "approval_wait"
                             event["status"] = "awaiting_approval"
                             event["thread_id"] = thread_id
+                            event["session_id"] = session_id
                             event["approval_request"] = {
                                 "prompt": "승인 정보를 불러올 수 없습니다. /v2/agent/approve로 진행하세요."
                             }

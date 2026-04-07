@@ -32,12 +32,15 @@ ENV PATH="/root/.local/bin:${PATH}"
 # Copy project files
 COPY requirements.txt .
 
-# 1) torch: extra-index-url so PyPI + PyTorch CUDA 12.1 index both resolve
-# 2) autoawq: --no-build-isolation exposes system torch to the build backend
-# 3) remaining deps: same extra-index-url for CUDA wheels (vllm, bitsandbytes)
-RUN uv pip install --system --no-cache \
+# 1) torch: requirements.txt를 단일 소스로 읽어 CUDA 12.1 wheel 설치
+# 2) autoawq: --no-build-isolation으로 시스템 torch를 빌드 백엔드에 노출
+# 3) remaining deps: extra-index-url로 CUDA wheels (vllm, bitsandbytes) 해석
+RUN set -eux; \
+    TORCH_SPEC="$(grep -E '^[[:space:]]*torch([[:space:]]*[<>=!~].*)?$' requirements.txt | head -n 1 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"; \
+    test -n "$TORCH_SPEC"; \
+    uv pip install --system --no-cache \
         --extra-index-url https://download.pytorch.org/whl/cu121 \
-        "torch>=2.8.0" && \
+        "$TORCH_SPEC" && \
     uv pip install --system --no-cache --no-build-isolation "autoawq>=0.2.8" && \
     uv pip install --system --no-cache \
         --extra-index-url https://download.pytorch.org/whl/cu121 \

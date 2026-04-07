@@ -7,8 +7,8 @@ ENV PYTHONUNBUFFERED=1 \
     PORT=7860 \
     HOST=0.0.0.0 \
     HF_HOME=/app/.cache/huggingface \
-    GPU_UTILIZATION=0.97 \
-    MAX_MODEL_LEN=4096
+    GPU_UTILIZATION=0.90 \
+    MAX_MODEL_LEN=8192
 
 WORKDIR /app
 

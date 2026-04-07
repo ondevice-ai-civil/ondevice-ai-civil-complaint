@@ -20,8 +20,8 @@ class CivilComplaintRetriever:
         index_path: Optional[str] = None,
         data_path: Optional[str] = None,
     ):
-        logger.info(f"Loading embedding model: {model_name}")
-        self.model = SentenceTransformer(model_name)
+        logger.info(f"Loading embedding model: {model_name} (device=cpu)")
+        self.model = SentenceTransformer(model_name, device="cpu")
         self.index = None
         self.metadata = []
 

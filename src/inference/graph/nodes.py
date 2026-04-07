@@ -111,22 +111,26 @@ async def planner_node(
     validator = ToolPlanValidator()
     try:
         plan = await planner_adapter.plan(messages=messages, context=context)
-    except PlanValidationError as e:
+    except PlanValidationError as exc:
         _latency_ms = round((time.monotonic() - _start) * 1000, 2)
-        logger.warning(f"[planner] plan 생성 실패, fallback 적용: {e} latency_ms={_latency_ms}")
+        logger.warning(f"[planner] plan 생성 실패, fallback 적용: {exc} latency_ms={_latency_ms}")
         return {
-            **validator.make_fallback_plan(e),
+            **validator.make_fallback_plan(exc),
+            "goal": f"⚠ 계획 수립 실패: {str(exc)[:100]}",
+            "reason": "시스템이 요청을 분석하지 못했습니다. 거절 후 다시 시도해주세요.",
             "task_type": "",
             "node_latencies": {"planner": _latency_ms},
         }
 
     try:
         validator.validate(plan)
-    except PlanValidationError as e:
+    except PlanValidationError as exc:
         _latency_ms = round((time.monotonic() - _start) * 1000, 2)
-        logger.warning(f"[planner] validation 실패: {e} latency_ms={_latency_ms}")
+        logger.warning(f"[planner] validation 실패: {exc} latency_ms={_latency_ms}")
         return {
-            **validator.make_fallback_plan(e),
+            **validator.make_fallback_plan(exc),
+            "goal": f"⚠ 계획 수립 실패: {str(exc)[:100]}",
+            "reason": "시스템이 요청을 분석하지 못했습니다. 거절 후 다시 시도해주세요.",
             "task_type": "",
             "node_latencies": {"planner": _latency_ms},
         }
@@ -506,63 +510,6 @@ async def persist_node(
     )
 
     return {"node_latencies": {"persist": _latency_ms}}
-
-
-def _safe_score(item: dict) -> float:
-    """evidence item의 score를 안전하게 float으로 변환한다.
-
-    외부 API 결과의 score가 문자열이거나 None일 수 있으므로
-    변환 실패 시 0.0을 반환한다.
-    """
-    try:
-        return float(item.get("score", 0.0))
-    except (ValueError, TypeError):
-        return 0.0
-
-
-# accumulated 컨텍스트 탐색 시 스킵할 메타 키 목록 (모듈 레벨 상수)
-_CONTEXT_META_KEYS: frozenset[str] = frozenset(
-    {
-        "session_context",
-        "query",
-        "query_variants",
-        "previous_user_query",
-        "previous_assistant_response",
-        "recent_tool_summary",
-    }
-)
-
-
-def _collect_evidence_items(accumulated: Dict[str, Any]) -> list[dict]:
-    """accumulated 컨텍스트에서 모든 EvidenceItem dict를 수집한다.
-
-    각 tool 결과의 evidence.items 필드를 탐색하여 하나의 리스트로 합산한다.
-    최대 10개까지 반환하며, score 내림차순으로 정렬한다.
-
-    Parameters
-    ----------
-    accumulated : Dict[str, Any]
-        tool 결과가 누적된 컨텍스트 dict.
-
-    Returns
-    -------
-    list[dict]
-        EvidenceItem.to_dict() 형태의 dict 리스트.
-    """
-    items: list[dict] = []
-    for key, payload in accumulated.items():
-        if key in _CONTEXT_META_KEYS:
-            continue
-        if not isinstance(payload, dict):
-            continue
-        ev = payload.get("evidence")
-        if isinstance(ev, dict) and ev.get("items"):
-            for item in ev["items"]:
-                if isinstance(item, dict):
-                    items.append(item)
-    # score 내림차순, 최대 10개 — 외부 값이므로 _safe_score로 방어적 변환
-    items.sort(key=_safe_score, reverse=True)
-    return items[:10]
 
 
 def _safe_score(item: dict) -> float:

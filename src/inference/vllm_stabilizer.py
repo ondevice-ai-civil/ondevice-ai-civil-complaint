@@ -1,9 +1,9 @@
-"""
-vLLM Stabilizer for EXAONE Model
+"""vLLM 엔진 안정화 유틸리티.
 
-Initializes and tests vLLM engine for EXAONE-based civil complaint model.
-Note: As of transformers 4.53.0+, RopeParameters, check_model_inputs,
-and ALL_ATTENTION_FUNCTIONS exist natively — no monkey-patches needed.
+.. deprecated::
+    이 모듈은 레거시 독립 실행 스크립트입니다.
+    프로덕션 서빙은 api_server.py의 vLLMEngineManager가 담당합니다.
+    RuntimeConfig 기반 설정과 다를 수 있으므로 주의하세요.
 """
 
 import sys

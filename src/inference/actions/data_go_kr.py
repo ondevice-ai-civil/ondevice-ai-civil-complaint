@@ -8,9 +8,18 @@ Issue: #394
 """
 
 import os
+import re
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
+
+
+def _mask_api_key(msg: str) -> str:
+    """로그/에러 메시지에서 serviceKey 및 검색어 값을 마스킹."""
+    masked = re.sub(r"(serviceKey=)[^&\s]+", r"\1***MASKED***", str(msg))
+    masked = re.sub(r"(searchword=)[^&\s]+", r"\1***REDACTED***", masked)
+    return masked
+
 
 from ..session_context import SessionContext
 from .base import ActionResult, BaseAction, Citation
@@ -32,7 +41,7 @@ except ImportError:
 # 상수
 # ---------------------------------------------------------------------------
 
-_BASE_URL = "http://apis.data.go.kr/1140100/minAnalsInfoView5"
+_BASE_URL = "https://apis.data.go.kr/1140100/minAnalsInfoView5"
 _ENDPOINT_SIMILAR = "/minSimilarInfo5"
 
 
@@ -199,6 +208,8 @@ class MinwonAnalysisAction(BaseAction):
     ) -> Optional[List[Dict[str, Any]]]:
         """공공데이터포털 유사민원정보 API를 호출한다.
 
+        내부적으로 ``_call_api`` 에 위임하여 HTTP 호출/파싱 로직 중복을 제거한다.
+
         Parameters
         ----------
         search_query : str
@@ -213,55 +224,16 @@ class MinwonAnalysisAction(BaseAction):
         Optional[List[Dict[str, Any]]]
             성공 시 아이템 목록, 실패 시 None.
         """
-        url = _BASE_URL + _ENDPOINT_SIMILAR
-        params = {
-            "serviceKey": self._api_key,
-            "startPos": 1,
-            "retCount": ret_count if ret_count is not None else self._ret_count,
-            "target": "qna,qna_origin",
-            "minScore": min_score if min_score is not None else self._min_score,
-            "dataType": "json",
-            "searchword": search_query,
-        }
-
-        try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                response = await client.get(url, params=params)
-                response.raise_for_status()
-                body = response.json()
-        except _HttpxTimeoutError as exc:
-            logger.warning(f"[minwon_analysis] API 타임아웃: {exc}")
-            return None
-        except _HttpxStatusError as exc:
-            logger.warning(f"[minwon_analysis] HTTP 오류 {exc.response.status_code}: {exc}")
-            return None
-        except Exception as exc:
-            logger.error(f"[minwon_analysis] API 호출 오류: {exc}", exc_info=True)
-            return None
-
-        # 실제 API는 최상위 배열([]) 또는 returnObject 래핑으로 응답
-        if isinstance(body, list):
-            return body
-
-        if not isinstance(body, dict):
-            logger.warning(f"[minwon_analysis] 예상치 못한 응답 타입: {type(body)}")
-            return None
-
-        # returnObject 래핑
-        if "returnObject" in body:
-            obj = body["returnObject"]
-            return obj if isinstance(obj, list) else []
-
-        # 에러 응답 검사 — 성공 코드만 통과
-        _SUCCESS_CODES = {"00", "0", "200", ""}
-        code = str(body.get("code", body.get("resultCode", "00")))
-        if code not in _SUCCESS_CODES:
-            logger.warning(
-                f"[minwon_analysis] API 에러 (code={code}): {body.get('msg', body.get('resultMsg', ''))}"
-            )
-            return None
-
-        return self._parse_similar_items(body)
+        return await self._call_api(
+            _ENDPOINT_SIMILAR,
+            {
+                "startPos": 1,
+                "retCount": ret_count if ret_count is not None else self._ret_count,
+                "target": "qna,qna_origin",
+                "minScore": min_score if min_score is not None else self._min_score,
+                "searchword": search_query,
+            },
+        )
 
     def _parse_similar_items(self, raw_body: Dict[str, Any]) -> List[Dict[str, Any]]:
         """API 응답에서 아이템 목록을 추출한다.
@@ -441,16 +413,19 @@ class MinwonAnalysisAction(BaseAction):
                 response.raise_for_status()
                 body = response.json()
         except httpx.TimeoutException as exc:
-            logger.warning(f"[minwon_analysis] API 타임아웃 ({endpoint}): {exc}")
+            logger.warning(
+                f"[minwon_analysis] API 타임아웃 ({endpoint}): {_mask_api_key(str(exc))}"
+            )
             return None
         except httpx.HTTPStatusError as exc:
             logger.warning(
-                f"[minwon_analysis] HTTP 오류 ({endpoint}) " f"{exc.response.status_code}: {exc}"
+                f"[minwon_analysis] HTTP 오류 ({endpoint}) "
+                f"{exc.response.status_code}: {_mask_api_key(str(exc))}"
             )
             return None
         except Exception as exc:
             logger.error(
-                f"[minwon_analysis] API 호출 오류 ({endpoint}): {exc}",
+                f"[minwon_analysis] API 호출 오류 ({endpoint}): {_mask_api_key(str(exc))}",
                 exc_info=True,
             )
             return None
@@ -469,7 +444,7 @@ class MinwonAnalysisAction(BaseAction):
             if code not in ("00", "0", "200", ""):
                 logger.warning(
                     f"[minwon_analysis] API 에러 ({endpoint}): code={code}, "
-                    f"msg={body.get('msg', body.get('resultMsg', ''))}"
+                    f"msg={_mask_api_key(body.get('msg', body.get('resultMsg', '')))}"
                 )
                 return None
             # body > items 경로 파싱 시도

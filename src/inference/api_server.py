@@ -11,7 +11,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Security
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
 from loguru import logger
 
@@ -1668,8 +1668,10 @@ async def agent_stream(
 
 
 @app.post("/v2/agent/stream")
+@_rate_limit("30/minute")
 async def v2_agent_stream(
     request: AgentRunRequest,
+    _http_request: Request,
     _: None = Depends(verify_api_key),
 ):
     """LangGraph 기반 agent SSE 스트리밍 실행.
@@ -1705,6 +1707,19 @@ async def v2_agent_stream(
         "request_id": request_id,
         "messages": [HumanMessage(content=request.query)],
     }
+
+    # 기존 interrupt 상태가 남아있으면 거절(cancel)로 해소
+    try:
+        from langgraph.types import Command
+
+        existing_state = await manager.graph.aget_state(config)
+        if existing_state and existing_state.next:
+            await manager.graph.ainvoke(
+                Command(resume={"approved": False, "cancel": True}),
+                config,
+            )
+    except Exception as clear_exc:
+        logger.warning(f"[v2] interrupt 상태 확인/해소 실패 (무시): {type(clear_exc).__name__}")
 
     async def _generate() -> AsyncGenerator[str, None]:
         try:
@@ -1766,8 +1781,10 @@ async def v2_agent_stream(
 
 
 @app.post("/v2/agent/run")
+@_rate_limit("30/minute")
 async def v2_agent_run(
     request: AgentRunRequest,
+    _http_request: Request,
     _: None = Depends(verify_api_key),
 ):
     """LangGraph 기반 agent 실행 (1단계: interrupt까지).
@@ -1812,6 +1829,19 @@ async def v2_agent_run(
         "messages": [HumanMessage(content=request.query)],
     }
 
+    # 기존 interrupt 상태가 남아있으면 거절(cancel)로 해소
+    try:
+        existing_state = await manager.graph.aget_state(config)
+        if existing_state and existing_state.next:
+            from langgraph.types import Command
+
+            await manager.graph.ainvoke(
+                Command(resume={"approved": False, "cancel": True}),
+                config,
+            )
+    except Exception as clear_exc:
+        logger.warning(f"[v2] interrupt 상태 확인/해소 실패 (무시): {type(clear_exc).__name__}")
+
     try:
         await manager.graph.ainvoke(initial_state, config)
 
@@ -1854,19 +1884,25 @@ async def v2_agent_run(
                 )
         except Exception as persist_exc:
             logger.warning(f"[v2/agent/run] error persist 실패: {persist_exc}")
-        return {
-            "status": "error",
-            "thread_id": thread_id,
-            "session_id": session_id,
-            "graph_run_id": request_id,
-            "error": str(exc),
-        }
+        logger.exception(f"[v2/agent/run] 요청 처리 실패: {exc}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "thread_id": thread_id,
+                "session_id": session_id,
+                "graph_run_id": request_id,
+                "error": "요청 처리 중 내부 오류가 발생했습니다.",
+            },
+        )
 
 
 @app.post("/v2/agent/approve")
+@_rate_limit("30/minute")
 async def v2_agent_approve(
     thread_id: str,
     approved: bool,
+    _http_request: Request,
     _: None = Depends(verify_api_key),
 ):
     """interrupt된 graph를 resume한다 (2단계: 승인/거절).
@@ -1932,18 +1968,24 @@ async def v2_agent_approve(
                     )
         except Exception as persist_exc:
             logger.warning(f"[v2/agent/approve] error persist 실패: {persist_exc}")
-        return {
-            "status": "error",
-            "thread_id": thread_id,
-            "session_id": session_id,
-            "graph_run_id": request_id,
-            "error": str(exc),
-        }
+        logger.exception(f"[v2/agent/approve] 승인 처리 실패: {exc}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "thread_id": thread_id,
+                "session_id": session_id,
+                "graph_run_id": request_id,
+                "error": "승인 처리 중 내부 오류가 발생했습니다.",
+            },
+        )
 
 
 @app.post("/v2/agent/cancel")
+@_rate_limit("30/minute")
 async def v2_agent_cancel(
     thread_id: str,
+    _http_request: Request,
     _: None = Depends(verify_api_key),
 ):
     """interrupt 대기 중인 graph를 강제 취소한다.
@@ -1992,12 +2034,15 @@ async def v2_agent_cancel(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error(f"[v2/agent/cancel] 예외 발생: {exc}")
-        return {
-            "status": "error",
-            "thread_id": thread_id,
-            "error": str(exc),
-        }
+        logger.exception(f"[v2/agent/cancel] 취소 처리 실패: {exc}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "thread_id": thread_id,
+                "error": "취소 처리 중 내부 오류가 발생했습니다.",
+            },
+        )
 
 
 if __name__ == "__main__":

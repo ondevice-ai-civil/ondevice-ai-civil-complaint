@@ -98,6 +98,10 @@ class DaemonManager:
             str(self.port),
         ]
 
+        if self._port_in_use():
+            logger.error(f"[daemon] 포트 {self.port}이 이미 사용 중입니다.")
+            return False
+
         logger.info(f"[daemon] 기동 명령: {' '.join(cmd)}")
 
         with open(self.log_path, "a") as log_file:
@@ -112,7 +116,12 @@ class DaemonManager:
         logger.info(f"[daemon] 프로세스 기동 완료. PID={proc.pid}")
 
         # health check 대기
-        return self._wait_until_healthy()
+        healthy = self._wait_until_healthy()
+        if not healthy:
+            logger.error("[daemon] health check 실패. 프로세스를 정리합니다.")
+            self.stop()
+            return False
+        return True
 
     def stop(self) -> None:
         """daemon을 정상 종료한다 (SIGTERM → timeout 후 SIGKILL)."""
@@ -166,6 +175,13 @@ class DaemonManager:
                     "GovOn daemon 기동에 실패했습니다. " f"로그를 확인하세요: {self.log_path}"
                 )
         return self.get_base_url()
+
+    def _port_in_use(self) -> bool:
+        """포트가 이미 사용 중인지 확인한다."""
+        import socket
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            return s.connect_ex(("127.0.0.1", self.port)) == 0
 
     # ------------------------------------------------------------------
     # 내부 헬퍼

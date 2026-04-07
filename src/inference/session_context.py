@@ -234,6 +234,8 @@ class SessionStore:
         conn = sqlite3.connect(self._db_path)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
         return conn
 
     def _init_db(self) -> None:
@@ -727,6 +729,23 @@ class SessionStore:
         """
         cutoff = time.time() - max_age_days * 86400
         with closing(self._connect()) as conn, conn:
+            # 삭제 대상 session_id 목록 먼저 조회 (metadata 테이블에는 FK CASCADE가 없음)
+            cursor = conn.execute(
+                "SELECT session_id FROM sessions WHERE updated_at < ?",
+                (cutoff,),
+            )
+            expired_ids = [row["session_id"] for row in cursor.fetchall()]
+
+            # 청크 단위로 metadata 삭제 (SQLite MAX_VARIABLE_NUMBER 제한 방어)
+            _CHUNK_SIZE = 500
+            for i in range(0, len(expired_ids), _CHUNK_SIZE):
+                chunk = expired_ids[i : i + _CHUNK_SIZE]
+                placeholders = ",".join("?" * len(chunk))
+                conn.execute(
+                    f"DELETE FROM metadata WHERE owner_type='session' AND owner_id IN ({placeholders})",  # noqa: S608
+                    chunk,
+                )
+
             deleted = conn.execute("DELETE FROM sessions WHERE updated_at < ?", (cutoff,)).rowcount
         if deleted:
             logger.info(f"SessionStore: {deleted}개 세션 정리 (max_age_days={max_age_days})")

@@ -123,8 +123,12 @@ def _process_query(
     except (AttributeError, NotImplementedError):
         # client.stream() is not available (stub or older server)
         pass
-    except (ConnectionError, httpx.HTTPStatusError, httpx.StreamError, OSError):
+    except (httpx.HTTPStatusError, httpx.StreamError, OSError):
         # Streaming endpoint unavailable — fall back silently
+        pass
+    except ConnectionError:
+        # Streaming failed due to connection error — fall back to blocking
+        # which will also detect ConnectionError and trigger REPL exit
         pass
 
     # --- Fallback: blocking run() with simple spinner ---
@@ -219,6 +223,9 @@ def _process_query_blocking(
 
     try:
         response = client.run(query, session_id)
+    except ConnectionError as exc:
+        render_error(f"daemon 연결 실패: {exc}\ngovon --status로 상태를 확인하세요.")
+        return session_id, False  # REPL 탈출
     except Exception as exc:  # pragma: no cover
         render_error(f"요청 실패: {exc}")
         return session_id, True
@@ -306,7 +313,7 @@ def _run_repl(client: "GovOnClient", initial_session_id: str | None = None) -> N
             print("\n요청이 취소되었습니다.")
             continue
 
-        if not should_continue:  # pragma: no cover
+        if not should_continue:
             break
 
     if session_id:

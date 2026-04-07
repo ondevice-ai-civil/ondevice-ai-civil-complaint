@@ -22,33 +22,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 
-# ML 패키지(torch 의존) 제외한 API 구동 필수 패키지만 설치
-RUN uv pip install --system --no-cache \
-    fastapi \
-    uvicorn \
-    pydantic \
-    "rank-bm25>=0.2.2" \
-    httpx \
-    "langgraph==1.1.6" \
-    "langgraph-checkpoint==4.0.1" \
-    "langgraph-checkpoint-sqlite==3.0.3" \
-    "langchain-openai>=0.3.0" \
-    "langchain-core>=1.2.0,<2.0.0" \
-    pandas \
-    numpy \
-    scikit-learn \
-    PyMuPDF \
-    requests \
-    beautifulsoup4 \
-    lxml \
-    tqdm \
-    python-dotenv \
-    pyyaml \
-    loguru \
-    sqlalchemy \
-    psycopg2-binary \
-    "faiss-cpu>=1.7.4" \
-    "sentence-transformers>=3.0.0"
+# ML 패키지를 제외한 나머지를 자동 설치
+RUN grep -ivE '^(torch|vllm|autoawq|bitsandbytes|peft|trl|optimum|accelerate|datasets|transformers|sentence.transformers|unsloth|xformers|triton|flash.attn|nvidia)' requirements.txt > /tmp/ci-reqs.txt \
+    && uv pip install --system --no-cache -r /tmp/ci-reqs.txt \
+    && uv pip install --system --no-cache sentence-transformers --no-deps
 
 COPY src/ ./src/
 COPY agents/ ./agents/

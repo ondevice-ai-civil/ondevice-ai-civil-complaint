@@ -351,6 +351,33 @@ async def _call_agent(
                 for ev in events:
                     if ev.get("status") == "error":
                         return False, "", ev.get("error", "unknown error")
+                # __interrupt__ 또는 awaiting_approval 이벤트 → 자동 승인 후 최종 텍스트 수집
+                # LangGraph interrupt()는 "__interrupt__" 노드로 emit됨
+                awaiting = next(
+                    (
+                        ev
+                        for ev in events
+                        if ev.get("status") == "awaiting_approval"
+                        or ev.get("node") == "__interrupt__"
+                    ),
+                    None,
+                )
+                if awaiting:
+                    thread_id = awaiting.get("thread_id") or session_id
+                    try:
+                        approve_code, approve_resp = await http_post(
+                            f"/v2/agent/approve?thread_id={thread_id}&approved=true", {}
+                        )
+                        if approve_code == 200:
+                            final_text = (
+                                approve_resp.get("text", "") or approve_resp.get("final_text", "")
+                            )
+                            if final_text:
+                                return True, final_text, None
+                            return False, "", f"approve 200 but text 없음: {approve_resp}"
+                        return False, "", f"approve HTTP {approve_code}: {approve_resp}"
+                    except Exception as approve_exc:
+                        return False, "", f"approve 호출 실패: {approve_exc}"
                 return False, "", f"SSE 이벤트 수신했으나 text 없음 (events={len(events)})"
         except Exception as exc:
             logger.warning("Stream error: %s", exc)  # fallback to /v2/agent/run
@@ -419,14 +446,30 @@ async def scenario3_civil_lora() -> dict:
 async def scenario4_legal_lora() -> dict:
     """Scenario 4: Legal LoRA — append_evidence (v2/agent/stream).
 
-    Scenario 3과 동일 세션(_RUN_SESSION_ID)에 법령 근거 보강 요청을 전송한다.
+    독립 세션에서 민원 답변 초안 요청 후 동일 세션에서 법령 근거 보강을 요청한다.
     응답에 법령/조항 관련 패턴이 포함되어 있는지 확인한다.
     """
     t0 = time.monotonic()
+    session_id = str(uuid4())
     try:
+        # 동일 세션에서 civil 요청 먼저 (append_evidence는 이전 답변 컨텍스트 필요)
+        ok_civil, _, err_civil = await _call_agent(
+            message="건축 허가 신청 민원에 대한 답변 초안을 작성해줘",
+            session_id=session_id,
+        )
+        if not ok_civil:
+            elapsed = time.monotonic() - t0
+            return _record(
+                4,
+                "Legal LoRA (append_evidence)",
+                False,
+                elapsed,
+                f"civil 선행 요청 실패: {err_civil}",
+            )
+
         ok, text, err = await _call_agent(
             message="위 답변에 관련 법령과 판례 근거를 보강해줘",
-            session_id=_RUN_SESSION_ID,
+            session_id=session_id,
         )
         elapsed = time.monotonic() - t0
         if not ok:

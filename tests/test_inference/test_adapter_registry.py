@@ -27,7 +27,9 @@ class TestAdapterRegistryLoading:
         from src.inference.adapter_registry import AdapterRegistry
 
         AdapterRegistry.reset()
-        with patch.dict(os.environ, {"ADAPTER_PATHS": "public_admin=/custom/path,legal=/other/path"}):
+        with patch.dict(
+            os.environ, {"ADAPTER_PATHS": "public_admin=/custom/path,legal=/other/path"}
+        ):
             reg = AdapterRegistry.get_instance()
             meta = reg.get_meta("public_admin")
             assert meta is not None

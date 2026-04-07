@@ -32,7 +32,7 @@ async def mock_api_lookup(query: str, context: dict, session: Any) -> dict:
     }
 
 
-async def mock_draft_civil_response(query: str, context: dict, session: Any) -> dict:
+async def mock_draft_response(query: str, context: dict, session: Any) -> dict:
     return {
         "text": "근거 요약\n- 로컬 문서 2건을 참고했습니다.\n\n최종 초안\n도로 보수 접수를 진행하겠습니다.",
         "draft_text": "도로 보수 접수를 진행하겠습니다.",
@@ -59,7 +59,7 @@ class TestAgentLoop:
         registry = {
             ToolType.RAG_SEARCH: mock_rag_search,
             ToolType.API_LOOKUP: mock_api_lookup,
-            ToolType.DRAFT_RESPONSE: mock_draft_civil_response,
+            ToolType.DRAFT_RESPONSE: mock_draft_response,
             ToolType.APPEND_EVIDENCE: mock_append_evidence,
         }
         if overrides:
@@ -222,7 +222,7 @@ class TestAgentLoopStream:
             tool_registry={
                 ToolType.RAG_SEARCH: mock_rag_search,
                 ToolType.API_LOOKUP: mock_api_lookup,
-                ToolType.DRAFT_RESPONSE: mock_draft_civil_response,
+                ToolType.DRAFT_RESPONSE: mock_draft_response,
             }
         )
         session = SessionContext()
@@ -245,7 +245,7 @@ class TestAgentLoopStream:
             tool_registry={
                 ToolType.RAG_SEARCH: mock_failing_tool,
                 ToolType.API_LOOKUP: mock_api_lookup,
-                ToolType.DRAFT_RESPONSE: mock_draft_civil_response,
+                ToolType.DRAFT_RESPONSE: mock_draft_response,
             }
         )
         session = SessionContext()

@@ -197,7 +197,7 @@ class TestParallelToolExecution:
 
     @pytest.mark.asyncio
     async def test_dependent_tools_run_after_independent(self):
-        """draft_civil_response는 independent 도구 이후 순차 실행된다."""
+        """draft_response는 independent 도구 이후 순차 실행된다."""
         executor = SlowExecutor(
             {
                 "rag_search": 0.05,
@@ -216,7 +216,7 @@ class TestParallelToolExecution:
 
         assert len(result["tool_results"]) == 3
         assert "draft_response" in result["tool_results"]
-        # draft_civil_response는 rag/api 결과가 accumulated된 후 실행
+        # draft_response는 rag/api 결과가 accumulated된 후 실행
         assert "rag_search" in result["accumulated_context"]
         assert "api_lookup" in result["accumulated_context"]
 

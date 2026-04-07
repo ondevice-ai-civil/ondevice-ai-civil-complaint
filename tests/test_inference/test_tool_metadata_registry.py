@@ -103,8 +103,7 @@ def _make_mock_fn(name: str) -> AsyncMock:
 def mock_fns():
     return {
         "rag_search_fn": _make_mock_fn("rag_search"),
-        "draft_civil_response_fn": _make_mock_fn("draft_response"),
-        "append_evidence_fn": _make_mock_fn("append_evidence"),
+        "draft_response_fn": _make_mock_fn("draft_response"),
     }
 
 
@@ -113,8 +112,7 @@ def registry(mock_fns):
     return build_mvp_registry(
         rag_search_fn=mock_fns["rag_search_fn"],
         api_lookup_action=None,
-        draft_civil_response_fn=mock_fns["draft_civil_response_fn"],
-        append_evidence_fn=mock_fns["append_evidence_fn"],
+        draft_response_fn=mock_fns["draft_response_fn"],
     )
 
 
@@ -127,12 +125,11 @@ class TestMvpCapabilityIds:
     """MVP capability stable identifier 검증."""
 
     def test_expected_ids(self):
-        """MVP capability 8개가 정확히 등록되어 있다."""
+        """MVP capability 7개가 정확히 등록되어 있다."""
         expected = {
             "rag_search",
             "api_lookup",
             "draft_response",
-            "append_evidence",
             "issue_detector",
             "stats_lookup",
             "keyword_analyzer",
@@ -203,7 +200,7 @@ class TestGetAllMetadata:
     def test_returns_list_of_dicts(self, registry):
         result = get_all_metadata(registry)
         assert isinstance(result, list)
-        assert len(result) == 8
+        assert len(result) == 7
 
     def test_each_metadata_has_required_fields(self, registry):
         """각 metadata dict에 필수 필드가 포함되어 있다."""
@@ -303,7 +300,7 @@ class TestRegistryExecutorAdapterIntegration:
         """planner용 tool descriptions 메서드가 올바른 목록을 반환한다."""
         adapter = self._make_adapter(registry)
         descriptions = adapter.get_tool_descriptions_for_planner()
-        assert len(descriptions) == 8
+        assert len(descriptions) == 7
         names = {d["name"] for d in descriptions}
         assert names == MVP_CAPABILITY_IDS
 
@@ -364,23 +361,14 @@ class TestCapabilityWrappers:
         assert result.success is True
 
     @pytest.mark.asyncio
-    async def test_draft_civil_response_delegates_to_fn(self, mock_fns):
-        from src.inference.graph.capabilities.draft_civil_response import (
+    async def test_draft_response_delegates_to_fn(self, mock_fns):
+        from src.inference.graph.capabilities.draft_response import (
             DraftResponseCapability,
         )
 
-        cap = DraftResponseCapability(execute_fn=mock_fns["draft_civil_response_fn"])
+        cap = DraftResponseCapability(execute_fn=mock_fns["draft_response_fn"])
         result = await cap.execute("테스트", {}, None)
-        mock_fns["draft_civil_response_fn"].assert_awaited_once()
-        assert result.success is True
-
-    @pytest.mark.asyncio
-    async def test_append_evidence_delegates_to_fn(self, mock_fns):
-        from src.inference.graph.capabilities.append_evidence import AppendEvidenceCapability
-
-        cap = AppendEvidenceCapability(execute_fn=mock_fns["append_evidence_fn"])
-        result = await cap.execute("테스트", {}, None)
-        mock_fns["append_evidence_fn"].assert_awaited_once()
+        mock_fns["draft_response_fn"].assert_awaited_once()
         assert result.success is True
 
     @pytest.mark.asyncio

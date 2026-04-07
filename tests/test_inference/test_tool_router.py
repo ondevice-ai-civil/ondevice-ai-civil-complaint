@@ -14,7 +14,7 @@ class TestToolRouter:
 
     def test_evidence_request_routes_to_append_flow(self):
         plan = self.router.plan("이 답변의 근거를 붙여줘")
-        assert plan.tool_names == ["rag_search", "api_lookup", "append_evidence"]
+        assert plan.tool_names == ["rag_search", "api_lookup", "draft_response"]
         assert "근거" in plan.reason
 
     def test_lookup_only_request_routes_to_api_lookup(self):

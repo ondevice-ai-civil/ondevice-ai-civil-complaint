@@ -57,7 +57,7 @@ VALID_TOOLS = frozenset(
         "rag_search",
         "api_lookup",
         "draft_response",
-                "issue_detector",
+        "issue_detector",
         "stats_lookup",
         "keyword_analyzer",
         "demographics_lookup",

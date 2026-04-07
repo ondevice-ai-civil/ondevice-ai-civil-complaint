@@ -38,7 +38,7 @@ class TestBuildQueryVariants:
 
         variants = build_query_variants(
             "이 답변의 근거를 붙여줘",
-            tool_names=["rag_search", "api_lookup", "append_evidence"],
+            tool_names=["rag_search", "api_lookup", "draft_response"],
             context=context,
         )
 

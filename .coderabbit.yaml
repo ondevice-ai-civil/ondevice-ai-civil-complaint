@@ -1,0 +1,25 @@
+language: "ko-KR"
+
+reviews:
+  # MUST/SHOULD 이슈가 없으면 자동 승인, 있으면 변경 요청 제출
+  request_changes_workflow: true
+
+  high_level_summary: true
+  poem: false
+  collapse_walkthrough: true
+
+  auto_review:
+    enabled: true
+    drafts: false
+
+  # NITS(사소한 스타일/네이밍) 는 리뷰에서 제외
+  # MUST(버그·보안·데이터손실) / SHOULD(품질·유지보수·성능) 만 보고
+  path_instructions:
+    - path: "**"
+      instructions: |
+        리뷰 시 다음 기준을 엄격히 적용하세요:
+        - **보고할 것 (MUST)**: 버그, 보안 취약점, 데이터 손실 위험, 런타임 오류
+        - **보고할 것 (SHOULD)**: 코드 품질, 유지보수성, 성능, 잠재적 회귀
+        - **보고하지 말 것 (NITS)**: 스타일 선호도, 변수명 취향, 주석 표현, 사소한 포맷 개선
+        NITS 수준의 지적은 일체 생략하세요.
+        MUST/SHOULD 이슈가 없으면 PR을 승인하세요.

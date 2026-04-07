@@ -6,6 +6,7 @@ Uses `rich` when available; falls back to plain print() otherwise.
 from __future__ import annotations
 
 from threading import Lock
+from typing import Any
 
 from src.cli.terminal import (
     get_narrow_terminal_warning,
@@ -19,6 +20,7 @@ try:
     from rich.markdown import Markdown
     from rich.panel import Panel
     from rich.status import Status
+    from rich.table import Table
     from rich.text import Text
 
     _console = Console()
@@ -44,6 +46,65 @@ NODE_STATUS_MESSAGES: dict[str, str] = {
 }
 
 MARKDOWN_CODE_THEME = "monokai"
+STRUCTURED_TOOL_ORDER = ("stats_lookup", "keyword_analyzer", "demographics_lookup")
+STRUCTURED_TOOL_TITLES = {
+    "stats_lookup": "민원 통계",
+    "keyword_analyzer": "키워드 분석",
+    "demographics_lookup": "인구통계",
+}
+STRUCTURED_API_TITLES = {
+    "doc_count": "채널별 접수 건수",
+    "trend": "추이",
+    "statistics": "기간별 통계",
+    "org_ranking": "기관 순위",
+    "region_ranking": "지역 순위",
+    "core_keyword": "핵심 키워드",
+    "related_word": "연관어",
+    "gender": "성별 분포",
+    "age": "연령 분포",
+    "population": "인구 대비 비율",
+}
+TABLE_COLUMN_PRIORITY = (
+    "keyword",
+    "topic",
+    "label",
+    "term",
+    "hits",
+    "value",
+    "ratio",
+    "prebRatio",
+    "prevRatio",
+    "population",
+    "pttn",
+    "dfpt",
+    "saeol",
+)
+TABLE_COLUMN_LABELS = {
+    "keyword": "키워드",
+    "topic": "항목",
+    "label": "항목",
+    "term": "항목",
+    "hits": "건수",
+    "value": "값",
+    "ratio": "비율",
+    "prebRatio": "전일 대비",
+    "prevRatio": "전기 대비",
+    "population": "인구",
+    "pttn": "국민신문고",
+    "dfpt": "민원24",
+    "saeol": "새올",
+    "source_type": "출처",
+    "title": "제목",
+    "page": "페이지",
+    "score": "점수",
+    "link_or_path": "경로/링크",
+}
+TABLE_HIDDEN_KEYS = {"_source_api"}
+EVIDENCE_SOURCE_LABELS = {
+    "rag": "로컬 문서",
+    "api": "외부 API",
+    "llm_generated": "LLM 생성",
+}
 
 
 def get_node_message(node_name: str) -> str:
@@ -124,6 +185,149 @@ def _plain_rule(columns: int) -> str:
     return "─" * max(columns - 2, 12)
 
 
+def _format_table_value(key: str, value: Any) -> str:
+    """Format a structured value for rich/plain table rendering."""
+    if value in ("", None):
+        return "-"
+
+    if key == "source_type":
+        return EVIDENCE_SOURCE_LABELS.get(str(value), str(value))
+    if key == "page":
+        return f"p.{value}"
+    if key == "score":
+        try:
+            return f"{float(value):.2f}"
+        except (TypeError, ValueError):
+            return str(value)
+    if key in {"hits", "population", "pttn", "dfpt", "saeol"}:
+        try:
+            return f"{int(float(value)):,}"
+        except (TypeError, ValueError):
+            return str(value)
+    if key == "value":
+        try:
+            value_f = float(value)
+            return f"{value_f:,.1f}" if value_f % 1 else f"{value_f:,.0f}"
+        except (TypeError, ValueError):
+            return str(value)
+    if key in {"ratio", "prebRatio", "prevRatio"}:
+        text = str(value)
+        return text if text.endswith("%") else f"{text}%"
+    return str(value)
+
+
+def _select_table_columns(rows: list[dict], columns: int) -> list[str]:
+    """Select visible table columns based on row shape and terminal width."""
+    visible_keys: list[str] = []
+    seen: set[str] = set()
+
+    for key in TABLE_COLUMN_PRIORITY:
+        if any(row.get(key) not in ("", None) for row in rows):
+            visible_keys.append(key)
+            seen.add(key)
+
+    for row in rows:
+        for key in row:
+            if key in TABLE_HIDDEN_KEYS or key in seen:
+                continue
+            if row.get(key) not in ("", None):
+                visible_keys.append(key)
+                seen.add(key)
+
+    max_columns = 5 if columns >= 120 else 4 if columns >= 80 else 2
+    return visible_keys[:max_columns]
+
+
+def _build_rich_table(rows: list[dict], columns: int, *, column_keys: list[str] | None = None):
+    """Build a Rich table from structured rows."""
+    selected_keys = column_keys or _select_table_columns(rows, columns)
+    if not selected_keys:
+        return None
+
+    table = Table(expand=True)
+    for key in selected_keys:
+        table.add_column(
+            TABLE_COLUMN_LABELS.get(key, key),
+            overflow="fold",
+            no_wrap=key in {"source_type", "page", "score"},
+        )
+
+    for row in rows:
+        table.add_row(*(_format_table_value(key, row.get(key)) for key in selected_keys))
+
+    return table
+
+
+def _render_plain_table(
+    title: str,
+    rows: list[dict],
+    columns: int,
+    *,
+    column_keys: list[str] | None = None,
+) -> str:
+    """Render structured rows as a tab-delimited plain-text table."""
+    selected_keys = column_keys or _select_table_columns(rows, columns)
+    if not selected_keys:
+        return ""
+
+    lines = [title, "\t".join(TABLE_COLUMN_LABELS.get(key, key) for key in selected_keys)]
+    for row in rows:
+        lines.append("\t".join(_format_table_value(key, row.get(key)) for key in selected_keys))
+    return "\n".join(lines)
+
+
+def _iter_structured_result_sections(tool_results: dict[str, Any]) -> list[tuple[str, list[dict]]]:
+    """Extract table-ready structured result sections from tool results."""
+    sections: list[tuple[str, list[dict]]] = []
+
+    for tool_name in STRUCTURED_TOOL_ORDER:
+        payload = tool_results.get(tool_name)
+        if not isinstance(payload, dict):
+            continue
+        results = payload.get("results")
+        if not isinstance(results, list) or not results:
+            continue
+
+        grouped_rows: dict[str, list[dict]] = {}
+        for row in results:
+            if not isinstance(row, dict):
+                continue
+            grouped_rows.setdefault(str(row.get("_source_api") or "results"), []).append(row)
+
+        for source_api, rows in grouped_rows.items():
+            source_title = STRUCTURED_API_TITLES.get(source_api)
+            tool_title = STRUCTURED_TOOL_TITLES.get(tool_name, tool_name)
+            title = f"{tool_title} · {source_title}" if source_title else tool_title
+            sections.append((title, rows))
+
+    return sections
+
+
+def _build_evidence_table_rows(evidence_items: list[dict]) -> list[dict]:
+    """Normalize evidence items into a table-oriented row schema."""
+    rows: list[dict] = []
+    for item in evidence_items:
+        rows.append(
+            {
+                "source_type": item.get("source_type"),
+                "title": item.get("title") or item.get("excerpt", ""),
+                "page": item.get("page"),
+                "score": item.get("score"),
+                "link_or_path": item.get("link_or_path"),
+            }
+        )
+    return rows
+
+
+def _select_evidence_columns(columns: int) -> list[str]:
+    """Return evidence table columns based on terminal width."""
+    if columns >= 120:
+        return ["source_type", "title", "page", "score", "link_or_path"]
+    if columns >= 80:
+        return ["source_type", "title", "score"]
+    return ["source_type", "title"]
+
+
 def render_evidence_section(evidence_items: list) -> str:
     """EvidenceItem dict 리스트를 출처 섹션 텍스트로 변환한다.
 
@@ -193,7 +397,11 @@ def _build_citations_text(citations: list[str]) -> Text:
 
 
 def _build_rich_result_content(
-    text_body: str, evidence_items: list, citations: list
+    text_body: str,
+    evidence_items: list,
+    citations: list,
+    tool_results: dict[str, Any],
+    columns: int,
 ) -> Text | Markdown | Group:
     """Build the rich renderable used inside the result panel."""
     renderables = []
@@ -201,10 +409,25 @@ def _build_rich_result_content(
     if text_body:
         renderables.append(Markdown(text_body, code_theme=MARKDOWN_CODE_THEME))
 
+    for title, rows in _iter_structured_result_sections(tool_results):
+        table = _build_rich_table(rows, columns)
+        if table is None:
+            continue
+        renderables.append(Text(""))
+        renderables.append(Text(title, style="bold cyan"))
+        renderables.append(table)
+
     if evidence_items:
-        evidence_text = render_evidence_section(evidence_items)
-        if evidence_text:
-            renderables.append(Text(f"\n{evidence_text}\n", style="dim"))
+        evidence_rows = _build_evidence_table_rows(evidence_items)
+        evidence_table = _build_rich_table(
+            evidence_rows,
+            columns,
+            column_keys=_select_evidence_columns(columns),
+        )
+        if evidence_table is not None:
+            renderables.append(Text(""))
+            renderables.append(Text("참조 근거", style="bold"))
+            renderables.append(evidence_table)
     elif citations:
         renderables.append(_build_citations_text(citations))
 
@@ -222,15 +445,23 @@ def render_result(result: dict) -> None:
       - result["text"] or result["response"]: main answer text
       - result["evidence_items"]: EvidenceItem dict 리스트 (structured, 우선)
       - result["citations"] or result["sources"]: list of source strings (fallback)
+      - result["tool_results"]: stats/keyword/demographics structured result dict
     """
     text_body: str = result.get("text") or result.get("response") or ""
     evidence_items: list = result.get("evidence_items") or []
     citations: list = result.get("citations") or result.get("sources") or []
+    tool_results: dict[str, Any] = result.get("tool_results") or {}
 
     use_rich, columns = _resolve_render_mode()
 
     if use_rich:
-        content = _build_rich_result_content(text_body, evidence_items, citations)
+        content = _build_rich_result_content(
+            text_body,
+            evidence_items,
+            citations,
+            tool_results,
+            columns,
+        )
         _console.print(
             Panel(
                 content,
@@ -244,10 +475,19 @@ def render_result(result: dict) -> None:
         print(f"\n{rule}")
         print("GovOn")
         print(text_body)
+        for title, rows in _iter_structured_result_sections(tool_results):
+            table_text = _render_plain_table(title, rows, columns)
+            if table_text:
+                print(f"\n{table_text}")
         if evidence_items:
-            evidence_text = render_evidence_section(evidence_items)
-            if evidence_text:
-                print(f"\n{evidence_text}")
+            evidence_table = _render_plain_table(
+                "참조 근거",
+                _build_evidence_table_rows(evidence_items),
+                columns,
+                column_keys=_select_evidence_columns(columns),
+            )
+            if evidence_table:
+                print(f"\n{evidence_table}")
         elif citations:
             print("\n출처")
             for idx, src in enumerate(citations, 1):

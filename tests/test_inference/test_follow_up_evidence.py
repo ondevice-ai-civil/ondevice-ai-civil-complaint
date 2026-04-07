@@ -310,18 +310,21 @@ async def test_graph_follow_up_evidence_preserves_draft(evidence_graph):
 
 
 def test_render_result_with_evidence_items(capsys):
-    """evidence_items가 있으면 [로컬 문서]/[외부 API] 라벨로 표시한다."""
+    """plain fallback에서는 evidence_items를 탭 구분 표로 표시한다."""
     result = {
         "text": "도로 파손 민원을 접수해드리겠습니다.",
         "evidence_items": [_SAMPLE_RAG_EVIDENCE, _SAMPLE_API_EVIDENCE],
     }
 
     with patch("src.cli.renderer._RICH_AVAILABLE", False):
-        render_result(result)
+        with patch("src.cli.renderer.get_terminal_columns", return_value=80):
+            render_result(result)
 
     captured = capsys.readouterr()
-    assert "[로컬 문서]" in captured.out
-    assert "[외부 API]" in captured.out
+    assert "참조 근거" in captured.out
+    assert "출처\t제목\t점수" in captured.out
+    assert "로컬 문서\t민원처리법.pdf\t0.92" in captured.out
+    assert "외부 API\t유사 민원 처리 사례\t0.75" in captured.out
     assert "민원처리법.pdf" in captured.out
     assert "유사 민원 처리 사례" in captured.out
 
@@ -408,7 +411,7 @@ def test_render_result_rich_panel_uses_markdown_for_answer_body():
     markdown_text = "**굵게**\n- 목록\n`코드`\n```python\nprint('안내')\n```"
     with patch.object(renderer, "_RICH_AVAILABLE", True):
         with patch.object(renderer, "_console", mock_console):
-            with patch.object(renderer, "Markdown", FakeMarkdown):
+            with patch.object(renderer, "Markdown", FakeMarkdown, create=True):
                 with patch.object(renderer, "get_terminal_columns", return_value=80):
                     renderer.render_result({"text": markdown_text})
 
@@ -419,13 +422,32 @@ def test_render_result_rich_panel_uses_markdown_for_answer_body():
 
 
 def test_render_result_rich_panel_groups_markdown_with_evidence():
-    """근거가 있으면 Markdown 본문과 근거 블록을 함께 묶어 렌더링한다."""
+    """근거가 있으면 Markdown 본문과 근거 표를 함께 묶어 렌더링한다."""
     from src.cli import renderer
 
     class FakeMarkdown:
         def __init__(self, markup, code_theme=None):
             self.markup = markup
             self.code_theme = code_theme
+
+    class FakeText:
+        def __init__(self, text="", style=None):
+            self.plain = text
+            self.style = style
+
+        def append(self, text, style=None):
+            self.plain += text
+
+    class FakeTable:
+        def __init__(self, *args, **kwargs):
+            self.rows = []
+            self.columns = []
+
+        def add_column(self, header, **kwargs):
+            self.columns.append((header, kwargs))
+
+        def add_row(self, *cells):
+            self.rows.append(cells)
 
     class FakeGroup:
         def __init__(self, *renderables):
@@ -438,16 +460,117 @@ def test_render_result_rich_panel_groups_markdown_with_evidence():
     }
     with patch.object(renderer, "_RICH_AVAILABLE", True):
         with patch.object(renderer, "_console", mock_console):
-            with patch.object(renderer, "Markdown", FakeMarkdown):
-                with patch.object(renderer, "Group", FakeGroup):
-                    with patch.object(renderer, "get_terminal_columns", return_value=80):
-                        renderer.render_result(result)
+            with patch.object(renderer, "Markdown", FakeMarkdown, create=True):
+                with patch.object(renderer, "Text", FakeText, create=True):
+                    with patch.object(renderer, "Table", FakeTable, create=True):
+                        with patch.object(renderer, "Group", FakeGroup, create=True):
+                            with patch.object(renderer, "get_terminal_columns", return_value=80):
+                                renderer.render_result(result)
 
     panel = mock_console.print.call_args.args[0]
     assert isinstance(panel.renderable, FakeGroup)
     assert isinstance(panel.renderable.renderables[0], FakeMarkdown)
     assert panel.renderable.renderables[0].markup == "## 답변\n- 항목"
-    assert "민원처리법.pdf" in panel.renderable.renderables[1].plain
+    assert panel.renderable.renderables[2].plain == "참조 근거"
+    evidence_table = panel.renderable.renderables[3]
+    assert evidence_table.columns[0][0] == "출처"
+    assert evidence_table.columns[1][0] == "제목"
+    assert evidence_table.columns[2][0] == "점수"
+    assert evidence_table.rows[0] == ("로컬 문서", "민원처리법.pdf", "0.92")
+
+
+def test_render_result_rich_panel_renders_structured_tool_result_tables():
+    """tool_results의 구조화 데이터는 Rich Table로 렌더링된다."""
+    from src.cli import renderer
+
+    class FakeMarkdown:
+        def __init__(self, markup, code_theme=None):
+            self.markup = markup
+            self.code_theme = code_theme
+
+    class FakeText:
+        def __init__(self, text="", style=None):
+            self.plain = text
+            self.style = style
+
+        def append(self, text, style=None):
+            self.plain += text
+
+    class FakeTable:
+        def __init__(self, *args, **kwargs):
+            self.rows = []
+            self.columns = []
+
+        def add_column(self, header, **kwargs):
+            self.columns.append((header, kwargs))
+
+        def add_row(self, *cells):
+            self.rows.append(cells)
+
+    class FakeGroup:
+        def __init__(self, *renderables):
+            self.renderables = renderables
+
+    mock_console = MagicMock()
+    result = {
+        "text": "통계 요약입니다.",
+        "tool_results": {
+            "stats_lookup": {
+                "success": True,
+                "results": [
+                    {
+                        "_source_api": "region_ranking",
+                        "label": "경기도",
+                        "hits": 92887,
+                    }
+                ],
+            }
+        },
+    }
+
+    with patch.object(renderer, "_RICH_AVAILABLE", True):
+        with patch.object(renderer, "_console", mock_console):
+            with patch.object(renderer, "Markdown", FakeMarkdown, create=True):
+                with patch.object(renderer, "Text", FakeText, create=True):
+                    with patch.object(renderer, "Table", FakeTable, create=True):
+                        with patch.object(renderer, "Group", FakeGroup, create=True):
+                            with patch.object(renderer, "get_terminal_columns", return_value=80):
+                                renderer.render_result(result)
+
+    panel = mock_console.print.call_args.args[0]
+    assert isinstance(panel.renderable, FakeGroup)
+    assert panel.renderable.renderables[2].plain == "민원 통계 · 지역 순위"
+    stats_table = panel.renderable.renderables[3]
+    assert [column[0] for column in stats_table.columns] == ["항목", "건수"]
+    assert stats_table.rows[0] == ("경기도", "92,887")
+
+
+def test_render_result_plain_fallback_renders_structured_tool_table(capsys):
+    """plain fallback에서도 구조화 데이터는 탭 구분 표로 출력한다."""
+    result = {
+        "text": "통계 요약입니다.",
+        "tool_results": {
+            "stats_lookup": {
+                "success": True,
+                "results": [
+                    {
+                        "_source_api": "region_ranking",
+                        "label": "경기도",
+                        "hits": 92887,
+                    }
+                ],
+            }
+        },
+    }
+
+    with patch("src.cli.renderer._RICH_AVAILABLE", False):
+        with patch("src.cli.renderer.get_terminal_columns", return_value=80):
+            render_result(result)
+
+    captured = capsys.readouterr()
+    assert "민원 통계 · 지역 순위" in captured.out
+    assert "항목\t건수" in captured.out
+    assert "경기도\t92,887" in captured.out
 
 
 def test_render_result_plain_fallback_keeps_raw_markdown_text(capsys):

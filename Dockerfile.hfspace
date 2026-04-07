@@ -11,12 +11,13 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y \
-    python3.10 python3-pip git \
-    && rm -rf /var/lib/apt/lists/*
+    python3.10 curl git \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
 
 COPY requirements.txt .
-RUN python3.10 -m pip install --no-cache-dir --upgrade pip \
-    && python3.10 -m pip install --no-cache-dir -r requirements.txt
+RUN uv pip install --system --no-cache -r requirements.txt
 
 # HF Spaces는 uid 1000 권장 — COPY 전에 유저/디렉터리 생성으로 레이어 캐시 최적화
 RUN useradd -m -u 1000 user

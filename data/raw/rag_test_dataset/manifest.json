@@ -42,10 +42,10 @@
     }
   },
   "format_distribution": {
-    "txt": 40,
-    "pdf": 25,
-    "docx": 20,
-    "xlsx": 15
+    "txt": 160,
+    "pdf": 100,
+    "docx": 80,
+    "xlsx": 60
   },
   "files": [
     {

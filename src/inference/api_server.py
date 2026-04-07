@@ -164,6 +164,18 @@ def _extract_approval_request(graph_state: Any) -> Any:
     return task.interrupts[0].value
 
 
+def _safe_state_field(vals: Any, key: str, default: Any = "") -> Any:
+    """graph state에서 JSON 직렬화 가능한 값을 안전하게 추출한다."""
+    if not isinstance(vals, dict):
+        return default
+    v = vals.get(key, default)
+    if isinstance(v, (str, int, float, bool, type(None))):
+        return v
+    if isinstance(v, (dict, list)):
+        return v
+    return default
+
+
 class vLLMEngineManager:
     """GovOn Shell MVP용 로컬 런타임 매니저."""
 
@@ -1752,12 +1764,15 @@ async def v2_agent_stream(
                         try:
                             graph_state = await manager.graph.aget_state(config)
                             if graph_state.next:
+                                _vals = graph_state.values or {}
                                 event = {
                                     "node": "approval_wait",
                                     "status": "awaiting_approval",
                                     "approval_request": _extract_approval_request(graph_state),
                                     "thread_id": thread_id,
                                     "session_id": session_id,
+                                    "adapter_mode": _safe_state_field(_vals, "adapter_mode", ""),
+                                    "tool_args": _safe_state_field(_vals, "tool_args", {}),
                                 }
                         except Exception as exc:
                             logger.warning(f"[v2/agent/stream] aget_state 실패: {exc}")
@@ -1851,12 +1866,15 @@ async def v2_agent_run(
         graph_state = await manager.graph.aget_state(config)
         if graph_state.next:
             # interrupt 대기 중: approval_request 정보를 클라이언트에 반환
+            _vals = graph_state.values or {}
             return {
                 "status": "awaiting_approval",
                 "thread_id": thread_id,
                 "session_id": session_id,
                 "graph_run_id": request_id,
                 "approval_request": _extract_approval_request(graph_state),
+                "adapter_mode": _vals.get("adapter_mode", ""),
+                "tool_args": _vals.get("tool_args", {}),
             }
 
         # interrupt 없이 완료된 경우 (rejected 또는 오류)
@@ -1869,6 +1887,8 @@ async def v2_agent_run(
             "text": final_state.get("final_text", ""),
             "evidence_items": final_state.get("evidence_items", []),
             "task_type": final_state.get("task_type", ""),
+            "adapter_mode": _safe_state_field(final_state, "adapter_mode", ""),
+            "tool_args": _safe_state_field(final_state, "tool_args", {}),
         }
     except Exception as exc:
         logger.error(f"[v2/agent/run] 예외 발생: {exc}")
@@ -1946,6 +1966,8 @@ async def v2_agent_approve(
             "task_type": result.get("task_type", ""),
             "tool_results": result.get("tool_results", {}),
             "approval_status": approval_status,
+            "adapter_mode": _safe_state_field(result, "adapter_mode", ""),
+            "tool_args": _safe_state_field(result, "tool_args", {}),
         }
     except Exception as exc:
         logger.error(f"[v2/agent/approve] 예외 발생: {exc}")

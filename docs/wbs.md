@@ -44,7 +44,7 @@
 - [ ] planner가 읽는 tool metadata / capability contract 정의
 - [ ] unified `api_lookup` capability contract 정의
 - [ ] local `rag_search` capability contract 정의
-- [ ] `draft_civil_response` / `append_evidence` output contract 정의
+- [ ] `draft_response` output contract 정의
 - [ ] approval payload / plan schema 정의
 
 ### Milestone 1 완료 기준

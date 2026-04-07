@@ -85,7 +85,7 @@ GovOn MVP는 다음 구조를 가진다.
    - civil-response adapter
    - unified `api_lookup`
    - local `rag_search`
-   - `append_evidence`
+   - evidence augmentation (follow-up)
 
 ---
 

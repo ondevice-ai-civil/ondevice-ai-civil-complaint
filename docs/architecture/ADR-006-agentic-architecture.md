@@ -84,9 +84,9 @@ MVP의 정본 라우팅은 정규식 패턴 매칭이 아니다.
 베이스 모델은 **LGAI-EXAONE/EXAONE-4.0-32B-AWQ** 단일 vLLM 인스턴스다 (~20GB VRAM).
 LoRA 어댑터는 task 유형에 따라 per-request로 전환하며, 항상 붙어 있지 않다.
 
-- `civil-adapter` (LoRA #1): `draft_civil_response` task에서만 사용
+- `civil-adapter` (LoRA #1): `draft_response` task에서만 사용
   - 학습 데이터: umyunsang/govon-civil-response-data (74K건), QLoRA on AWQ base
-- [`legal-adapter`](https://huggingface.co/siwo/govon-legal-adapter) (LoRA #2): `append_evidence` task에서만 사용
+- [`legal-adapter`](https://huggingface.co/siwo/govon-legal-adapter) (LoRA #2): 근거 보강 follow-up task에서만 사용
   - 학습 데이터: umyunsang/govon-legal-response-data (243K건), QLoRA on AWQ base
 - LoRA 없음: `planner`, `rag_search`, `api_lookup`, `synthesis`
 - adapter activation은 task 승인 범위 안에 포함된다.
@@ -142,7 +142,7 @@ MVP 세션 저장 범위는 다음으로 제한한다.
 
 - FastAPI는 외부 공개 API가 아니라 로컬 daemon runtime으로 우선 사용한다.
 - shell client는 localhost runtime에만 연결한다.
-- tool registry는 MVP에서 `api_lookup`, `rag_search`, `draft_civil_response`, `append_evidence` 중심으로 재구성한다.
+- tool registry는 MVP에서 `api_lookup`, `rag_search`, `draft_response`, `synthesis` 중심으로 재구성한다.
 - LangGraph는 MVP 필수 의존이며, `planner -> approval_wait -> execute -> persist` 경로를 표현하는 정본 런타임으로 사용한다.
 - SQLite는 transcript/tool log를 저장하며, graph 전체 checkpoint를 제품 feature로 노출하지 않는다.
 - planner LLM은 `LLMPlannerAdapter`를 통해 EXAONE 4.0-32B-AWQ 네이티브 tool calling으로 동작한다.

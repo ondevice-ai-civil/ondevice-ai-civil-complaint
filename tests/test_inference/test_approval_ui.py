@@ -9,6 +9,7 @@ from src.cli import approval_ui
 
 def _sample_request() -> dict:
     return {
+        "task_type": "append_evidence",
         "goal": "도로 파손 민원을 담당 부서에 전달하고 처리 상태를 안내합니다",
         "reason": "현장 점검과 조치 일정 확인이 필요합니다",
         "tool_summaries": [
@@ -18,42 +19,85 @@ def _sample_request() -> dict:
     }
 
 
-def test_build_box_lines_fit_within_40_columns():
-    """40열 터미널에서도 승인 박스가 줄바꿈되며 폭을 넘지 않는다."""
-    with patch("src.cli.approval_ui.get_terminal_columns", return_value=40):
-        lines = approval_ui._build_box_lines(_sample_request(), selected=0)
-
-    max_width = max(approval_ui._display_width(line) for line in lines)
-    assert max_width <= 40
-    assert any("목표" in line for line in lines)
-    assert any("승인" in line for line in lines)
+def test_get_approval_panel_width_scales_with_terminal_columns():
+    """승인 패널은 좁은/넓은 터미널에서 반응형 폭을 유지한다."""
+    assert approval_ui._get_approval_panel_width(40) == 38
+    assert approval_ui._get_approval_panel_width(80) == 59
+    assert approval_ui._get_approval_panel_width(120) == 59
 
 
-def test_build_box_lines_fit_within_80_columns():
-    """80열 터미널에서는 승인 박스가 여유 있게 렌더링된다."""
-    with patch("src.cli.approval_ui.get_terminal_columns", return_value=80):
-        lines = approval_ui._build_box_lines(_sample_request(), selected=0)
+def test_build_approval_panel_uses_task_type_style_and_selection():
+    """Rich Panel 렌더링은 task_type 색상과 선택 상태를 반영한다."""
 
-    max_width = max(approval_ui._display_width(line) for line in lines)
-    assert max_width <= 80
+    class FakeText:
+        def __init__(self, text="", style=None):
+            self.plain = text
+            self.style = style
 
+        def append(self, text, style=None):
+            self.plain += text
 
-def test_build_box_lines_fit_within_120_columns_and_keep_max_width():
-    """120열 터미널에서도 승인 박스는 최대 폭 55를 유지하며 깨지지 않는다."""
-    with patch("src.cli.approval_ui.get_terminal_columns", return_value=120):
-        lines = approval_ui._build_box_lines(_sample_request(), selected=0)
+    class FakeTable:
+        def __init__(self, *args, **kwargs):
+            self.rows = []
+            self.columns = []
 
-    max_width = max(approval_ui._display_width(line) for line in lines)
-    assert max_width <= 61
+        @classmethod
+        def grid(cls, *args, **kwargs):
+            return cls(*args, **kwargs)
+
+        def add_column(self, *args, **kwargs):
+            self.columns.append((args, kwargs))
+
+        def add_row(self, *cells):
+            self.rows.append(cells)
+
+    class FakeGroup:
+        def __init__(self, *renderables):
+            self.renderables = renderables
+
+    class FakePanel:
+        def __init__(self, renderable, title=None, border_style=None, width=None, padding=None):
+            self.renderable = renderable
+            self.title = title
+            self.border_style = border_style
+            self.width = width
+            self.padding = padding
+
+    with patch.object(approval_ui, "Text", FakeText, create=True):
+        with patch.object(approval_ui, "Table", FakeTable, create=True):
+            with patch.object(approval_ui, "Group", FakeGroup, create=True):
+                with patch.object(approval_ui, "Panel", FakePanel, create=True):
+                    panel = approval_ui._build_approval_panel(
+                        _sample_request(),
+                        selected=0,
+                        columns=80,
+                    )
+
+    summary = panel.renderable.renderables[0]
+    choices = panel.renderable.renderables[2]
+    assert panel.width == 59
+    assert panel.border_style == approval_ui._get_task_type_style("append_evidence")
+    assert panel.title.plain == "작업 승인 요청"
+    assert summary.rows[0][0] == "유형"
+    assert summary.rows[0][1].plain == approval_ui._get_task_type_label("append_evidence")
+    assert choices.rows[0][0].plain == "● 승인"
+    assert choices.rows[0][0].style == "bold green"
+    assert choices.rows[1][0].plain == "○ 거절"
+    assert choices.rows[1][0].style == "dim white"
 
 
 def test_show_approval_prompt_warns_and_falls_back_on_narrow_terminal(capsys):
     """40열 미만에서는 경고 후 plain fallback으로 전환한다."""
     with patch("src.cli.approval_ui._PT_AVAILABLE", True):
-        with patch("src.cli.approval_ui.get_terminal_columns", return_value=30):
-            with patch("src.cli.approval_ui._fallback_prompt", return_value=True) as mock_fallback:
-                with patch("src.cli.approval_ui._pt_prompt") as mock_pt_prompt:
-                    assert approval_ui.show_approval_prompt(_sample_request()) is True
+        with patch("src.cli.approval_ui._RICH_AVAILABLE", True):
+            with patch("src.cli.approval_ui.get_terminal_columns", return_value=30):
+                with patch(
+                    "src.cli.approval_ui._fallback_prompt",
+                    return_value=True,
+                ) as mock_fallback:
+                    with patch("src.cli.approval_ui._pt_prompt") as mock_pt_prompt:
+                        assert approval_ui.show_approval_prompt(_sample_request()) is True
 
     captured = capsys.readouterr()
     assert "plain mode" in captured.out
@@ -62,12 +106,29 @@ def test_show_approval_prompt_warns_and_falls_back_on_narrow_terminal(capsys):
     mock_pt_prompt.assert_not_called()
 
 
+def test_show_approval_prompt_falls_back_when_rich_is_unavailable():
+    """prompt_toolkit가 있어도 Rich가 없으면 plain fallback으로 전환한다."""
+    with patch("src.cli.approval_ui._PT_AVAILABLE", True):
+        with patch("src.cli.approval_ui._RICH_AVAILABLE", False):
+            with patch("src.cli.approval_ui.get_terminal_columns", return_value=80):
+                with patch(
+                    "src.cli.approval_ui._fallback_prompt",
+                    return_value=True,
+                ) as mock_fallback:
+                    with patch("src.cli.approval_ui._pt_prompt") as mock_pt_prompt:
+                        assert approval_ui.show_approval_prompt(_sample_request()) is True
+
+    mock_fallback.assert_called_once_with(_sample_request(), columns=80)
+    mock_pt_prompt.assert_not_called()
+
+
 def test_show_approval_prompt_reuses_resolved_columns_for_pt_prompt():
     """prompt_toolkit 경로는 이미 구한 터미널 폭을 다시 전달한다."""
     with patch("src.cli.approval_ui._PT_AVAILABLE", True):
-        with patch("src.cli.approval_ui.get_terminal_columns", return_value=80):
-            with patch("src.cli.approval_ui._pt_prompt", return_value=True) as mock_pt_prompt:
-                assert approval_ui.show_approval_prompt(_sample_request()) is True
+        with patch("src.cli.approval_ui._RICH_AVAILABLE", True):
+            with patch("src.cli.approval_ui.get_terminal_columns", return_value=80):
+                with patch("src.cli.approval_ui._pt_prompt", return_value=True) as mock_pt_prompt:
+                    assert approval_ui.show_approval_prompt(_sample_request()) is True
 
     mock_pt_prompt.assert_called_once_with(_sample_request(), columns=80)
 
@@ -79,9 +140,11 @@ def test_fallback_prompt_uses_terminal_width_for_separator(capsys):
 
     lines = [line for line in capsys.readouterr().out.splitlines() if line]
     title_line = lines[0]
+    type_line = lines[1]
     separator_lines = [line for line in lines if set(line) == {"─"}]
 
     assert "작업 승인 요청" in title_line
+    assert "근거 보강" in type_line
     assert separator_lines
     max_width = max(approval_ui._display_width(line) for line in [title_line, *separator_lines])
     assert max_width <= 32

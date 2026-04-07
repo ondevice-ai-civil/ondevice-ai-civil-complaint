@@ -164,6 +164,7 @@ class TestV2AgentStreamEndpoint:
         # approval_wait interrupt 상태 모킹
         fake_interrupt = MagicMock()
         fake_interrupt.value = {
+            "task_type": "append_evidence",
             "goal": "테스트 목표",
             "reason": "테스트 이유",
             "tool_summaries": [],
@@ -191,6 +192,7 @@ class TestV2AgentStreamEndpoint:
         approval_event = approval_events[-1]
         assert approval_event["node"] == "approval_wait"
         assert "thread_id" in approval_event
+        assert approval_event["approval_request"]["task_type"] == "append_evidence"
 
     def test_stream_returns_error_when_graph_not_initialized(self):
         """graph가 None인 경우 error 이벤트를 반환한다."""

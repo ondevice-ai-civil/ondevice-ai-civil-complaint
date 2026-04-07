@@ -32,11 +32,11 @@ ENV PATH="/root/.local/bin:${PATH}"
 # Copy project files
 COPY requirements.txt .
 
-# 1) torch: CUDA 12.1 wheel (matches nvidia/cuda:12.1.1 base image)
-# 2) autoawq: --no-build-isolation so its build backend can import torch
-# 3) remaining deps: extra-index-url ensures CUDA wheels for vllm/bitsandbytes
+# 1) torch: extra-index-url so PyPI + PyTorch CUDA 12.1 index both resolve
+# 2) autoawq: --no-build-isolation exposes system torch to the build backend
+# 3) remaining deps: same extra-index-url for CUDA wheels (vllm, bitsandbytes)
 RUN uv pip install --system --no-cache \
-        --index-url https://download.pytorch.org/whl/cu121 \
+        --extra-index-url https://download.pytorch.org/whl/cu121 \
         "torch>=2.8.0" && \
     uv pip install --system --no-cache --no-build-isolation "autoawq>=0.2.8" && \
     uv pip install --system --no-cache \

@@ -1,25 +1,157 @@
-language: "ko-KR"
+$schema: "https://coderabbit.ai/integrations/schema.v2.json"
+
+language: "ko"
+
+tone_instructions: |
+  PR 리뷰는 다음 두 레벨만 보고하세요:
+  - [MUST]: 반드시 수정 (보안 취약점, 버그, 데이터 손실, 런타임 오류, 개인정보 노출)
+  - [SHOULD]: 수정 강권 (코드 품질, 유지보수성, 성능, 테스트 누락, 잠재적 회귀)
+  [NITS](스타일, 네이밍, 주석 표현, 사소한 포맷)는 절대 보고하지 마세요.
+  [MUST] 또는 [SHOULD] 이슈가 없으면 PR을 승인(Approve)하세요.
+  GovOn은 한국 공공행정 AI 서비스입니다. 개인정보, 민원 데이터 처리 로직에 특히 엄격하게 검토해주세요.
+
+early_access: true
 
 reviews:
-  # MUST/SHOULD 이슈가 없으면 자동 승인, 있으면 변경 요청 제출
+  profile: "assertive"
   request_changes_workflow: true
-
   high_level_summary: true
+  review_status: true
+  commit_status: true
+  fail_commit_status: false
+  abort_on_close: true
+  collapse_walkthrough: false
+  changed_files_summary: true
+  sequence_diagrams: true
+  assess_linked_issues: true
+  related_issues: true
+  related_prs: true
+  suggested_labels: true
+  auto_apply_labels: false
+  suggested_reviewers: true
+  auto_assign_reviewers: false
   poem: false
-  collapse_walkthrough: true
 
   auto_review:
     enabled: true
+    auto_incremental_review: true
     drafts: false
+    base_branches:
+      - "main"
+    ignore_title_keywords:
+      - "WIP"
+      - "DRAFT"
+      - "chore: DORA"
+      - "[skip review]"
 
-  # NITS(사소한 스타일/네이밍) 는 리뷰에서 제외
-  # MUST(버그·보안·데이터손실) / SHOULD(품질·유지보수·성능) 만 보고
+  path_filters:
+    - "!metrics/**"
+    - "!site/**"
+    - "!**/*.png"
+    - "!**/*.jpg"
+    - "!**/*.gif"
+    - "!**/*.html"
+    - "!**/__pycache__/**"
+    - "!**/*.pyc"
+    - "!models/README.md"
+
   path_instructions:
-    - path: "**"
+    - path: "src/**/*.py"
       instructions: |
-        리뷰 시 다음 기준을 엄격히 적용하세요:
-        - **보고할 것 (MUST)**: 버그, 보안 취약점, 데이터 손실 위험, 런타임 오류
-        - **보고할 것 (SHOULD)**: 코드 품질, 유지보수성, 성능, 잠재적 회귀
-        - **보고하지 말 것 (NITS)**: 스타일 선호도, 변수명 취향, 주석 표현, 사소한 포맷 개선
-        NITS 수준의 지적은 일체 생략하세요.
-        MUST/SHOULD 이슈가 없으면 PR을 승인하세요.
+        - 타입 힌트 누락 여부 확인 (함수 파라미터, 반환값 모두)
+        - 보안 취약점 우선 검토: command injection, path traversal, 민감 데이터 로깅
+        - GovOn은 공공행정 AI 서비스 — 개인정보(이름, 주소, 민원내용) 처리 로직 엄격 검토
+        - FastAPI 엔드포인트는 입력 검증(Pydantic) 여부 확인
+        - 예외 처리 누락 또는 bare except 지적
+        - 비동기(async/await) 패턴의 올바른 사용 여부 확인
+
+    - path: "src/inference/**/*.py"
+      instructions: |
+        - LLM 추론 코드: 메모리 누수, GPU OOM 위험 경로 확인
+        - LoRA 어댑터 로드/언로드 생명주기 검토
+        - 배치 처리 시 동시성 이슈 확인
+        - vLLM/HuggingFace API 변경사항 호환성 검토
+
+    - path: "src/cli/**/*.py"
+      instructions: |
+        - 터미널 출력에 개인정보가 노출되지 않는지 확인
+        - 사용자 입력에 대한 sanitization 여부 확인
+        - 스트리밍 응답 처리의 예외 안전성 검토
+
+    - path: "training/**/*.py"
+      instructions: |
+        - 학습 데이터 경로 하드코딩 여부 확인 (환경변수 사용 권장)
+        - 체크포인트 저장 로직의 원자성 확인
+        - GPU 메모리 관리 패턴 검토
+        - 평가 메트릭의 정확성 확인
+
+    - path: "tests/**/*.py"
+      instructions: |
+        - 테스트 커버리지 누락 케이스 지적 (엣지 케이스, 에러 경로)
+        - unittest.mock 과다 사용 지적 — 실제 통합 테스트 권장
+        - pytest fixture 재사용성 확인
+        - 테스트 격리 여부 확인 (테스트 간 상태 공유 금지)
+        - assert 메시지 누락 시 지적
+
+    - path: ".github/workflows/*.yml"
+      instructions: |
+        - GitHub Actions 보안: script injection (run 내 변수 직접 삽입) 검토
+        - secrets 노출 여부 확인
+        - 최소 권한 원칙: permissions 설정 검토
+        - 외부 Action 버전 고정 여부 확인 (SHA 고정 권장)
+
+    - path: "configs/**"
+      instructions: |
+        - 민감 정보(API 키, 토큰) 하드코딩 금지
+        - 환경변수 참조 패턴 확인
+
+    - path: "scripts/**/*.sh"
+      instructions: |
+        - ShellCheck 규칙 준수 여부 확인
+        - 변수 인용(quoting) 누락 확인
+        - 오류 처리 (set -e, set -u) 여부 확인
+
+  finishing_touches:
+    docstrings:
+      enabled: true
+    unit_tests:
+      enabled: true
+
+knowledge_base:
+  opt_out: false
+  learnings:
+    scope: "auto"
+  issues:
+    scope: "auto"
+  pull_requests:
+    scope: "auto"
+  code_guidelines: true
+  web_search: true
+
+code_generation:
+  docstrings:
+    language: "python"
+  unit_tests:
+    path_instructions:
+      - path: "tests/**/*.py"
+        instructions: |
+          pytest를 사용합니다.
+          - 픽스처는 conftest.py에 정의해주세요.
+          - 통합 테스트는 실제 객체를 우선 사용하고 mock은 외부 API/GPU에만 사용해주세요.
+          - 테스트 함수명은 test_<기능>_<조건>_<기대결과> 패턴을 따릅니다.
+          - 비동기 테스트는 @pytest.mark.asyncio를 사용해주세요.
+
+tools:
+  ruff:
+    enabled: true
+  bandit:
+    enabled: true
+  shellcheck:
+    enabled: true
+  yamllint:
+    enabled: true
+  hadolint:
+    enabled: true
+
+chat:
+  auto_reply: true

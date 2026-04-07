@@ -1,19 +1,10 @@
-name: Docs Portal
+name: Deploy Pages
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - 'site/**'
-      - 'docs/**'
-      - 'README.md'
-      - '.github/workflows/deploy-pages.yml'
   push:
     branches: [main]
     paths:
-      - 'site/**'
-      - 'docs/**'
-      - 'README.md'
+      - 'site/static/**'
       - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
 
@@ -30,21 +21,17 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build:
-    permissions:
-      contents: read
-    uses: ./.github/workflows/reusable-docs-build.yml
-    with:
-      strict: true
-      upload_pages_artifact: true
-
   deploy:
-    needs: build
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/static
+
       - id: deployment
         uses: actions/deploy-pages@v4

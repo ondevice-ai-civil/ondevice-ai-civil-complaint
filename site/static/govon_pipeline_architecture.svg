@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1100" width="1920" height="1100" style="background:#f5f5f0">
+  <defs>
+    <marker id="aw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="10" markerHeight="10" orient="auto-start-reverse">
+      <path d="M1 1L8 5L1 9" fill="none" stroke="#333" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="ao" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="10" markerHeight="10" orient="auto-start-reverse">
+      <path d="M1 1L8 5L1 9" fill="none" stroke="#C06A20" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="10" markerHeight="10" orient="auto-start-reverse">
+      <path d="M1 1L8 5L1 9" fill="none" stroke="#3A8E3A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="at" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="10" markerHeight="10" orient="auto-start-reverse">
+      <path d="M1 1L8 5L1 9" fill="none" stroke="#128C7E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <text x="960" y="40" text-anchor="middle" fill="#1a1a1a" font-family="Arial,sans-serif" font-size="28" font-weight="bold">GovOn Pipeline</text>
+  <text x="960" y="62" text-anchor="middle" fill="#777" font-family="Arial,sans-serif" font-size="13">EXAONE 4.0-32B-AWQ  ·  vLLM Multi-LoRA  ·  A100 80GB</text>
+
+  <rect x="30" y="155" width="195" height="170" rx="10" fill="#ffffff" stroke="#bbb" stroke-width="1.5"/>
+  <text x="127" y="182" text-anchor="middle" fill="#1a1a1a" font-family="Arial,sans-serif" font-size="14" font-weight="bold">사용자 쿼리</text>
+  <text x="45" y="210" fill="#555" font-family="Arial,sans-serif" font-size="11">"상표등록 거절 사유?"</text>
+  <text x="45" y="230" fill="#555" font-family="Arial,sans-serif" font-size="11">"청년 창업 지원사업?"</text>
+  <text x="45" y="250" fill="#555" font-family="Arial,sans-serif" font-size="11">"임대차 해지 요건?"</text>
+  <text x="45" y="270" fill="#555" font-family="Arial,sans-serif" font-size="11">"보훈 교육비 지원 기준?"</text>
+  <text x="127" y="310" text-anchor="middle" fill="#999" font-family="Arial,sans-serif" font-size="9">civil / legal / any domain</text>
+
+  <line x1="225" y1="240" x2="295" y2="240" stroke="#333" stroke-width="3" marker-end="url(#aw)"/>
+
+  <rect x="305" y="130" width="280" height="220" rx="10" fill="#E6F1FB" stroke="#2E6FAD" stroke-width="2"/>
+  <text x="445" y="160" text-anchor="middle" fill="#185FA5" font-family="Arial,sans-serif" font-size="16" font-weight="bold">① Planner</text>
+  <text x="445" y="178" text-anchor="middle" fill="#2E6FAD" font-family="Arial,sans-serif" font-size="11">Base Model · No LoRA</text>
+
+  <rect x="325" y="192" width="240" height="40" rx="6" fill="#ffffff" stroke="#2E6FAD" stroke-width="1"/>
+  <text x="445" y="210" text-anchor="middle" fill="#0C447C" font-family="Arial,sans-serif" font-size="13" font-weight="bold">EXAONE 4.0-32B</text>
+  <text x="445" y="225" text-anchor="middle" fill="#2E6FAD" font-family="Arial,sans-serif" font-size="10">Native Tool Calling · BFCL 65.2</text>
+
+  <text x="330" y="255" fill="#185FA5" font-family="Arial,sans-serif" font-size="11">→ Adapter 선택</text>
+  <text x="330" y="273" fill="#185FA5" font-family="Arial,sans-serif" font-size="11">→ Tool 선택</text>
+  <text x="330" y="291" fill="#185FA5" font-family="Arial,sans-serif" font-size="11">→ Task 분류</text>
+
+  <text x="480" y="255" fill="#5588aa" font-family="monospace,sans-serif" font-size="9">civil / legal / ...</text>
+  <text x="480" y="273" fill="#5588aa" font-family="monospace,sans-serif" font-size="9">rag_search / api / ...</text>
+  <text x="480" y="291" fill="#5588aa" font-family="monospace,sans-serif" font-size="9">draft_response</text>
+
+  <g transform="translate(445,330)">
+    <polygon points="0,-14 35,0 0,14 -35,0" fill="#ffffff" stroke="#2E6FAD" stroke-width="1.5"/>
+    <text x="0" y="4" text-anchor="middle" fill="#185FA5" font-family="Arial,sans-serif" font-size="10" font-weight="bold">✓/✗</text>
+  </g>
+  <text x="445" y="358" text-anchor="middle" fill="#5588aa" font-family="Arial,sans-serif" font-size="9">Human-in-the-Loop</text>
+
+  <line x1="585" y1="210" x2="665" y2="210" stroke="#C06A20" stroke-width="3" marker-end="url(#ao)"/>
+  <line x1="585" y1="270" x2="665" y2="270" stroke="#3A8E3A" stroke-width="3" marker-end="url(#ag)"/>
+
+  <text x="625" y="248" text-anchor="middle" fill="#888" font-family="monospace,sans-serif" font-size="10">asyncio</text>
+  <text x="625" y="260" text-anchor="middle" fill="#888" font-family="monospace,sans-serif" font-size="10">gather()</text>
+
+  <rect x="675" y="130" width="280" height="130" rx="10" fill="#FFF3E8" stroke="#C06A20" stroke-width="2"/>
+  <text x="815" y="155" text-anchor="middle" fill="#8B4513" font-family="Arial,sans-serif" font-size="14" font-weight="bold">② LoRA Draft</text>
+  <text x="815" y="172" text-anchor="middle" fill="#A0693A" font-family="Arial,sans-serif" font-size="10">Planner가 선택한 Adapter</text>
+
+  <rect x="695" y="182" width="240" height="32" rx="5" fill="#ffffff" stroke="#C06A20" stroke-width="0.8"/>
+  <text x="815" y="203" text-anchor="middle" fill="#6B3610" font-family="Arial,sans-serif" font-size="12" font-weight="bold">LoRA Model → Draft Text</text>
+
+  <text x="700" y="232" fill="#8B5A2B" font-family="Arial,sans-serif" font-size="10">civil (74K) · legal (270K) · + any</text>
+  <text x="700" y="248" fill="#A08060" font-family="Arial,sans-serif" font-size="9">system: 학습 SYSTEM_PROMPT / user: instruction + query</text>
+
+  <rect x="675" y="275" width="280" height="130" rx="10" fill="#EAF6EA" stroke="#3A8E3A" stroke-width="2"/>
+  <text x="815" y="300" text-anchor="middle" fill="#1E6B1E" font-family="Arial,sans-serif" font-size="14" font-weight="bold">② Tool Execution</text>
+  <text x="815" y="317" text-anchor="middle" fill="#3A8E3A" font-family="Arial,sans-serif" font-size="10">Planner가 선택한 Tools</text>
+
+  <rect x="695" y="327" width="240" height="32" rx="5" fill="#ffffff" stroke="#3A8E3A" stroke-width="0.8"/>
+  <text x="815" y="348" text-anchor="middle" fill="#1E4D1E" font-family="Arial,sans-serif" font-size="12" font-weight="bold">Tools → Evidence + Citations</text>
+
+  <text x="700" y="378" fill="#2D7A2D" font-family="Arial,sans-serif" font-size="10">rag_search · api_lookup · + any tool</text>
+  <text x="700" y="393" fill="#5A9A5A" font-family="Arial,sans-serif" font-size="9">FAISS+BM25 / data.go.kr API / ...</text>
+
+  <line x1="955" y1="200" x2="1060" y2="230" stroke="#C06A20" stroke-width="3" marker-end="url(#ao)"/>
+  <line x1="955" y1="340" x2="1060" y2="260" stroke="#3A8E3A" stroke-width="3" marker-end="url(#ag)"/>
+
+  <text x="1010" y="248" text-anchor="middle" fill="#888" font-family="Arial,sans-serif" font-size="10">합류</text>
+
+  <rect x="1070" y="155" width="300" height="170" rx="10" fill="#E6F1FB" stroke="#2E6FAD" stroke-width="2"/>
+  <line x1="1070" y1="155" x2="1370" y2="155" stroke="#7B3FA0" stroke-width="3" stroke-linecap="round"/>
+
+  <text x="1220" y="182" text-anchor="middle" fill="#1a1a1a" font-family="Arial,sans-serif" font-size="16" font-weight="bold">③ Synthesis</text>
+  <text x="1220" y="200" text-anchor="middle" fill="#2E6FAD" font-family="Arial,sans-serif" font-size="11">Base Model · No LoRA</text>
+
+  <rect x="1095" y="212" width="250" height="42" rx="6" fill="#ffffff" stroke="#2E6FAD" stroke-width="1"/>
+  <text x="1220" y="232" text-anchor="middle" fill="#0C447C" font-family="Arial,sans-serif" font-size="13" font-weight="bold">EXAONE 4.0-32B (Base)</text>
+  <text x="1220" y="248" text-anchor="middle" fill="#2E6FAD" font-family="monospace,sans-serif" font-size="10">lora_request = None</text>
+
+  <text x="1095" y="278" fill="#185FA5" font-family="Arial,sans-serif" font-size="10">[Query] + [Draft] + [Evidence]</text>
+  <text x="1095" y="295" fill="#3A6A9A" font-family="Arial,sans-serif" font-size="10">→ 베이스 모델이 합성하여 최종 답변 생성</text>
+  <text x="1095" y="312" fill="#5588aa" font-family="Arial,sans-serif" font-size="9">LoRA가 초안, 베이스가 합성</text>
+
+  <line x1="1370" y1="240" x2="1450" y2="240" stroke="#128C7E" stroke-width="3" marker-end="url(#at)"/>
+
+  <rect x="1460" y="170" width="200" height="140" rx="10" fill="#E0F7F1" stroke="#128C7E" stroke-width="2"/>
+  <text x="1560" y="198" text-anchor="middle" fill="#0B4D3F" font-family="Arial,sans-serif" font-size="16" font-weight="bold">④ 최종 답변</text>
+
+  <text x="1480" y="225" fill="#0F6E56" font-family="Arial,sans-serif" font-size="11">· 법적 근거 포함</text>
+  <text x="1480" y="245" fill="#0F6E56" font-family="Arial,sans-serif" font-size="11">· 유사 사례 참조</text>
+  <text x="1480" y="265" fill="#0F6E56" font-family="Arial,sans-serif" font-size="11">· 공감적 답변</text>
+  <text x="1480" y="285" fill="#0F6E56" font-family="Arial,sans-serif" font-size="11">· 관련 법령 인용</text>
+
+  <path d="M1560 310 L1560 370 L127 370 L127 325" fill="none" stroke="#128C7E" stroke-width="1.5" stroke-dasharray="8,4" marker-end="url(#at)" opacity="0.5"/>
+  <text x="840" y="385" text-anchor="middle" fill="#128C7E" font-family="Arial,sans-serif" font-size="10" opacity="0.5">↻ multi-turn session</text>
+
+  <rect x="305" y="415" width="1355" height="35" rx="6" fill="#ffffff" stroke="#ccc" stroke-width="1"/>
+  <text x="445" y="437" text-anchor="middle" fill="#185FA5" font-family="Arial,sans-serif" font-size="11" font-weight="bold">① Base Model</text>
+  <text x="815" y="437" text-anchor="middle" fill="#8B4513" font-family="Arial,sans-serif" font-size="11" font-weight="bold">② Base + LoRA</text>
+  <text x="1220" y="437" text-anchor="middle" fill="#185FA5" font-family="Arial,sans-serif" font-size="11" font-weight="bold">③ Base Model</text>
+  <text x="1560" y="437" text-anchor="middle" fill="#0B4D3F" font-family="Arial,sans-serif" font-size="11" font-weight="bold">④ Output</text>
+  <text x="1720" y="437" fill="#888" font-family="Arial,sans-serif" font-size="10">LoRA는 Stage ②에서만 활성</text>
+
+  <text x="960" y="500" text-anchor="middle" fill="#1a1a1a" font-family="Arial,sans-serif" font-size="18" font-weight="bold">확장성 — 핵심 경쟁력</text>
+  <text x="960" y="520" text-anchor="middle" fill="#666" font-family="Arial,sans-serif" font-size="12">LLM이 스스로 판단하여 선택하는 구조 → Adapter 수, Tool 수에 관계없이 동일한 아키텍처</text>
+
+  <rect x="50" y="545" width="880" height="230" rx="10" fill="#FFF8F0" stroke="#C06A20" stroke-width="1.5"/>
+  <text x="70" y="575" fill="#8B4513" font-family="Arial,sans-serif" font-size="15" font-weight="bold">AdapterRegistry</text>
+  <text x="255" y="575" fill="#A0693A" font-family="monospace,sans-serif" font-size="11">config/adapters.yaml</text>
+
+  <rect x="70" y="595" width="120" height="36" rx="6" fill="#ffffff" stroke="#C06A20" stroke-width="1"/>
+  <text x="130" y="618" text-anchor="middle" fill="#6B3610" font-family="Arial,sans-serif" font-size="11" font-weight="bold">데이터</text>
+  <line x1="190" y1="613" x2="230" y2="613" stroke="#C06A20" stroke-width="2.5" marker-end="url(#ao)"/>
+  <rect x="240" y="595" width="120" height="36" rx="6" fill="#ffffff" stroke="#C06A20" stroke-width="1"/>
+  <text x="300" y="618" text-anchor="middle" fill="#6B3610" font-family="Arial,sans-serif" font-size="11" font-weight="bold">LoRA 학습</text>
+  <line x1="360" y1="613" x2="400" y2="613" stroke="#C06A20" stroke-width="2.5" marker-end="url(#ao)"/>
+  <rect x="410" y="595" width="150" height="36" rx="6" fill="#ffffff" stroke="#C06A20" stroke-width="1"/>
+  <text x="485" y="618" text-anchor="middle" fill="#6B3610" font-family="Arial,sans-serif" font-size="11" font-weight="bold">adapters.yaml 등록</text>
+  <line x1="560" y1="613" x2="600" y2="613" stroke="#C06A20" stroke-width="2.5" marker-end="url(#ao)"/>
+  <rect x="610" y="595" width="140" height="36" rx="6" fill="#FFF3E8" stroke="#C06A20" stroke-width="1.5"/>
+  <text x="680" y="618" text-anchor="middle" fill="#8B4513" font-family="Arial,sans-serif" font-size="12" font-weight="bold">즉시 사용 가능</text>
+
+  <rect x="70" y="650" width="160" height="32" rx="5" fill="#FFF3E8" stroke="#C06A20" stroke-width="1"/>
+  <text x="150" y="671" text-anchor="middle" fill="#6B3610" font-family="Arial,sans-serif" font-size="11">civil (74K) ✅</text>
+  <rect x="245" y="650" width="160" height="32" rx="5" fill="#F3E8F9" stroke="#7B3FA0" stroke-width="1"/>
+  <text x="325" y="671" text-anchor="middle" fill="#4A1A6B" font-family="Arial,sans-serif" font-size="11">legal (270K) ✅</text>
+  <rect x="420" y="650" width="110" height="32" rx="5" fill="none" stroke="#C06A20" stroke-width="1" stroke-dasharray="5,3" opacity="0.6"/>
+  <text x="475" y="671" text-anchor="middle" fill="#A0693A" font-family="Arial,sans-serif" font-size="10">tax (세무)</text>
+  <rect x="545" y="650" width="110" height="32" rx="5" fill="none" stroke="#C06A20" stroke-width="1" stroke-dasharray="5,3" opacity="0.6"/>
+  <text x="600" y="671" text-anchor="middle" fill="#A0693A" font-family="Arial,sans-serif" font-size="10">welfare (복지)</text>
+  <rect x="670" y="650" width="130" height="32" rx="5" fill="none" stroke="#C06A20" stroke-width="1" stroke-dasharray="5,3" opacity="0.6"/>
+  <text x="735" y="671" text-anchor="middle" fill="#A0693A" font-family="Arial,sans-serif" font-size="10">immigration (출입국)</text>
+  <rect x="815" y="650" width="95" height="32" rx="5" fill="none" stroke="#C06A20" stroke-width="1" stroke-dasharray="5,3" opacity="0.4"/>
+  <text x="862" y="671" text-anchor="middle" fill="#C0A080" font-family="Arial,sans-serif" font-size="10">+ any ...</text>
+
+  <text x="490" y="712" text-anchor="middle" fill="#8B4513" font-family="Arial,sans-serif" font-size="12" font-weight="bold">어댑터가 2개든 100개든 — Planner의 판단 구조는 동일</text>
+  <text x="490" y="730" text-anchor="middle" fill="#A0693A" font-family="Arial,sans-serif" font-size="11">데이터만 있으면 코드 변경 없이 새 도메인 추가</text>
+
+  <path d="M490 545 L490 530 L815 530 L815 260" fill="none" stroke="#C06A20" stroke-width="1.2" stroke-dasharray="6,3" opacity="0.4" marker-end="url(#ao)"/>
+
+  <rect x="960" y="545" width="920" height="230" rx="10" fill="#F0FAF0" stroke="#3A8E3A" stroke-width="1.5"/>
+  <text x="980" y="575" fill="#1E6B1E" font-family="Arial,sans-serif" font-size="15" font-weight="bold">ToolRegistry</text>
+  <text x="1110" y="575" fill="#3A8E3A" font-family="monospace,sans-serif" font-size="11">tools/</text>
+
+  <rect x="980" y="595" width="120" height="36" rx="6" fill="#ffffff" stroke="#3A8E3A" stroke-width="1"/>
+  <text x="1040" y="618" text-anchor="middle" fill="#1E4D1E" font-family="Arial,sans-serif" font-size="11" font-weight="bold">API</text>
+  <line x1="1100" y1="613" x2="1140" y2="613" stroke="#3A8E3A" stroke-width="2.5" marker-end="url(#ag)"/>
+  <rect x="1150" y="595" width="140" height="36" rx="6" fill="#ffffff" stroke="#3A8E3A" stroke-width="1"/>
+  <text x="1220" y="618" text-anchor="middle" fill="#1E4D1E" font-family="Arial,sans-serif" font-size="11" font-weight="bold">Tool 함수 작성</text>
+  <line x1="1290" y1="613" x2="1330" y2="613" stroke="#3A8E3A" stroke-width="2.5" marker-end="url(#ag)"/>
+  <rect x="1340" y="595" width="140" height="36" rx="6" fill="#ffffff" stroke="#3A8E3A" stroke-width="1"/>
+  <text x="1410" y="618" text-anchor="middle" fill="#1E4D1E" font-family="Arial,sans-serif" font-size="11" font-weight="bold">tools/ 등록</text>
+  <line x1="1480" y1="613" x2="1520" y2="613" stroke="#3A8E3A" stroke-width="2.5" marker-end="url(#ag)"/>
+  <rect x="1530" y="595" width="140" height="36" rx="6" fill="#EAF6EA" stroke="#3A8E3A" stroke-width="1.5"/>
+  <text x="1600" y="618" text-anchor="middle" fill="#1E6B1E" font-family="Arial,sans-serif" font-size="12" font-weight="bold">즉시 사용 가능</text>
+
+  <rect x="980" y="650" width="130" height="32" rx="5" fill="#EAF6EA" stroke="#3A8E3A" stroke-width="1"/>
+  <text x="1045" y="671" text-anchor="middle" fill="#1E4D1E" font-family="Arial,sans-serif" font-size="10">rag_search ✅</text>
+  <rect x="1125" y="650" width="130" height="32" rx="5" fill="#EAF6EA" stroke="#3A8E3A" stroke-width="1"/>
+  <text x="1190" y="671" text-anchor="middle" fill="#1E4D1E" font-family="Arial,sans-serif" font-size="10">api_lookup ✅</text>
+  <rect x="1270" y="650" width="100" height="32" rx="5" fill="#EAF6EA" stroke="#3A8E3A" stroke-width="1"/>
+  <text x="1320" y="671" text-anchor="middle" fill="#1E4D1E" font-family="Arial,sans-serif" font-size="10">+6 tools ✅</text>
+  <rect x="1385" y="650" width="110" height="32" rx="5" fill="none" stroke="#3A8E3A" stroke-width="1" stroke-dasharray="5,3" opacity="0.6"/>
+  <text x="1440" y="671" text-anchor="middle" fill="#5A9A5A" font-family="Arial,sans-serif" font-size="10">db_query</text>
+  <rect x="1510" y="650" width="110" height="32" rx="5" fill="none" stroke="#3A8E3A" stroke-width="1" stroke-dasharray="5,3" opacity="0.6"/>
+  <text x="1565" y="671" text-anchor="middle" fill="#5A9A5A" font-family="Arial,sans-serif" font-size="10">web_search</text>
+  <rect x="1635" y="650" width="120" height="32" rx="5" fill="none" stroke="#3A8E3A" stroke-width="1" stroke-dasharray="5,3" opacity="0.6"/>
+  <text x="1695" y="671" text-anchor="middle" fill="#5A9A5A" font-family="Arial,sans-serif" font-size="10">document_ocr</text>
+  <rect x="1770" y="650" width="90" height="32" rx="5" fill="none" stroke="#3A8E3A" stroke-width="1" stroke-dasharray="5,3" opacity="0.4"/>
+  <text x="1815" y="671" text-anchor="middle" fill="#8ABB8A" font-family="Arial,sans-serif" font-size="10">+ any ...</text>
+
+  <text x="1420" y="712" text-anchor="middle" fill="#1E6B1E" font-family="Arial,sans-serif" font-size="12" font-weight="bold">도구가 4개든 100개든 — Planner의 선택 구조는 동일</text>
+  <text x="1420" y="730" text-anchor="middle" fill="#3A8E3A" font-family="Arial,sans-serif" font-size="11">API만 있으면 도구로 만들어 등록 → LLM이 알아서 판단하여 사용</text>
+
+  <path d="M1420 545 L1420 530 L815 530 L815 405" fill="none" stroke="#3A8E3A" stroke-width="1.2" stroke-dasharray="6,3" opacity="0.4" marker-end="url(#ag)"/>
+
+  <rect x="960" y="790" width="920" height="115" rx="10" fill="#ffffff" stroke="#3A8E3A" stroke-width="1.5" stroke-dasharray="8,4" opacity="0.5"/>
+  <text x="980" y="818" fill="#3A8E3A" font-family="Arial,sans-serif" font-size="13" font-weight="bold" opacity="0.7">RAG Knowledge Base (미구축 — Planned)</text>
+  <text x="990" y="843" fill="#888" font-family="Arial,sans-serif" font-size="11">⏳ 공문서</text>
+  <text x="1100" y="843" fill="#888" font-family="Arial,sans-serif" font-size="11">⏳ 보도자료</text>
+  <text x="1210" y="843" fill="#888" font-family="Arial,sans-serif" font-size="11">⏳ 공시자료</text>
+  <text x="1320" y="843" fill="#888" font-family="Arial,sans-serif" font-size="11">⏳ 업무 매뉴얼</text>
+  <text x="1460" y="843" fill="#888" font-family="Arial,sans-serif" font-size="11">⏳ 법령/규정</text>
+  <text x="990" y="870" fill="#aaa" font-family="Arial,sans-serif" font-size="9">PDF · DOCX · HWP · TXT</text>
+  <text x="990" y="890" fill="#3A8E3A" font-family="Arial,sans-serif" font-size="10" opacity="0.7">문서 등록 시 rag_search 품질 자동 향상 → 최종 답변 근거 강화</text>
+
+  <rect x="50" y="790" width="880" height="115" rx="10" fill="#ffffff" stroke="#333" stroke-width="1.5"/>
+  <text x="490" y="825" text-anchor="middle" fill="#1a1a1a" font-family="Arial,sans-serif" font-size="16" font-weight="bold">LLM이 스스로 판단하여 선택하는 구조</text>
+  <text x="490" y="852" text-anchor="middle" fill="#555" font-family="Arial,sans-serif" font-size="13">Adapter 수, Tool 수에 관계없이 동일한 아키텍처</text>
+  <text x="490" y="875" text-anchor="middle" fill="#555" font-family="Arial,sans-serif" font-size="13">데이터/API만 추가하면 시스템이 자동으로 확장</text>
+  <text x="490" y="898" text-anchor="middle" fill="#C06A20" font-family="Arial,sans-serif" font-size="14" font-weight="bold">코드 변경 ZERO</text>
+
+  <rect x="50" y="930" width="1830" height="55" rx="8" fill="#ffffff" stroke="#ddd" stroke-width="1"/>
+  <text x="80" y="955" fill="#185FA5" font-family="Arial,sans-serif" font-size="11">✦ Base plans</text>
+  <text x="175" y="955" fill="#8B4513" font-family="Arial,sans-serif" font-size="11">→ LoRA drafts</text>
+  <text x="290" y="955" fill="#185FA5" font-family="Arial,sans-serif" font-size="11">→ Base synthesizes</text>
+  <text x="470" y="955" fill="#ccc" font-family="Arial,sans-serif" font-size="11">|</text>
+  <text x="490" y="955" fill="#8B4513" font-family="Arial,sans-serif" font-size="11">✦ Adapter: 데이터만 있으면 확장</text>
+  <text x="720" y="955" fill="#ccc" font-family="Arial,sans-serif" font-size="11">|</text>
+  <text x="740" y="955" fill="#1E6B1E" font-family="Arial,sans-serif" font-size="11">✦ Tool: API만 있으면 확장</text>
+  <text x="950" y="955" fill="#ccc" font-family="Arial,sans-serif" font-size="11">|</text>
+  <text x="970" y="955" fill="#1a1a1a" font-family="Arial,sans-serif" font-size="11" font-weight="bold">✦ LLM 자율 판단 — 수량 무관</text>
+  <text x="1200" y="955" fill="#ccc" font-family="Arial,sans-serif" font-size="11">|</text>
+  <text x="1220" y="955" fill="#1E6B1E" font-family="Arial,sans-serif" font-size="11">✦ 병렬 실행 asyncio</text>
+  <text x="1400" y="955" fill="#ccc" font-family="Arial,sans-serif" font-size="11">|</text>
+  <text x="1420" y="955" fill="#128C7E" font-family="Arial,sans-serif" font-size="11">✦ RAG 등록 시 자동 향상</text>
+  <text x="80" y="975" fill="#999" font-family="Arial,sans-serif" font-size="10">Prompt: 학습 SYSTEM_PROMPT 유지 · user: instruction + query</text>
+  <text x="600" y="975" fill="#999" font-family="Arial,sans-serif" font-size="10">· Stage ①③ = Base Model (No LoRA) · Stage ② = Base + LoRA</text>
+
+  <rect x="50" y="1005" width="1830" height="35" rx="6" fill="#E6F1FB" stroke="#2E6FAD" stroke-width="1"/>
+  <text x="960" y="1028" text-anchor="middle" fill="#0C447C" font-family="monospace,sans-serif" font-size="13" font-weight="bold">vLLM Multi-LoRA Serving  |  EXAONE 4.0-32B-AWQ (4-bit)  |  A100 80GB  |  AdapterRegistry (adapters.yaml)  |  ToolRegistry (tools/)</text>
+
+</svg>

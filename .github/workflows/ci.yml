@@ -20,7 +20,6 @@ jobs:
     outputs:
       runtime: ${{ steps.filter.outputs.runtime }}
       runtime_contract: ${{ steps.filter.outputs.runtime_contract }}
-      docs: ${{ steps.filter.outputs.docs }}
       packaging: ${{ steps.filter.outputs.packaging }}
       # training/monitoring outputs는 현재 다운스트림 job에서 직접 사용하지 않으나
       # 향후 training pipeline / monitoring alert job 연동을 위해 미리 노출해 둔다.
@@ -50,12 +49,6 @@ jobs:
               - 'package-lock.json'
               - '.github/actions/**'
               - '.github/workflows/ci.yml'
-            docs:
-              - 'site/**'
-              - 'docs/**'
-              - 'README.md'
-              - '.github/workflows/ci.yml'
-              - '.github/workflows/deploy-pages.yml'
             packaging:
               - 'Dockerfile'
               - '.dockerignore'
@@ -245,36 +238,6 @@ jobs:
           path: |
             test-results/
             playwright-report/
-          retention-days: 7
-
-  docs-build:
-    needs: detect-changes
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      needs.detect-changes.outputs.docs == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.10'
-          cache: 'pip'
-          cache-dependency-path: 'site/requirements-docs.txt'
-
-      - name: Install MkDocs dependencies
-        run: pip install -r site/requirements-docs.txt
-
-      - name: Build docs with strict mode
-        run: cd site && mkdocs build --strict
-
-      - name: Upload docs artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: docs-site-preview
-          path: site/site
           retention-days: 7
 
   build:

@@ -15,7 +15,8 @@ from src.cli.terminal import (
 )
 
 try:
-    from rich.console import Console
+    from rich.console import Console, Group
+    from rich.markdown import Markdown
     from rich.panel import Panel
     from rich.status import Status
     from rich.text import Text
@@ -41,6 +42,8 @@ NODE_STATUS_MESSAGES: dict[str, str] = {
     "synthesis": "답변 생성 중…",
     "persist": "저장 중…",
 }
+
+MARKDOWN_CODE_THEME = "monokai"
 
 
 def get_node_message(node_name: str) -> str:
@@ -181,6 +184,35 @@ def render_evidence_section(evidence_items: list) -> str:
     return "\n".join(lines) if len(lines) > 1 else ""
 
 
+def _build_citations_text(citations: list[str]) -> Text:
+    """Return a styled fallback citations block for rich rendering."""
+    content = Text("\n출처\n", style="bold")
+    for idx, src in enumerate(citations, 1):
+        content.append(f"  {idx}. {src}\n", style="dim")
+    return content
+
+
+def _build_rich_result_content(text_body: str, evidence_items: list, citations: list) -> Text | Markdown | Group:
+    """Build the rich renderable used inside the result panel."""
+    renderables = []
+
+    if text_body:
+        renderables.append(Markdown(text_body, code_theme=MARKDOWN_CODE_THEME))
+
+    if evidence_items:
+        evidence_text = render_evidence_section(evidence_items)
+        if evidence_text:
+            renderables.append(Text(f"\n{evidence_text}\n", style="dim"))
+    elif citations:
+        renderables.append(_build_citations_text(citations))
+
+    if not renderables:
+        return Text("")
+    if len(renderables) == 1:
+        return renderables[0]
+    return Group(*renderables)
+
+
 def render_result(result: dict) -> None:
     """Render the final agent response to the terminal.
 
@@ -196,15 +228,7 @@ def render_result(result: dict) -> None:
     use_rich, columns = _resolve_render_mode()
 
     if use_rich:
-        content = Text(text_body)
-        if evidence_items:
-            evidence_text = render_evidence_section(evidence_items)
-            if evidence_text:
-                content.append(f"\n\n{evidence_text}\n", style="dim")
-        elif citations:
-            content.append("\n\n출처\n", style="bold")
-            for idx, src in enumerate(citations, 1):
-                content.append(f"  {idx}. {src}\n", style="dim")
+        content = _build_rich_result_content(text_body, evidence_items, citations)
         _console.print(
             Panel(
                 content,

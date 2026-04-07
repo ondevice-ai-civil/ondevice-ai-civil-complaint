@@ -61,7 +61,11 @@ jobs:
           BANDIT_TARGET: ${{ inputs.bandit-target }}
           BANDIT_SEVERITY: ${{ inputs.bandit-severity }}
         run: |
-          uvx bandit -r "$BANDIT_TARGET" $BANDIT_SEVERITY -x tests
+          case "$BANDIT_SEVERITY" in
+            -l|-ll|-lll) ;;
+            *) echo "Invalid bandit-severity: $BANDIT_SEVERITY" && exit 1 ;;
+          esac
+          uvx bandit -r "$BANDIT_TARGET" "$BANDIT_SEVERITY" -x tests
 
       - name: Compile dependency lockfile
         if: inputs.pip-audit-enabled
@@ -87,7 +91,7 @@ jobs:
           BANDIT_TARGET: ${{ inputs.bandit-target }}
           BANDIT_SEVERITY: ${{ inputs.bandit-severity }}
         run: |
-          uvx bandit -r "$BANDIT_TARGET" $BANDIT_SEVERITY -x tests -f sarif -o bandit-results.sarif 2>/dev/null || true
+          uvx bandit -r "$BANDIT_TARGET" "$BANDIT_SEVERITY" -x tests -f sarif -o bandit-results.sarif 2>/dev/null || true
 
       - name: Upload Bandit SARIF to Code Scanning
         if: inputs.upload-sarif && hashFiles('bandit-results.sarif') != ''

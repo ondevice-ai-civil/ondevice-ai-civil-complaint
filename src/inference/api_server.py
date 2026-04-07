@@ -30,9 +30,8 @@ try:
 except ImportError:
     LoRARequest = None
 
-# Multi-LoRA adapter name → numeric ID 매핑 (vLLM LoRARequest에 전달)
-_LORA_ID_MAP: Dict[str, int] = {"civil": 1, "legal": 2}
 
+from .adapter_registry import AdapterRegistry
 from .agent_loop import AgentLoop, AgentTrace
 from .agent_manager import AgentManager
 from .bm25_indexer import BM25Indexer
@@ -210,9 +209,10 @@ class vLLMEngineManager:
             # Multi-LoRA 서빙: adapter_paths가 설정되어 있으면 활성화
             lora_enabled = bool(runtime_config.model.adapter_paths)
             if lora_enabled:
+                adapter_count = len(runtime_config.model.adapter_paths)
                 engine_kwargs.update(
                     enable_lora=True,
-                    max_loras=4,
+                    max_loras=max(4, adapter_count + 1),
                     max_lora_rank=64,
                 )
                 logger.info(
@@ -920,11 +920,12 @@ class vLLMEngineManager:
                         }
                     )
 
-            # Multi-LoRA: civil 어댑터가 설정되어 있으면 LoRARequest 생성
-            civil_adapter_path = runtime_config.model.adapter_paths.get("civil")
-            lora_req = None
-            if civil_adapter_path and LoRARequest is not None:
-                lora_req = LoRARequest("civil", _LORA_ID_MAP["civil"], civil_adapter_path)
+            # Multi-LoRA: LLM이 선택한 어댑터 또는 기본 civil 어댑터 사용
+            adapter_name = context.get("adapter") if context else None
+            if not adapter_name or adapter_name == "none":
+                adapter_name = "civil"  # 기본 fallback
+            _adapter_reg = AdapterRegistry.get_instance()
+            lora_req = _adapter_reg.get_lora_request(adapter_name)
 
             gen_request = GenerateCivilResponseRequest(
                 prompt=working_query,
@@ -1001,11 +1002,12 @@ class vLLMEngineManager:
                         "[|endofturn|]\n[|assistant|]"
                     )
 
-                    # legal 어댑터 LoRA 설정
-                    legal_adapter_path = runtime_config.model.adapter_paths.get("legal")
-                    lora_req = None
-                    if legal_adapter_path and LoRARequest is not None:
-                        lora_req = LoRARequest("legal", _LORA_ID_MAP["legal"], legal_adapter_path)
+                    # Multi-LoRA: LLM이 선택한 어댑터 또는 기본 legal 어댑터 사용
+                    adapter_name = context.get("adapter") if context else None
+                    if not adapter_name or adapter_name == "none":
+                        adapter_name = "legal"  # 기본 fallback
+                    _adapter_reg = AdapterRegistry.get_instance()
+                    lora_req = _adapter_reg.get_lora_request(adapter_name)
 
                     if SamplingParams is not None:
                         sp = SamplingParams(

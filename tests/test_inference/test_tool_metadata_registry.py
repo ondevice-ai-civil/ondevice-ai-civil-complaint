@@ -81,6 +81,7 @@ from src.inference.graph.capabilities.base import CapabilityBase, CapabilityMeta
 from src.inference.graph.capabilities.registry import (
     MVP_CAPABILITY_IDS,
     build_mvp_registry,
+    build_tool_definitions,
     get_all_metadata,
     get_mvp_capability_ids,
     is_mvp_capability,
@@ -216,6 +217,35 @@ class TestGetAllMetadata:
     def test_names_match_mvp_ids(self, registry):
         """metadata 목록의 name 집합이 MVP_CAPABILITY_IDS와 동일하다."""
         names = {m["name"] for m in get_all_metadata(registry)}
+        assert names == MVP_CAPABILITY_IDS
+
+    def test_each_metadata_has_parameters(self, registry):
+        """각 metadata dict에 parameters 필드가 포함되어 있다."""
+        for meta_dict in get_all_metadata(registry):
+            assert "parameters" in meta_dict, f"{meta_dict.get('name', '?')}에 parameters 필드 누락"
+            assert isinstance(meta_dict["parameters"], dict)
+
+
+# ---------------------------------------------------------------------------
+# build_tool_definitions 검증
+# ---------------------------------------------------------------------------
+
+
+class TestBuildToolDefinitions:
+    """build_tool_definitions() 검증."""
+
+    def test_returns_openai_format(self, registry):
+        definitions = build_tool_definitions(registry)
+        assert len(definitions) == 8
+        for defn in definitions:
+            assert defn["type"] == "function"
+            assert "function" in defn
+            assert "name" in defn["function"]
+            assert "parameters" in defn["function"]
+
+    def test_all_names_match_mvp_ids(self, registry):
+        definitions = build_tool_definitions(registry)
+        names = {d["function"]["name"] for d in definitions}
         assert names == MVP_CAPABILITY_IDS
 
 

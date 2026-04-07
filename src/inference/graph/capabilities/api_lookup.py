@@ -100,6 +100,15 @@ class ApiLookupCapability(CapabilityBase):
             approval_summary="외부 API(data.go.kr)에서 유사 민원 사례를 조회합니다.",
             provider="data.go.kr",
             timeout_sec=get_timeout("api_lookup"),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "민원 검색 키워드"},
+                    "ret_count": {"type": "integer", "description": "반환할 유사 민원 수", "default": 5, "minimum": 1, "maximum": 20},
+                    "min_score": {"type": "integer", "description": "최소 유사도 점수", "default": 2, "minimum": 0, "maximum": 10},
+                },
+                "required": ["query"],
+            },
         )
 
     async def execute(

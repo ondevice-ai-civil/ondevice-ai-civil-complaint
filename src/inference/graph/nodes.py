@@ -156,6 +156,7 @@ async def planner_node(
         "planned_tools": plan.tools,
         "tool_summaries": plan.tool_summaries,
         "adapter_mode": plan.adapter_mode,
+        "tool_args": plan.tool_args,
         "accumulated_context": {
             **context,
             "query_variants": query_variants,
@@ -278,6 +279,7 @@ async def tool_execute_node(
 
     planned_tools: list[str] = state.get("planned_tools", [])
     accumulated: Dict[str, Any] = dict(state.get("accumulated_context", {}))
+    tool_args: Dict[str, Dict[str, Any]] = state.get("tool_args", {})
 
     # planned_tools가 비어있는 경우 (validation 실패 fallback 등)
     if not planned_tools:
@@ -309,11 +311,14 @@ async def tool_execute_node(
         async def _run_tool(name: str) -> tuple[str, Dict[str, Any], float]:
             t0 = time.monotonic()
             execution_query = resolve_tool_query(name, accumulated)
+            # tool_args에서 해당 도구의 인자를 context에 병합
+            tool_specific_args = tool_args.get(name, {})
+            execution_context = {**accumulated, **tool_specific_args}
             logger.info(f"[tool_execute] 병렬 실행: {name}")
             result = await executor_adapter.execute(
                 tool_name=name,
                 query=execution_query,
-                context=dict(accumulated),
+                context=execution_context,
             )
             latency = round((time.monotonic() - t0) * 1000, 2)
             return name, result, latency
@@ -339,12 +344,15 @@ async def tool_execute_node(
     for name in dependent:
         t0 = time.monotonic()
         execution_query = resolve_tool_query(name, accumulated)
+        # tool_args에서 해당 도구의 인자를 context에 병합
+        tool_specific_args = tool_args.get(name, {})
+        execution_context = {**accumulated, **tool_specific_args}
         logger.info(f"[tool_execute] 순차 실행: {name}")
         try:
             result = await executor_adapter.execute(
                 tool_name=name,
                 query=execution_query,
-                context=accumulated,
+                context=execution_context,
             )
         except Exception as exc:
             latency = round((time.monotonic() - t0) * 1000, 2)

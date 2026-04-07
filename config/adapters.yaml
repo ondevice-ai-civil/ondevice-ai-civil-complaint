@@ -1,0 +1,9 @@
+adapters:
+  civil:
+    path: "umyunsang/govon-civil-adapter"
+    description: "민원 답변 초안 생성에 특화. 74K건 민원-답변 쌍으로 학습."
+    domain: "민원 답변"
+  legal:
+    path: "siwo/govon-legal-adapter"
+    description: "법령 근거 인용 및 법적 해석에 특화. 243K건 법률 문서로 학습."
+    domain: "법률/법령"

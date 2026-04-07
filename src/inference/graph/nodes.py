@@ -450,7 +450,7 @@ async def synthesis_node(
                 break
 
         try:
-            final_text = await engine_manager.synthesize_with_lora(
+            final_text = await engine_manager.synthesize_final(
                 draft_text=draft_text,
                 evidence_items=evidence_items,
                 query=query,

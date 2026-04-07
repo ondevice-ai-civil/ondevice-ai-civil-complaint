@@ -827,8 +827,9 @@ class vLLMEngineManager:
         gen_defaults = runtime_config.generation
 
         safe_message = self._escape_special_tokens(self._extract_query(request.prompt))
-
-        prompt = self._build_persona_prompt("generator_civil_response", safe_message)
+        # 학습 데이터 형식: user = instruction + "\n\n" + input
+        user_content = f"다음 민원에 대한 답변을 작성해 주세요.\n\n{safe_message}"
+        prompt = self._build_persona_prompt("generator_civil_response", user_content)
 
         sampling_params = SamplingParams(
             temperature=(
@@ -847,30 +848,17 @@ class vLLMEngineManager:
             search_results=[],
         )
 
-    async def synthesize_with_lora(
+    async def synthesize_final(
         self,
         draft_text: str,
         evidence_items: list,
         query: str,
         adapter_name: str = "civil",
     ) -> str:
-        """초안 + 도구 결과를 LoRA 모델로 통합하여 최종 답변 생성.
+        """초안 + 도구 결과를 베이스 모델로 통합하여 최종 답변 생성.
 
-        Parameters
-        ----------
-        draft_text : str
-            Phase 1에서 LoRA가 생성한 초안.
-        evidence_items : list
-            rag_search, api_lookup 등 도구에서 수집한 근거 목록.
-        query : str
-            원본 사용자 쿼리.
-        adapter_name : str
-            사용할 LoRA 어댑터 이름 (기본: civil).
-
-        Returns
-        -------
-        str
-            LoRA 모델이 생성한 최종 답변 텍스트.
+        LoRA 어댑터는 학습 형식(질문→답변)에 특화되어 있어
+        초안+근거 통합 같은 범용 태스크에는 베이스 모델이 적합하다.
         """
         safe_query = self._escape_special_tokens(query[:400])
         safe_draft = self._escape_special_tokens(draft_text[:800])
@@ -890,20 +878,20 @@ class vLLMEngineManager:
         if not evidence_text.strip():
             evidence_text = "(검색 근거 없음)"
 
+        # 베이스 모델 범용 합성 프롬프트
         synthesis_prompt = (
-            "[|system|]당신은 대한민국 공무원 민원 답변 전문가입니다. "
-            "초안과 근거 자료를 결합하여 정확하고 공감적인 최종 민원 답변을 작성하세요. "
+            "[|system|]당신은 민원 답변을 보강하는 전문가입니다. "
+            "초안과 참고 근거를 결합하여 정확하고 공감적인 최종 답변을 작성하세요. "
             "법적 근거가 있으면 인용하고, 절차와 조치사항을 명확히 포함하세요."
             "[|endofturn|]\n"
-            "[|user|]다음 초안과 근거 자료를 결합하여 최종 민원 답변을 작성하세요.\n\n"
+            "[|user|]다음 초안과 근거를 결합하여 최종 민원 답변을 작성하세요.\n\n"
             f"[민원 질의]\n{safe_query}\n\n"
             f"[초안]\n{safe_draft}\n\n"
-            f"[근거 자료]\n{evidence_text}"
+            f"[참고 근거]\n{evidence_text}"
             "[|endofturn|]\n[|assistant|]"
         )
 
-        lora_req = AdapterRegistry.get_instance().get_lora_request(adapter_name)
-
+        # 베이스 모델 사용 (LoRA 없음) — 합성은 범용 태스크
         sampling_params = SamplingParams(
             max_tokens=768,
             temperature=0.6,
@@ -917,11 +905,11 @@ class vLLMEngineManager:
 
         try:
             output = await self._run_engine(
-                synthesis_prompt, sampling_params, request_id, lora_request=lora_req
+                synthesis_prompt, sampling_params, request_id, lora_request=None
             )
         except Exception as exc:
-            logger.warning(f"[synthesize_with_lora] LoRA 합성 실패: {exc}")
-            return draft_text  # fallback: 초안 그대로 반환
+            logger.warning(f"[synthesize_final] 합성 실패: {exc}")
+            return draft_text
 
         if output is None or not output.outputs:
             return draft_text
@@ -1106,11 +1094,10 @@ class vLLMEngineManager:
                             )
 
                     evidence_prompt = (
-                        "[|system|]당신은 대한민국 공무원 민원 답변 보강 전문가입니다. "
-                        "법적 근거와 관련 규정을 정확하게 인용하여 evidence 섹션을 작성하세요."
+                        "[|system|]당신은 대한민국 법률 전문가입니다. "
+                        "법령 조항과 판례를 정확하게 인용하여 법률 질문에 답변해 주세요."
                         "[|endofturn|]\n"
-                        "[|user|]다음 민원 답변에 대해 법적 근거와 관련 규정을 보강하여 "
-                        "evidence 섹션을 작성하세요.\n\n"
+                        "[|user|]다음 법률 질문에 관련 법령 조항을 인용하여 답변하세요.\n\n"
                         f"[기존 답변]\n{existing_response[:800]}\n\n"
                         f"[검색 결과]\n{rag_context[:800]}\n\n"
                         f"[API 조회 결과]\n{api_context[:800]}"

@@ -395,6 +395,74 @@ def test_render_result_rich_panel_uses_explicit_terminal_width():
     assert panel.width == 78
 
 
+def test_render_result_rich_panel_uses_markdown_for_answer_body():
+    """Rich 렌더링은 답변 본문을 Markdown renderable로 감싼다."""
+    from src.cli import renderer
+
+    class FakeMarkdown:
+        def __init__(self, markup, code_theme=None):
+            self.markup = markup
+            self.code_theme = code_theme
+
+    mock_console = MagicMock()
+    markdown_text = "**굵게**\n- 목록\n`코드`\n```python\nprint('안내')\n```"
+    with patch.object(renderer, "_RICH_AVAILABLE", True):
+        with patch.object(renderer, "_console", mock_console):
+            with patch.object(renderer, "Markdown", FakeMarkdown):
+                with patch.object(renderer, "get_terminal_columns", return_value=80):
+                    renderer.render_result({"text": markdown_text})
+
+    panel = mock_console.print.call_args.args[0]
+    assert isinstance(panel.renderable, FakeMarkdown)
+    assert panel.renderable.markup == markdown_text
+    assert panel.renderable.code_theme == renderer.MARKDOWN_CODE_THEME
+
+
+def test_render_result_rich_panel_groups_markdown_with_evidence():
+    """근거가 있으면 Markdown 본문과 근거 블록을 함께 묶어 렌더링한다."""
+    from src.cli import renderer
+
+    class FakeMarkdown:
+        def __init__(self, markup, code_theme=None):
+            self.markup = markup
+            self.code_theme = code_theme
+
+    class FakeGroup:
+        def __init__(self, *renderables):
+            self.renderables = renderables
+
+    mock_console = MagicMock()
+    result = {
+        "text": "## 답변\n- 항목",
+        "evidence_items": [_SAMPLE_RAG_EVIDENCE],
+    }
+    with patch.object(renderer, "_RICH_AVAILABLE", True):
+        with patch.object(renderer, "_console", mock_console):
+            with patch.object(renderer, "Markdown", FakeMarkdown):
+                with patch.object(renderer, "Group", FakeGroup):
+                    with patch.object(renderer, "get_terminal_columns", return_value=80):
+                        renderer.render_result(result)
+
+    panel = mock_console.print.call_args.args[0]
+    assert isinstance(panel.renderable, FakeGroup)
+    assert isinstance(panel.renderable.renderables[0], FakeMarkdown)
+    assert panel.renderable.renderables[0].markup == "## 답변\n- 항목"
+    assert "민원처리법.pdf" in panel.renderable.renderables[1].plain
+
+
+def test_render_result_plain_fallback_keeps_raw_markdown_text(capsys):
+    """plain fallback에서는 마크다운 원문을 그대로 출력한다."""
+    result = {"text": "**굵게**\n- 목록\n`코드`"}
+
+    with patch("src.cli.renderer._RICH_AVAILABLE", False):
+        render_result(result)
+
+    captured = capsys.readouterr()
+    assert "**굵게**" in captured.out
+    assert "- 목록" in captured.out
+    assert "`코드`" in captured.out
+
+
 def test_render_result_rich_panel_scales_at_120_columns():
     """120열 터미널에서는 Rich Panel width가 현재 폭에 맞춰 확장된다."""
     from src.cli import renderer

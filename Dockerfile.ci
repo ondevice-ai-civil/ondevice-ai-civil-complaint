@@ -1,7 +1,7 @@
 # Dockerfile.ci — compose-smoke 전용 경량 이미지
 # ML 패키지(torch, vllm, autoawq 등) 제외 — SKIP_MODEL_LOAD=true 환경에서 API 기동만 검증
 
-FROM python:3.10-slim
+FROM python:3.14-slim
 
 LABEL org.opencontainers.image.description="GovOn CI smoke-test image (no ML packages)"
 

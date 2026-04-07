@@ -34,7 +34,7 @@ RUN uv pip install --system --no-cache "torch>=2.8.0"
 # 2) autoawq: 빌드 시 torch 필요 → no-build-isolation
 RUN uv pip install --system --no-cache --no-build-isolation "autoawq>=0.2.8"
 # 3) 나머지 패키지 (torch/autoawq 이미 충족)
-RUN grep -vE "^(torch|autoawq|#|[[:space:]]*$)" requirements.txt \
+RUN grep -vE "^(torch([>=<! ]|$)|autoawq([>=<! ]|$)|#|[[:space:]]*$)" requirements.txt \
     | uv pip install --system --no-cache -r /dev/stdin
 # 4) hf_transfer: 병렬 모델 다운로드 (10x 속도 향상)
 RUN uv pip install --system --no-cache hf_transfer

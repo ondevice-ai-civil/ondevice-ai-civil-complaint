@@ -813,6 +813,121 @@ class vLLMEngineManager:
             search_results=search_results,
         )
 
+    async def _prepare_draft_only(
+        self,
+        request: GenerateCivilResponseRequest,
+        flags: Optional[FeatureFlags] = None,
+    ) -> PreparedGeneration:
+        """LoRA 초안 생성용: 검색 없이 쿼리만으로 프롬프트 생성.
+
+        self-RAG를 건너뛰고, 사용자 쿼리를 persona 프롬프트로 감싸서 반환한다.
+        별도 rag_search 도구가 검색을 담당하므로 중복 제거.
+        """
+        effective_flags = flags if flags else self.feature_flags
+        gen_defaults = runtime_config.generation
+
+        safe_message = self._escape_special_tokens(self._extract_query(request.prompt))
+
+        prompt = self._build_persona_prompt("generator_civil_response", safe_message)
+
+        sampling_params = SamplingParams(
+            temperature=(
+                request.temperature if request.temperature is not None else gen_defaults.temperature
+            ),
+            top_p=request.top_p if request.top_p is not None else gen_defaults.top_p,
+            max_tokens=request.max_tokens or gen_defaults.max_tokens,
+            stop=request.stop or gen_defaults.stop_sequences,
+            repetition_penalty=gen_defaults.repetition_penalty,
+        )
+
+        return PreparedGeneration(
+            prompt=prompt,
+            sampling_params=sampling_params,
+            retrieved_cases=[],
+            search_results=[],
+        )
+
+    async def synthesize_with_lora(
+        self,
+        draft_text: str,
+        evidence_items: list,
+        query: str,
+        adapter_name: str = "civil",
+    ) -> str:
+        """초안 + 도구 결과를 LoRA 모델로 통합하여 최종 답변 생성.
+
+        Parameters
+        ----------
+        draft_text : str
+            Phase 1에서 LoRA가 생성한 초안.
+        evidence_items : list
+            rag_search, api_lookup 등 도구에서 수집한 근거 목록.
+        query : str
+            원본 사용자 쿼리.
+        adapter_name : str
+            사용할 LoRA 어댑터 이름 (기본: civil).
+
+        Returns
+        -------
+        str
+            LoRA 모델이 생성한 최종 답변 텍스트.
+        """
+        safe_query = self._escape_special_tokens(query[:400])
+        safe_draft = self._escape_special_tokens(draft_text[:800])
+
+        # 근거 텍스트 조립
+        evidence_text = ""
+        for item in evidence_items[:5]:
+            source_type = item.get("source_type", "")
+            title = item.get("title", "")
+            excerpt = item.get("excerpt", "")[:200]
+            label = (
+                "[로컬]" if source_type == "rag" else "[외부]" if source_type == "api" else "[생성]"
+            )
+            if title or excerpt:
+                evidence_text += f"- {label} {title}: {excerpt}\n"
+
+        if not evidence_text.strip():
+            evidence_text = "(검색 근거 없음)"
+
+        synthesis_prompt = (
+            "[|system|]당신은 대한민국 공무원 민원 답변 전문가입니다. "
+            "초안과 근거 자료를 결합하여 정확하고 공감적인 최종 민원 답변을 작성하세요. "
+            "법적 근거가 있으면 인용하고, 절차와 조치사항을 명확히 포함하세요."
+            "[|endofturn|]\n"
+            "[|user|]다음 초안과 근거 자료를 결합하여 최종 민원 답변을 작성하세요.\n\n"
+            f"[민원 질의]\n{safe_query}\n\n"
+            f"[초안]\n{safe_draft}\n\n"
+            f"[근거 자료]\n{evidence_text}"
+            "[|endofturn|]\n[|assistant|]"
+        )
+
+        lora_req = AdapterRegistry.get_instance().get_lora_request(adapter_name)
+
+        sampling_params = SamplingParams(
+            max_tokens=768,
+            temperature=0.6,
+            top_p=0.9,
+            stop=["[|endofturn|]"],
+        )
+
+        import uuid as _uuid
+
+        request_id = str(_uuid.uuid4())
+
+        try:
+            output = await self._run_engine(
+                synthesis_prompt, sampling_params, request_id, lora_request=lora_req
+            )
+        except Exception as exc:
+            logger.warning(f"[synthesize_with_lora] LoRA 합성 실패: {exc}")
+            return draft_text  # fallback: 초안 그대로 반환
+
+        if output is None or not output.outputs:
+            return draft_text
+
+        return self._strip_thought_blocks(output.outputs[0].text)
+
     async def _run_engine(
         self,
         prompt: str,
@@ -918,27 +1033,11 @@ class vLLMEngineManager:
             session: SessionContext,
         ) -> dict:
             working_query = engine_ref._build_working_query(query, session)
-            api_lookup_data = context.get(ToolType.API_LOOKUP.value, {})
 
-            external_cases = []
-            for item in api_lookup_data.get("results", [])[:3]:
-                complaint = (
-                    item.get("content") or item.get("qnaContent") or item.get("question", "")
-                )
-                answer = item.get("answer") or item.get("qnaAnswer") or item.get("title", "")
-                if complaint or answer:
-                    external_cases.append(
-                        {
-                            "complaint": complaint,
-                            "answer": answer,
-                            "score": float(item.get("score", 0.0)),
-                        }
-                    )
-
-            # Multi-LoRA: LLM이 선택한 어댑터 또는 기본 civil 어댑터 사용
+            # LoRA-First: 검색 없이 쿼리만으로 초안 생성 (self-RAG 제거)
             adapter_name = context.get("adapter") if context else None
             if not adapter_name:
-                adapter_name = "civil"  # 기본 fallback
+                adapter_name = "civil"
             _adapter_reg = AdapterRegistry.get_instance()
             lora_req = _adapter_reg.get_lora_request(adapter_name)
 
@@ -946,31 +1045,32 @@ class vLLMEngineManager:
                 prompt=working_query,
                 max_tokens=512,
                 temperature=0.7,
-                use_rag=True,
+                use_rag=False,
             )
             request_id = str(uuid.uuid4())
-            final_output, retrieved_cases, search_results = (
-                await engine_ref.generate_civil_response(
-                    gen_request,
-                    request_id,
-                    external_cases=external_cases,
-                    lora_request=lora_req,
-                )
+            prepared = await engine_ref._prepare_draft_only(gen_request)
+            final_output = await engine_ref._run_engine(
+                prepared.prompt, prepared.sampling_params, request_id, lora_request=lora_req
             )
-            if final_output is None:
-                return {"text": "", "error": "민원 답변 생성 실패"}
+
+            if final_output is None or not final_output.outputs:
+                return {
+                    "text": "",
+                    "draft_text": "",
+                    "success": False,
+                    "error": "민원 답변 초안 생성 실패",
+                    "results": [],
+                    "context_text": "",
+                }
 
             draft_text = engine_ref._strip_thought_blocks(final_output.outputs[0].text)
-            text = (
-                engine_ref._summarize_evidence(search_results, api_lookup_data)
-                + "\n\n최종 초안\n"
-                + draft_text
-            )
+
             return {
-                "text": text,
+                "text": draft_text,
                 "draft_text": draft_text,
-                "retrieved_cases": retrieved_cases,
-                "search_results": [result.model_dump() for result in search_results],
+                "success": True,
+                "results": [],
+                "context_text": draft_text,
                 "prompt_tokens": len(final_output.prompt_token_ids),
                 "completion_tokens": len(final_output.outputs[0].token_ids),
             }
@@ -1172,6 +1272,7 @@ class vLLMEngineManager:
             executor_adapter=executor,
             session_store=self.session_store,
             checkpointer=checkpointer,
+            engine_manager=self,
         )
         logger.info("LangGraph graph 초기화 완료")
 

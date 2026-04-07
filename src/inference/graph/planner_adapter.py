@@ -130,15 +130,16 @@ class LLMPlannerAdapter(PlannerAdapter):
             "당신은 GovOn 민원 답변 보조 시스템의 작업 계획기입니다.\n"
             "사용자의 요청을 분석하여 적절한 도구를 호출하세요.\n\n"
             "규칙:\n"
-            "- 민원 답변 작성: rag_search → api_lookup → draft_civil_response 순서로 호출\n"
-            "- 답변 수정: rag_search → api_lookup → draft_civil_response 순서로 호출\n"
-            "- 근거 보강: rag_search → api_lookup → append_evidence 순서로 호출\n"
+            "- 민원 답변 작성: draft_civil_response + rag_search + api_lookup 동시 호출\n"
+            "- 답변 수정: draft_civil_response + rag_search + api_lookup 동시 호출\n"
+            "- 근거 보강: append_evidence + rag_search + api_lookup 동시 호출\n"
             "- 통계 조회: api_lookup 단독 호출\n"
             "- 이슈 탐지: issue_detector 단독 호출\n"
             "- 통계 분석: stats_lookup 단독 또는 stats_lookup + issue_detector 조합\n"
             "- 키워드 분석: keyword_analyzer 단독 호출\n"
             "- 인구통계 조회: demographics_lookup 단독 호출\n"
-            "- 필요한 도구를 순서대로 모두 호출하세요.\n"
+            "- draft_civil_response는 민원 답변의 핵심 도구입니다. 민원 관련 요청에는 반드시 포함하세요.\n"
+            "- 필요한 도구를 모두 호출하세요.\n"
         )
 
     def __init__(self, llm: Any, registry: Optional[Dict[str, Any]] = None) -> None:
@@ -194,6 +195,12 @@ class LLMPlannerAdapter(PlannerAdapter):
 
                 task_type = RegexPlannerAdapter._infer_task_type(tools)
                 goal_text = tool_args.get(tools[0], {}).get("query", "") if tools else ""
+
+                # Safety net: draft_response/revise_response task에 핵심 도구 자동 보충
+                if task_type in (TaskType.DRAFT_RESPONSE, TaskType.REVISE_RESPONSE):
+                    if "draft_civil_response" not in tools:
+                        tools.append("draft_civil_response")
+                        logger.info("[Planner] draft_civil_response 자동 보충 (핵심 도구)")
 
                 return ToolPlan(
                     task_type=task_type,
@@ -384,6 +391,12 @@ class DirectEnginePlannerAdapter(PlannerAdapter):
                     tool_args[tc_name] = args
             task_type = RegexPlannerAdapter._infer_task_type(tools)
             goal_text = tool_args.get(tools[0], {}).get("query", "") if tools else ""
+
+            # Safety net: draft_response/revise_response task에 핵심 도구 자동 보충
+            if task_type in (TaskType.DRAFT_RESPONSE, TaskType.REVISE_RESPONSE):
+                if "draft_civil_response" not in tools:
+                    tools.append("draft_civil_response")
+                    logger.info("[Planner] draft_civil_response 자동 보충 (핵심 도구)")
 
             return ToolPlan(
                 task_type=task_type,

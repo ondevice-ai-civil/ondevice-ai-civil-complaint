@@ -8,7 +8,7 @@ HuggingFace Space에 배포된 govon-runtime 서버에 대해
     GOVON_RUNTIME_URL=https://<space-url>.hf.space python3 scripts/verify_e2e_tool_calling.py
     GOVON_RUNTIME_URL=https://<space-url>.hf.space API_KEY=<key> python3 scripts/verify_e2e_tool_calling.py
 
-5-Phase 검증 (13 시나리오):
+5-Phase 검증 (16 시나리오):
     Phase 1: Infrastructure (hard gate)
         1. Health & Profile
         2. Base Model Generation
@@ -17,6 +17,10 @@ HuggingFace Space에 배포된 govon-runtime 서버에 대해
         4. Planner Produces Valid Plan
         5. Civil LoRA Draft Response
         6. Legal LoRA Evidence Augmentation (depends on 5)
+        6a. Legal LoRA — 민사법 (Civil Law)
+        6b. Legal LoRA — 형사법 (Criminal Law)
+        6c. Legal LoRA — 지식재산권 (IP)
+        6d. Legal LoRA — 판례 해석 (Precedent)
         7. Task Type Classification
     Phase 3: data.go.kr API Tools (soft gate)
         8. External API Tool Invocation (4 sub-cases)
@@ -110,11 +114,13 @@ def _save_intermediate_results() -> None:
         },
         "scenarios": _results,
     }
+    tmp_path = f"{RESULTS_PATH}.tmp"
     try:
-        with open(RESULTS_PATH, "w", encoding="utf-8") as f:
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(output, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
+        os.replace(tmp_path, RESULTS_PATH)
+    except Exception as exc:
+        logger.warning("중간 결과 저장 실패: %s", exc)
 
 
 _observed_tools: set[str] = set()
@@ -354,7 +360,7 @@ async def _call_agent_with_approval(
         "tool_args": {},
     }
 
-    logger.info(f"[Agent] 요청: session={session_id}, query={query[:60]}...")
+    logger.info("[Agent] 요청: session=%s, query_len=%d", session_id, len(query))
 
     # --- SSE 스트리밍 시도 ---
     try:
@@ -439,9 +445,16 @@ async def _call_agent_with_approval(
                 meta["tool_args"] = awaiting["tool_args"]
 
             thread_id = awaiting.get("thread_id") or session_id
-            logger.info(f"  [Approval] planned_tools={meta['planned_tools']}")
+            logger.info("  [Approval] planned_tools=%s", meta["planned_tools"])
+            tool_arg_keys = (
+                sorted(meta["tool_args"].keys())
+                if isinstance(meta["tool_args"], dict)
+                else str(type(meta["tool_args"]).__name__)
+            )
             logger.info(
-                f"  [Approval] adapter_mode={meta['adapter_mode']}, tool_args={meta['tool_args']}"
+                "  [Approval] adapter_mode=%s, tool_arg_keys=%s",
+                meta["adapter_mode"],
+                tool_arg_keys,
             )
             logger.info(
                 f"  [Approval] {'승인' if approve else '거절'} 요청 → thread_id={thread_id}"
@@ -1089,6 +1102,186 @@ async def scenario6_legal_lora_evidence() -> dict:
     )
 
 
+# ---------------------------------------------------------------------------
+# Legal LoRA 카테고리별 패턴
+# ---------------------------------------------------------------------------
+CIVIL_LAW_PATTERNS = [
+    r"민법",
+    r"제\s*\d+\s*조",
+    r"임대차",
+    r"계약",
+    r"손해배상",
+    r"채권",
+    r"채무",
+]
+CRIMINAL_LAW_PATTERNS = [
+    r"형법",
+    r"형사",
+    r"처벌",
+    r"벌금",
+    r"징역",
+    r"보호법",
+    r"제\s*\d+\s*조",
+]
+IP_PATTERNS = [
+    r"상표법",
+    r"특허법",
+    r"저작권",
+    r"지식재산",
+    r"제\s*\d+\s*조",
+    r"침해",
+]
+PRECEDENT_PATTERNS = [
+    r"대법원",
+    r"판례",
+    r"판결",
+    r"선고",
+    r"\d{4}\s*[다나]\s*\d+",
+]
+
+
+async def _legal_category_scenario(
+    scenario_id: int,
+    name: str,
+    civil_query: str,
+    legal_followup: str,
+    patterns: list[str],
+) -> dict:
+    """Legal LoRA 카테고리별 시나리오 공통 로직.
+
+    1단계: civil draft 선행 요청 (세션 컨텍스트 생성)
+    2단계: 법적 근거 보강 후속 요청
+    """
+    t0 = time.monotonic()
+    session_id = _session_id(scenario_id)
+
+    try:
+        # Step 1: Civil draft (선행 요청으로 세션 컨텍스트 생성)
+        ok_civil, _, _, err_civil = await _call_agent_with_approval(
+            query=civil_query,
+            session_id=session_id,
+        )
+        if not ok_civil:
+            elapsed = time.monotonic() - t0
+            return _record(
+                scenario_id,
+                name,
+                2,
+                "failed",
+                elapsed,
+                error=f"civil 선행 실패: {err_civil}",
+            )
+
+        # Step 2: Legal follow-up (법적 근거 보강)
+        ok, text, meta, err = await _call_agent_with_approval(
+            query=legal_followup,
+            session_id=session_id,
+        )
+        elapsed = time.monotonic() - t0
+
+        if not ok:
+            return _record(
+                scenario_id,
+                name,
+                2,
+                "failed",
+                elapsed,
+                error=err,
+                detail={"meta": meta},
+            )
+
+        # 법령 패턴 매칭
+        matched = [p for p in patterns if re.search(p, text)]
+        has_legal = len(matched) > 0
+
+        assertions: list[str] = []
+        warnings: list[str] = []
+
+        planned = meta.get("planned_tools", [])
+        if planned:
+            _observed_tools.update(planned)
+
+        if "append_evidence" in planned:
+            assertions.append("append_evidence in planned_tools")
+        else:
+            warnings.append("append_evidence not in planned_tools")
+
+        if has_legal:
+            assertions.append(f"법령 패턴 발견: {matched[:3]}")
+        else:
+            warnings.append("법령 패턴 미발견")
+
+        passed = bool(text and len(text) > 30)
+        return _record(
+            scenario_id,
+            name,
+            2,
+            "passed" if passed else "failed",
+            elapsed,
+            assertions=assertions,
+            warnings=warnings,
+            error=None if passed else "응답 텍스트 부족",
+            detail={
+                "text_preview": text[:200] if text else "",
+                "matched_patterns": matched,
+                "meta": meta,
+            },
+        )
+    except Exception as exc:
+        return _record(
+            scenario_id,
+            name,
+            2,
+            "failed",
+            time.monotonic() - t0,
+            error=str(exc),
+        )
+
+
+async def scenario6a_legal_civil_law() -> dict:
+    """Scenario 6a: Legal LoRA — 민사법 질의."""
+    return await _legal_category_scenario(
+        scenario_id=61,
+        name="Legal LoRA — 민사법 (Civil Law)",
+        civil_query="임대차 계약에서 임대인의 수선의무 범위와 임차인의 권리에 대해 답변을 작성해주세요",
+        legal_followup="위 답변에 관련 법령 조항을 인용하여 법적 근거를 보강해주세요",
+        patterns=CIVIL_LAW_PATTERNS,
+    )
+
+
+async def scenario6b_legal_criminal_law() -> dict:
+    """Scenario 6b: Legal LoRA — 형사법 질의."""
+    return await _legal_category_scenario(
+        scenario_id=62,
+        name="Legal LoRA — 형사법 (Criminal Law)",
+        civil_query="개인정보보호법 위반 시 형사처벌 기준과 관련 법률 조항에 대해 답변을 작성해주세요",
+        legal_followup="위 답변에 관련 법령 조항을 인용하여 법적 근거를 보강해주세요",
+        patterns=CRIMINAL_LAW_PATTERNS,
+    )
+
+
+async def scenario6c_legal_ip() -> dict:
+    """Scenario 6c: Legal LoRA — 지식재산권 질의."""
+    return await _legal_category_scenario(
+        scenario_id=63,
+        name="Legal LoRA — 지식재산권 (IP)",
+        civil_query="상표권 침해 판단 기준과 구제 방법에 대해 답변을 작성해주세요",
+        legal_followup="위 답변에 상표법 조항을 인용하여 법적 근거를 보강해주세요",
+        patterns=IP_PATTERNS,
+    )
+
+
+async def scenario6d_legal_precedent() -> dict:
+    """Scenario 6d: Legal LoRA — 판례 해석 질의."""
+    return await _legal_category_scenario(
+        scenario_id=64,
+        name="Legal LoRA — 판례 해석 (Precedent)",
+        civil_query="근로계약 해지 시 부당해고 여부를 판단하는 기준에 대해 답변을 작성해주세요",
+        legal_followup="위 답변에 대법원 판례의 기준을 인용하여 법적 근거를 보강해주세요",
+        patterns=PRECEDENT_PATTERNS,
+    )
+
+
 async def scenario7_task_type_classification() -> dict:
     """Scenario 7: Task Type Classification (at least 2/3 correct)."""
     test_cases = [
@@ -1684,6 +1877,16 @@ async def main() -> int:
 
     for fn in phase2_scenarios:
         await fn()
+
+    # Legal LoRA 카테고리별 테스트 (4개: 민사법, 형사법, 지식재산권, 판례)
+    legal_scenarios = [
+        scenario6a_legal_civil_law,
+        scenario6b_legal_criminal_law,
+        scenario6c_legal_ip,
+        scenario6d_legal_precedent,
+    ]
+    for legal_fn in legal_scenarios:
+        await legal_fn()
 
     # ===== Phase 3: data.go.kr API Tools (soft gate) =====
     logger.info("\n[Phase 3] data.go.kr API Tools (soft gate)")

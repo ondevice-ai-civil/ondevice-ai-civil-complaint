@@ -62,7 +62,9 @@ class MinwonAnalysisAction(BaseAction):
         timeout: float = 10.0,
     ) -> None:
         super().__init__(action_name="minwon_analysis")
-        self._api_key = api_key or os.getenv("MINWON_API_KEY") or os.getenv("DATA_GO_KR_API_KEY", "")
+        self._api_key = (
+            api_key or os.getenv("MINWON_API_KEY") or os.getenv("DATA_GO_KR_API_KEY", "")
+        )
         self._ret_count = ret_count
         self._min_score = min_score
         self._timeout = timeout

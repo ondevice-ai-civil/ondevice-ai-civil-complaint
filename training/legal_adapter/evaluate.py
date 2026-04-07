@@ -18,11 +18,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import sys
-import logging
-from typing import List, Dict
+from typing import Dict, List
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)

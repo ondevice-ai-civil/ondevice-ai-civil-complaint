@@ -19,8 +19,8 @@ Environment:
 
 from __future__ import annotations
 
-import os
 import logging
+import os
 
 import torch
 from datasets import load_dataset
@@ -151,7 +151,7 @@ def main():
     val_ds = val_ds.map(format_chat, remove_columns=val_ds.column_names)
 
     # 4. Train
-    from trl import SFTTrainer, SFTConfig
+    from trl import SFTConfig, SFTTrainer
 
     training_args = SFTConfig(
         output_dir=OUTPUT_DIR,

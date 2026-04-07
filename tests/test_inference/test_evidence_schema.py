@@ -7,7 +7,7 @@ Issue #155: mixed evidence 응답 스키마 정규화.
   2. RagSearchCapability evidence 필드 채워지는지 확인
   3. ApiLookupCapability evidence 필드 채워지는지 확인
   4. AppendEvidenceCapability evidence 합산 확인
-  5. DraftCivilResponseCapability evidence 확인
+  5. DraftResponseCapability evidence 확인
   6. 정상/빈결과/부분결과/에러 4케이스
   7. synthesis _extract_final_text evidence 소비 확인
 """
@@ -385,19 +385,19 @@ class TestAppendEvidenceCapabilityEvidence:
 
 
 # ---------------------------------------------------------------------------
-# 5. DraftCivilResponseCapability evidence
+# 5. DraftResponseCapability evidence
 # ---------------------------------------------------------------------------
 
 
-class TestDraftCivilResponseCapabilityEvidence:
+class TestDraftResponseCapabilityEvidence:
     @pytest.mark.asyncio
     async def test_ok_result_has_envelope(self):
         from src.inference.graph.capabilities.draft_civil_response import (
-            DraftCivilResponseCapability,
+            DraftResponseCapability,
         )
 
         execute_fn = AsyncMock(return_value={"text": "민원 답변 초안입니다.", "citations": []})
-        cap = DraftCivilResponseCapability(execute_fn)
+        cap = DraftResponseCapability(execute_fn)
         result = await cap.execute("민원 내용", {}, MagicMock())
 
         assert result.evidence is not None
@@ -407,7 +407,7 @@ class TestDraftCivilResponseCapabilityEvidence:
     @pytest.mark.asyncio
     async def test_citations_converted_to_evidence_items(self):
         from src.inference.graph.capabilities.draft_civil_response import (
-            DraftCivilResponseCapability,
+            DraftResponseCapability,
         )
 
         execute_fn = AsyncMock(
@@ -422,7 +422,7 @@ class TestDraftCivilResponseCapabilityEvidence:
                 ],
             }
         )
-        cap = DraftCivilResponseCapability(execute_fn)
+        cap = DraftResponseCapability(execute_fn)
         result = await cap.execute("질문", {}, MagicMock())
 
         assert result.evidence is not None
@@ -434,11 +434,11 @@ class TestDraftCivilResponseCapabilityEvidence:
     @pytest.mark.asyncio
     async def test_error_result_has_error_envelope(self):
         from src.inference.graph.capabilities.draft_civil_response import (
-            DraftCivilResponseCapability,
+            DraftResponseCapability,
         )
 
         execute_fn = AsyncMock(return_value={"error": "LLM 오류"})
-        cap = DraftCivilResponseCapability(execute_fn)
+        cap = DraftResponseCapability(execute_fn)
         result = await cap.execute("질문", {}, MagicMock())
 
         assert result.success is False
@@ -524,7 +524,7 @@ class TestExtractFinalTextEvidenceConsumption:
 
         accumulated: Dict[str, Any] = {
             "query": "테스트",
-            "draft_civil_response": {
+            "draft_response": {
                 "text": "최종 답변 텍스트입니다.",
                 "evidence": {
                     "items": [

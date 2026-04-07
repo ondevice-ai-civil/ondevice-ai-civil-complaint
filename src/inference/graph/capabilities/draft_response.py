@@ -1,4 +1,4 @@
-"""draft_civil_response capability — 기존 closure를 CapabilityBase로 래핑."""
+"""draft_response capability — 기존 closure를 CapabilityBase로 래핑."""
 
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ from .base import CapabilityBase, CapabilityMetadata, EvidenceEnvelope, Evidence
 from .defaults import get_timeout
 
 
-class DraftCivilResponseCapability(CapabilityBase):
-    """민원 답변 초안 생성 capability.
+class DraftResponseCapability(CapabilityBase):
+    """분야별 답변 초안 생성 capability.
 
-    기존 api_server의 _draft_civil_response_tool closure를 주입받아
+    기존 api_server의 draft_response closure를 주입받아
     CapabilityBase 인터페이스로 래핑한다.
 
     Parameters
@@ -31,11 +31,11 @@ class DraftCivilResponseCapability(CapabilityBase):
         """metadata를 한 번만 계산하여 반환한다."""
         _reg = AdapterRegistry.get_instance()
         return CapabilityMetadata(
-            name="draft_civil_response",
-            description="민원 질의에 대한 답변 초안을 LoRA 특화 모델로 생성합니다. 검색 도구와 병렬로 실행됩니다.",
-            approval_summary="LoRA 특화 모델이 민원 답변 초안을 생성합니다.",
+            name="draft_response",
+            description="질의에 대한 답변 초안을 분야별 LoRA 특화 모델로 생성합니다. 검색 도구와 병렬로 실행됩니다.",
+            approval_summary="LoRA 특화 모델이 분야별 답변 초안을 생성합니다.",
             provider="local_llm",
-            timeout_sec=get_timeout("draft_civil_response"),
+            timeout_sec=get_timeout("draft_response"),
             parameters={
                 "type": "object",
                 "properties": {

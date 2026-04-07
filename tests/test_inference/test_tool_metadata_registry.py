@@ -103,7 +103,7 @@ def _make_mock_fn(name: str) -> AsyncMock:
 def mock_fns():
     return {
         "rag_search_fn": _make_mock_fn("rag_search"),
-        "draft_civil_response_fn": _make_mock_fn("draft_civil_response"),
+        "draft_civil_response_fn": _make_mock_fn("draft_response"),
         "append_evidence_fn": _make_mock_fn("append_evidence"),
     }
 
@@ -131,7 +131,7 @@ class TestMvpCapabilityIds:
         expected = {
             "rag_search",
             "api_lookup",
-            "draft_civil_response",
+            "draft_response",
             "append_evidence",
             "issue_detector",
             "stats_lookup",
@@ -366,10 +366,10 @@ class TestCapabilityWrappers:
     @pytest.mark.asyncio
     async def test_draft_civil_response_delegates_to_fn(self, mock_fns):
         from src.inference.graph.capabilities.draft_civil_response import (
-            DraftCivilResponseCapability,
+            DraftResponseCapability,
         )
 
-        cap = DraftCivilResponseCapability(execute_fn=mock_fns["draft_civil_response_fn"])
+        cap = DraftResponseCapability(execute_fn=mock_fns["draft_civil_response_fn"])
         result = await cap.execute("테스트", {}, None)
         mock_fns["draft_civil_response_fn"].assert_awaited_once()
         assert result.success is True

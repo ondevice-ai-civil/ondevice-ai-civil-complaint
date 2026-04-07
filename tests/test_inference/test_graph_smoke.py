@@ -50,7 +50,7 @@ class StubExecutorAdapter(ExecutorAdapter):
         }
 
     def list_tools(self) -> list[str]:
-        return ["rag_search", "api_lookup", "draft_civil_response", "append_evidence"]
+        return ["rag_search", "api_lookup", "draft_response", "append_evidence"]
 
 
 class RecordingExecutorAdapter(ExecutorAdapter):
@@ -74,7 +74,7 @@ class RecordingExecutorAdapter(ExecutorAdapter):
         }
 
     def list_tools(self) -> list[str]:
-        return ["rag_search", "api_lookup", "draft_civil_response", "append_evidence"]
+        return ["rag_search", "api_lookup", "draft_response", "append_evidence"]
 
 
 @pytest.fixture

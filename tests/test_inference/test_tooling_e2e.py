@@ -8,7 +8,7 @@ test_orchestration_e2e.py와의 차이:
     capability→adapter→node 파이프라인을 검증
 
 실제 capability 인스턴스(RagSearchCapability, ApiLookupCapability,
-DraftCivilResponseCapability, AppendEvidenceCapability)를 사용하고
+DraftResponseCapability, AppendEvidenceCapability)를 사용하고
 RegistryExecutorAdapter를 통해 capability->adapter->node 파이프라인을 검증한다.
 StubExecutorAdapter가 아닌 실제 capability + mock execute_fn 클로저를 사용한다.
 
@@ -30,7 +30,7 @@ from langgraph.types import Command
 from src.inference.graph.builder import build_govon_graph
 from src.inference.graph.capabilities.api_lookup import ApiLookupCapability
 from src.inference.graph.capabilities.append_evidence import AppendEvidenceCapability
-from src.inference.graph.capabilities.draft_civil_response import DraftCivilResponseCapability
+from src.inference.graph.capabilities.draft_civil_response import DraftResponseCapability
 from src.inference.graph.capabilities.rag_search import RagSearchCapability
 from src.inference.graph.executor_adapter import RegistryExecutorAdapter
 from src.inference.graph.planner_adapter import PlannerAdapter
@@ -88,7 +88,7 @@ def _make_registry(
     return {
         "rag_search": RagSearchCapability(execute_fn=rag_fn),
         "api_lookup": ApiLookupCapability(action=api_action),
-        "draft_civil_response": DraftCivilResponseCapability(execute_fn=draft_fn),
+        "draft_response": DraftResponseCapability(execute_fn=draft_fn),
         "append_evidence": AppendEvidenceCapability(execute_fn=evidence_fn),
     }
 
@@ -188,7 +188,7 @@ async def _approve(graph, config):
 class TestDraftResponsePipeline:
     """DRAFT_RESPONSE 파이프라인 E2E 테스트.
 
-    실제 RagSearchCapability, ApiLookupCapability, DraftCivilResponseCapability
+    실제 RagSearchCapability, ApiLookupCapability, DraftResponseCapability
     인스턴스를 사용하여 capability->adapter->node 파이프라인을 검증한다.
     """
 
@@ -207,7 +207,7 @@ class TestDraftResponsePipeline:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="민원 답변 초안 작성",
             reason="사용자가 답변 초안을 요청했습니다",
-            tools=["rag_search", "api_lookup", "draft_civil_response"],
+            tools=["rag_search", "api_lookup", "draft_response"],
         )
         graph = make_tooling_graph(planner, draft_fn=draft_fn)
 
@@ -229,7 +229,7 @@ class TestDraftResponsePipeline:
         assert "rag_search" in tool_results, "tool_results에 rag_search가 있어야 합니다"
         assert "api_lookup" in tool_results, "tool_results에 api_lookup이 있어야 합니다"
         assert (
-            "draft_civil_response" in tool_results
+            "draft_response" in tool_results
         ), "tool_results에 draft_civil_response가 있어야 합니다"
 
     async def test_draft_response_synthesis_prioritizes_draft_text(self, make_tooling_graph):
@@ -262,7 +262,7 @@ class TestDraftResponsePipeline:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="민원 답변 초안 작성",
             reason="사용자가 답변 초안을 요청했습니다",
-            tools=["rag_search", "draft_civil_response"],
+            tools=["rag_search", "draft_response"],
         )
         graph = make_tooling_graph(planner, rag_fn=rag_fn, draft_fn=draft_fn)
 
@@ -517,7 +517,7 @@ class TestPartialFailureE2E:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="민원 답변 초안 작성",
             reason="사용자가 답변 초안을 요청했습니다",
-            tools=["rag_search", "draft_civil_response"],
+            tools=["rag_search", "draft_response"],
         )
         graph = make_tooling_graph(planner, rag_fn=rag_fn_timeout, draft_fn=draft_fn)
 
@@ -539,9 +539,9 @@ class TestPartialFailureE2E:
 
         # draft가 실행되어 final_text가 생성되어야 한다
         assert (
-            "draft_civil_response" in tool_results
+            "draft_response" in tool_results
         ), "draft_civil_response가 tool_results에 있어야 합니다"
-        draft_result = tool_results["draft_civil_response"]
+        draft_result = tool_results["draft_response"]
         assert draft_result.get("success") is True, "draft가 성공해야 합니다"
         assert draft_text in result.get(
             "final_text", ""
@@ -577,7 +577,7 @@ class TestPartialFailureE2E:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="민원 답변 초안 작성",
             reason="사용자가 답변 초안을 요청했습니다",
-            tools=["rag_search", "api_lookup", "draft_civil_response"],
+            tools=["rag_search", "api_lookup", "draft_response"],
         )
 
         graph = build_govon_graph(
@@ -602,7 +602,7 @@ class TestPartialFailureE2E:
         assert api_result.get("success") is False, "API 실패 시 success=False여야 합니다"
 
         assert (
-            "draft_civil_response" in tool_results
+            "draft_response" in tool_results
         ), "api 실패 후에도 draft_civil_response가 실행되어야 합니다"
         assert draft_text in result.get(
             "final_text", ""
@@ -611,7 +611,7 @@ class TestPartialFailureE2E:
     async def test_draft_exception_caught_by_adapter(self, make_tooling_graph):
         """draft execute_fn이 RuntimeError를 발생시키면 어댑터가 잡고 success=False를 반환한다.
 
-        DraftCivilResponseCapability는 execute() 내부 try/except 없이
+        DraftResponseCapability는 execute() 내부 try/except 없이
         execute_fn에서 발생한 예외가 CapabilityBase.__call__을 통해
         RegistryExecutorAdapter까지 전파된다. 어댑터가 예외를 잡아 success=False로 반환한다.
         RagSearchCapability와 달리 capability 자체에서 예외를 흡수하지 않는다.
@@ -624,7 +624,7 @@ class TestPartialFailureE2E:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="민원 답변 초안 작성",
             reason="사용자가 답변 초안을 요청했습니다",
-            tools=["rag_search", "draft_civil_response"],
+            tools=["rag_search", "draft_response"],
         )
         graph = make_tooling_graph(planner, draft_fn=draft_fn_raises)
 
@@ -639,12 +639,12 @@ class TestPartialFailureE2E:
 
         tool_results = result.get("tool_results", {})
         assert (
-            "draft_civil_response" in tool_results
+            "draft_response" in tool_results
         ), "draft_civil_response가 tool_results에 있어야 합니다"
-        draft_result = tool_results["draft_civil_response"]
+        draft_result = tool_results["draft_response"]
         assert (
             draft_result.get("success") is False
-        ), "draft 예외 시 tool_results['draft_civil_response']['success']==False여야 합니다"
+        ), "draft 예외 시 tool_results['draft_response']['success']==False여야 합니다"
         assert draft_result.get("error"), "draft 예외 시 error 필드가 있어야 합니다"
 
     async def test_all_tools_fail_synthesis_fallback(self, make_tooling_graph):
@@ -653,7 +653,7 @@ class TestPartialFailureE2E:
         RagSearchCapability는 execute() 내부에 자체 try/except가 있어서
         execute_fn에서 발생한 예외를 success=False LookupResult로 변환하고
         RegistryExecutorAdapter까지 전파하지 않는다.
-        DraftCivilResponseCapability는 execute() 내부 try/except가 없으므로
+        DraftResponseCapability는 execute() 내부 try/except가 없으므로
         예외가 RegistryExecutorAdapter까지 전파되어 어댑터가 잡는다.
 
         rag execute_fn에서 RuntimeError 발생 → RagSearchCapability.execute()가 잡아 success=False 반환.
@@ -673,7 +673,7 @@ class TestPartialFailureE2E:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="민원 답변 초안 작성",
             reason="사용자가 답변 초안을 요청했습니다",
-            tools=["rag_search", "api_lookup", "draft_civil_response"],
+            tools=["rag_search", "api_lookup", "draft_response"],
         )
         # api_action=None: success=True지만 빈 결과, context_text 없음
         graph = make_tooling_graph(
@@ -692,7 +692,7 @@ class TestPartialFailureE2E:
         # rag와 draft가 실패해야 한다
         tool_results = result.get("tool_results", {})
         rag_result = tool_results.get("rag_search", {})
-        draft_result = tool_results.get("draft_civil_response", {})
+        draft_result = tool_results.get("draft_response", {})
         assert rag_result.get("success") is False, "rag 실패 확인"
         assert draft_result.get("success") is False, "draft 실패 확인"
 
@@ -831,7 +831,7 @@ class TestEmptyResultScenarios:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="민원 답변 초안 작성",
             reason="사용자가 답변 초안을 요청했습니다",
-            tools=["rag_search", "draft_civil_response"],
+            tools=["rag_search", "draft_response"],
         )
         graph = make_tooling_graph(planner, rag_fn=rag_fn, draft_fn=draft_fn_fail)
 
@@ -848,7 +848,7 @@ class TestEmptyResultScenarios:
         rag_result = tool_results.get("rag_search", {})
         assert rag_result.get("success") is True, "rag가 성공해야 합니다"
         assert (
-            tool_results.get("draft_civil_response", {}).get("success") is False
+            tool_results.get("draft_response", {}).get("success") is False
         ), "draft가 실패해야 합니다"
 
         final_text = result.get("final_text", "")
@@ -890,7 +890,7 @@ class TestPersistToolRunAccuracy:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="민원 답변 초안 작성",
             reason="사용자가 답변 초안을 요청했습니다",
-            tools=["rag_search", "draft_civil_response"],
+            tools=["rag_search", "draft_response"],
         )
         graph = make_tooling_graph(planner, draft_fn=draft_fn_fail)
 
@@ -917,9 +917,9 @@ class TestPersistToolRunAccuracy:
         ), "rag_search tool_run.success가 True여야 합니다"
 
         assert (
-            "draft_civil_response" in tool_run_map
+            "draft_response" in tool_run_map
         ), "draft_civil_response tool_run이 기록되어야 합니다"
-        draft_run = tool_run_map["draft_civil_response"]
+        draft_run = tool_run_map["draft_response"]
         assert (
             draft_run.success is False
         ), "draft_civil_response tool_run.success가 False여야 합니다"
@@ -937,7 +937,7 @@ class TestPersistToolRunAccuracy:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="민원 답변 초안 작성",
             reason="사용자가 답변 초안을 요청했습니다",
-            tools=["rag_search", "draft_civil_response"],
+            tools=["rag_search", "draft_response"],
         )
         graph = make_tooling_graph(planner)
 
@@ -981,7 +981,7 @@ class TestPersistToolRunAccuracy:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="민원 답변 초안 작성",
             reason="사용자가 답변 초안을 요청했습니다",
-            tools=["rag_search", "api_lookup", "draft_civil_response"],
+            tools=["rag_search", "api_lookup", "draft_response"],
         )
         graph = make_tooling_graph(planner)
 
@@ -1009,7 +1009,7 @@ class TestPersistToolRunAccuracy:
 
         # planned_tools에 있는 tool은 모두 executed_capabilities에 포함되어야 한다
         # (실패해도 tool_execute_node가 빈 dict로 기록하지 않고 result를 기록함)
-        planned_tools = ["rag_search", "api_lookup", "draft_civil_response"]
+        planned_tools = ["rag_search", "api_lookup", "draft_response"]
         for tool in planned_tools:
             if tool in tool_results:
                 assert (

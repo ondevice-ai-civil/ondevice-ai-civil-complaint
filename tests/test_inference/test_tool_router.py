@@ -9,7 +9,7 @@ class TestToolRouter:
 
     def test_default_request_routes_to_drafting_loop(self):
         plan = self.router.plan("도로 포장이 파손되어 위험합니다")
-        assert plan.tool_names == ["rag_search", "api_lookup", "draft_civil_response"]
+        assert plan.tool_names == ["rag_search", "api_lookup", "draft_response"]
         assert "drafting loop" in plan.reason or "답변 작성" in plan.reason
 
     def test_evidence_request_routes_to_append_flow(self):
@@ -23,7 +23,7 @@ class TestToolRouter:
 
     def test_revision_request_keeps_drafting_loop(self):
         plan = self.router.plan("조금 더 정중하게 다시 써줘", has_context=True)
-        assert plan.tool_names == ["rag_search", "api_lookup", "draft_civil_response"]
+        assert plan.tool_names == ["rag_search", "api_lookup", "draft_response"]
 
     def test_force_tools_overrides_pattern_matching(self):
         plan = self.router.plan("무시", force_tools=[ToolType.API_LOOKUP])

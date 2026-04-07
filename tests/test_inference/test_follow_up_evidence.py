@@ -108,7 +108,7 @@ def test_synthesis_draft_response_type_unaffected():
     """draft_response 타입은 기존 동작 그대로 — prepend 없이 직접 텍스트 반환."""
     accumulated = {
         "previous_assistant_response": "이전 답변 텍스트",
-        "draft_civil_response": {
+        "draft_response": {
             "success": True,
             "text": "새로운 초안 답변입니다.",
         },
@@ -158,7 +158,7 @@ def test_collect_evidence_items_empty():
     """evidence가 없는 accumulated에서는 빈 리스트를 반환한다."""
     accumulated = {
         "session_context": "요약",
-        "draft_civil_response": {"success": True, "text": "답변"},
+        "draft_response": {"success": True, "text": "답변"},
     }
     assert _collect_evidence_items(accumulated) == []
 
@@ -186,10 +186,10 @@ class StubEvidenceExecutorAdapter(ExecutorAdapter):
     """테스트용 executor: tool별로 고정된 결과 반환."""
 
     def list_tools(self) -> list[str]:
-        return ["rag_search", "api_lookup", "draft_civil_response", "append_evidence"]
+        return ["rag_search", "api_lookup", "draft_response", "append_evidence"]
 
     async def execute(self, tool_name: str, query: str, context: dict) -> dict:
-        if tool_name == "draft_civil_response":
+        if tool_name == "draft_response":
             return {
                 "success": True,
                 "text": "도로 파손 민원을 접수해드리겠습니다.",

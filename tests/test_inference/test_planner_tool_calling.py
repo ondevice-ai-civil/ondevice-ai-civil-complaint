@@ -79,7 +79,7 @@ class TestLLMPlannerToolCalling:
         mock_response.tool_calls = [
             {"name": "rag_search", "args": {"query": "소음 민원"}},
             {
-                "name": "draft_civil_response",
+                "name": "draft_response",
                 "args": {"query": "소음 민원 답변", "adapter": "civil"},
             },
         ]
@@ -98,10 +98,10 @@ class TestLLMPlannerToolCalling:
 
         assert "rag_search" in plan.tools, f"rag_search가 plan.tools에 없음: {plan.tools}"
         assert (
-            "draft_civil_response" in plan.tools
+            "draft_response" in plan.tools
         ), f"draft_civil_response가 plan.tools에 없음: {plan.tools}"
         assert (
-            plan.tool_args.get("draft_civil_response", {}).get("adapter") == "civil"
+            plan.tool_args.get("draft_response", {}).get("adapter") == "civil"
         ), f"adapter가 civil이어야 함: {plan.tool_args}"
         assert (
             "tool_calling" in plan.adapter_mode
@@ -117,7 +117,7 @@ class TestLLMPlannerToolCalling:
                 "task_type": "draft_response",
                 "goal": "민원 답변 작성",
                 "reason": "사용자가 답변을 요청함",
-                "tools": ["rag_search", "draft_civil_response"],
+                "tools": ["rag_search", "draft_response"],
             }
         )
 
@@ -136,7 +136,7 @@ class TestLLMPlannerToolCalling:
 
         plan = await adapter.plan(messages=[mock_msg], context={})
 
-        assert plan.tools == ["rag_search", "draft_civil_response"], f"tools 불일치: {plan.tools}"
+        assert plan.tools == ["rag_search", "draft_response"], f"tools 불일치: {plan.tools}"
         assert plan.adapter_mode == "llm", f"adapter_mode는 llm이어야 함: {plan.adapter_mode}"
 
     @pytest.mark.asyncio
@@ -200,14 +200,14 @@ class TestDirectEnginePlannerToolCalling:
 
         text = (
             '<tool_call>{"name": "rag_search", "arguments": {"query": "소음 민원"}}</tool_call>\n'
-            '<tool_call>{"name": "draft_civil_response", "arguments": {"query": "답변", "adapter": "civil"}}</tool_call>'
+            '<tool_call>{"name": "draft_response", "arguments": {"query": "답변", "adapter": "civil"}}</tool_call>'
         )
 
         result = DirectEnginePlannerAdapter._parse_hermes_tool_calls(text)
 
         assert len(result) == 2, f"tool_call 2개 예상: {len(result)}"
         assert result[0]["name"] == "rag_search", f"첫 번째 tool: {result[0]['name']}"
-        assert result[1]["name"] == "draft_civil_response", f"두 번째 tool: {result[1]['name']}"
+        assert result[1]["name"] == "draft_response", f"두 번째 tool: {result[1]['name']}"
         assert result[1]["arguments"]["adapter"] == "civil", f"adapter: {result[1]['arguments']}"
 
     def test_parse_hermes_empty(self):
@@ -251,11 +251,11 @@ class TestToolPlanWithArgs:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="test",
             reason="test",
-            tools=["draft_civil_response"],
-            tool_args={"draft_civil_response": {"query": "test", "adapter": "civil"}},
+            tools=["draft_response"],
+            tool_args={"draft_response": {"query": "test", "adapter": "civil"}},
         )
         assert (
-            plan.tool_args["draft_civil_response"]["adapter"] == "civil"
+            plan.tool_args["draft_response"]["adapter"] == "civil"
         ), f"adapter 불일치: {plan.tool_args}"
 
 
@@ -303,7 +303,7 @@ class TestBuildToolDefinitions:
         adapter_tools = {
             d["function"]["name"]: d
             for d in definitions
-            if d["function"]["name"] in ("draft_civil_response", "append_evidence")
+            if d["function"]["name"] in ("draft_response", "append_evidence")
         }
 
         for name, defn in adapter_tools.items():

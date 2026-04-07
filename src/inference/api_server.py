@@ -793,7 +793,7 @@ class vLLMEngineManager:
         )
         sections.append(safe_message)
         augmented_prompt = self._build_persona_prompt(
-            "generator_civil_response",
+            "draft_response",
             "\n\n".join(section for section in sections if section),
         )
 
@@ -829,7 +829,7 @@ class vLLMEngineManager:
         safe_message = self._escape_special_tokens(self._extract_query(request.prompt))
         # 학습 데이터 형식: user = instruction + "\n\n" + input
         user_content = f"다음 민원에 대한 답변을 작성해 주세요.\n\n{safe_message}"
-        prompt = self._build_persona_prompt("generator_civil_response", user_content)
+        prompt = self._build_persona_prompt("draft_response", user_content)
 
         sampling_params = SamplingParams(
             temperature=(
@@ -853,7 +853,7 @@ class vLLMEngineManager:
         draft_text: str,
         evidence_items: list,
         query: str,
-        adapter_name: str = "civil",
+        adapter_name: str = "public_admin",
     ) -> str:
         """초안 + 도구 결과를 베이스 모델로 통합하여 최종 답변 생성.
 
@@ -1015,7 +1015,7 @@ class vLLMEngineManager:
                 "source": "data.go.kr",
             }
 
-        async def _draft_civil_response_tool(
+        async def _draft_response_tool(
             query: str,
             context: dict,
             session: SessionContext,
@@ -1025,7 +1025,7 @@ class vLLMEngineManager:
             # LoRA-First: 검색 없이 쿼리만으로 초안 생성 (self-RAG 제거)
             adapter_name = context.get("adapter") if context else None
             if not adapter_name:
-                adapter_name = "civil"
+                adapter_name = "public_admin"
             _adapter_reg = AdapterRegistry.get_instance()
             lora_req = _adapter_reg.get_lora_request(adapter_name)
 
@@ -1063,82 +1063,10 @@ class vLLMEngineManager:
                 "completion_tokens": len(final_output.outputs[0].token_ids),
             }
 
-        async def _append_evidence_tool(
-            query: str,
-            context: dict,
-            session: SessionContext,
-        ) -> dict:
-            rag_data = context.get(ToolType.RAG_SEARCH.value, {})
-            api_data = context.get(ToolType.API_LOOKUP.value, {})
-
-            # 기존 evidence 텍스트 (fallback용)
-            fallback_text = engine_ref._build_evidence_section(session, query, rag_data, api_data)
-
-            # LLM으로 evidence 보강 시도
-            enhanced_text = fallback_text
-            if engine_ref.engine is not None:
-                try:
-                    _, previous_answer = engine_ref._latest_prior_turns(session, query)
-                    existing_response = engine_ref._escape_special_tokens(previous_answer or "")
-                    rag_context = engine_ref._escape_special_tokens(
-                        rag_data.get("context_text", "")
-                    )
-                    api_context = ""
-                    for item in api_data.get("results", [])[:3]:
-                        title = item.get("title", "")
-                        content = item.get("content", "") or item.get("qnaContent", "")
-                        if title or content:
-                            api_context += (
-                                f"- {engine_ref._escape_special_tokens(title)}"
-                                f": {engine_ref._escape_special_tokens(content[:200])}\n"
-                            )
-
-                    evidence_prompt = (
-                        "[|system|]당신은 대한민국 법률 전문가입니다. "
-                        "법령 조항과 판례를 정확하게 인용하여 법률 질문에 답변해 주세요."
-                        "[|endofturn|]\n"
-                        "[|user|]다음 법률 질문에 관련 법령 조항을 인용하여 답변하세요.\n\n"
-                        f"[기존 답변]\n{existing_response[:800]}\n\n"
-                        f"[검색 결과]\n{rag_context[:800]}\n\n"
-                        f"[API 조회 결과]\n{api_context[:800]}"
-                        "[|endofturn|]\n[|assistant|]"
-                    )
-
-                    # Multi-LoRA: LLM이 선택한 어댑터 또는 기본 legal 어댑터 사용
-                    adapter_name = context.get("adapter") if context else None
-                    if not adapter_name:
-                        adapter_name = "legal"  # 기본 fallback
-                    _adapter_reg = AdapterRegistry.get_instance()
-                    lora_req = _adapter_reg.get_lora_request(adapter_name)
-
-                    if SamplingParams is not None:
-                        sp = SamplingParams(
-                            max_tokens=512,
-                            temperature=0.5,
-                            top_p=0.9,
-                            stop=["[|endofturn|]"],
-                        )
-                        request_id = str(uuid.uuid4())
-                        output = await engine_ref._run_engine(
-                            evidence_prompt, sp, request_id, lora_request=lora_req
-                        )
-                        if output is not None and output.outputs:
-                            enhanced_text = engine_ref._strip_thought_blocks(output.outputs[0].text)
-                except Exception as exc:
-                    logger.warning(f"Evidence LLM 보강 실패, fallback 사용: {exc}")
-                    enhanced_text = fallback_text
-
-            return {
-                "text": enhanced_text,
-                "rag_results": rag_data.get("results", []),
-                "api_citations": api_data.get("citations", []),
-            }
-
         tool_registry = {
             ToolType.RAG_SEARCH: _rag_search_tool,
             ToolType.API_LOOKUP: _api_lookup_tool,
-            ToolType.DRAFT_CIVIL_RESPONSE: _draft_civil_response_tool,
-            ToolType.APPEND_EVIDENCE: _append_evidence_tool,
+            ToolType.DRAFT_RESPONSE: _draft_response_tool,
         }
         self.agent_loop = AgentLoop(tool_registry=tool_registry)
 
@@ -1162,8 +1090,7 @@ class vLLMEngineManager:
         return build_mvp_registry(
             rag_search_fn=raw_tools.get("rag_search", _noop_tool),
             api_lookup_action=self._get_api_lookup_action(),
-            draft_civil_response_fn=raw_tools.get("draft_civil_response", _noop_tool),
-            append_evidence_fn=raw_tools.get("append_evidence", _noop_tool),
+            draft_response_fn=raw_tools.get("draft_response", _noop_tool),
         )
 
     def _get_api_lookup_action(self) -> Any:

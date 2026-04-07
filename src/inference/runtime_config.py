@@ -149,25 +149,25 @@ class ModelConfig:
     - vLLM 서빙 옵션: --enable-auto-tool-choice --tool-call-parser hermes
 
     Multi-LoRA 어댑터:
-    - civil-adapter (LoRA #1): draft_civil_response 용도
+    - public_admin-adapter (LoRA #1): draft_response 용도
       학습 데이터: umyunsang/govon-civil-response-data (74K건), QLoRA on AWQ base
       HF Hub: umyunsang/GovOn-EXAONE-LoRA-v2
-    - legal-adapter (LoRA #2): append_evidence 용도
+    - legal-adapter (LoRA #2): draft_response 용도
       학습 데이터: umyunsang/govon-legal-response-data (243K건), QLoRA on AWQ base
       HuggingFace: siwo/govon-legal-adapter
     - 나머지 capability (rag_search, api_lookup, synthesis 등)는 LoRA 없이 base model 사용
 
     adapter_paths: Dict[str, str] 형식의 어댑터 이름-경로 매핑.
-      환경변수 ADAPTER_PATHS="civil=/path/to/civil,legal=/path/to/legal" 형식으로 설정.
-      예: {"civil": "/path/to/civil", "legal": "/path/to/legal"}
+      환경변수 ADAPTER_PATHS="public_admin=/path/to/public_admin,legal=/path/to/legal" 형식으로 설정.
+      예: {"public_admin": "/path/to/public_admin", "legal": "/path/to/legal"}
     """
 
     model_path: str = "LGAI-EXAONE/EXAONE-4.0-32B-AWQ"
     trust_remote_code: bool = True
     dtype: str = "half"
     enforce_eager: bool = True
-    # Multi-LoRA 어댑터 경로: {"civil": "/path/to/civil", "legal": "/path/to/legal"}
-    # 환경변수 ADAPTER_PATHS="civil=/path/to/civil,legal=/path/to/legal" 형식으로 설정
+    # Multi-LoRA 어댑터 경로: {"public_admin": "/path/to/public_admin", "legal": "/path/to/legal"}
+    # 환경변수 ADAPTER_PATHS="public_admin=/path/to/public_admin,legal=/path/to/legal" 형식으로 설정
     adapter_paths: Dict[str, str] = field(default_factory=dict)
 
     @classmethod
@@ -186,8 +186,8 @@ class ModelConfig:
     def _parse_adapter_paths(raw: str) -> Dict[str, str]:
         """ADAPTER_PATHS 환경변수를 파싱한다.
 
-        형식: "civil=/path/to/civil,legal=/path/to/legal"
-        반환: {"civil": "/path/to/civil", "legal": "/path/to/legal"}
+        형식: "public_admin=/path/to/public_admin,legal=/path/to/legal"
+        반환: {"public_admin": "/path/to/public_admin", "legal": "/path/to/legal"}
         잘못된 항목은 경고 후 무시한다.
         """
         if not raw or not raw.strip():

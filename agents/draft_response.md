@@ -1,7 +1,7 @@
 ---
-name: generator_civil_response
-role: 민원 회신 담당 주무관
-description: 민원 답변 초안을 LoRA 특화 모델로 생성하는 에이전트
+name: draft_response
+role: 분야별 답변 초안 생성
+description: 사용자 질의에 대한 답변 초안을 LoRA 특화 모델로 생성하는 에이전트
 temperature: 0.7
 max_tokens: 2048
 ---

@@ -99,7 +99,7 @@ class TrackingStubExecutor(ExecutorAdapter):
         }
 
     def list_tools(self) -> list[str]:
-        return ["rag_search", "api_lookup", "draft_civil_response", "append_evidence"]
+        return ["rag_search", "api_lookup", "draft_response", "append_evidence"]
 
 
 # ---------------------------------------------------------------------------
@@ -170,11 +170,11 @@ class TestApprovalExecuteE2E:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="민원 답변 초안 작성",
             reason="사용자가 답변 초안을 요청했습니다",
-            tools=["rag_search", "draft_civil_response"],
+            tools=["rag_search", "draft_response"],
         )
         executor = TrackingStubExecutor(
             results={
-                "draft_civil_response": {
+                "draft_response": {
                     "success": True,
                     "text": "작성된 민원 답변 초안입니다.",
                     "latency_ms": 1.0,
@@ -197,7 +197,7 @@ class TestApprovalExecuteE2E:
 
     async def test_approve_executes_all_planned_tools(self, make_graph):
         """승인 후 planned_tools 목록의 모든 tool이 실행된다."""
-        planned = ["rag_search", "draft_civil_response"]
+        planned = ["rag_search", "draft_response"]
         planner = ConfigurableStubPlanner(
             task_type=TaskType.DRAFT_RESPONSE,
             goal="민원 답변 초안 작성",
@@ -226,7 +226,7 @@ class TestApprovalExecuteE2E:
 
     async def test_approve_accumulated_context_has_tool_outputs(self, make_graph):
         """승인 후 accumulated_context에 각 tool의 결과가 포함된다."""
-        planned = ["rag_search", "draft_civil_response"]
+        planned = ["rag_search", "draft_response"]
         planner = ConfigurableStubPlanner(
             task_type=TaskType.DRAFT_RESPONSE,
             goal="민원 답변 초안 작성",
@@ -266,7 +266,7 @@ class TestRejectIdleE2E:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="민원 답변 초안 작성",
             reason="사용자가 답변 초안을 요청했습니다",
-            tools=["rag_search", "draft_civil_response"],
+            tools=["rag_search", "draft_response"],
         )
         executor = TrackingStubExecutor()
         graph = make_graph(planner, executor)
@@ -289,7 +289,7 @@ class TestRejectIdleE2E:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="민원 답변 초안 작성",
             reason="사용자가 답변 초안을 요청했습니다",
-            tools=["rag_search", "draft_civil_response"],
+            tools=["rag_search", "draft_response"],
         )
         executor = TrackingStubExecutor()
         graph = make_graph(planner, executor)
@@ -312,7 +312,7 @@ class TestRejectIdleE2E:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="민원 답변 초안 작성",
             reason="사용자가 답변 초안을 요청했습니다",
-            tools=["rag_search", "draft_civil_response"],
+            tools=["rag_search", "draft_response"],
         )
         executor1 = TrackingStubExecutor()
         graph1 = make_graph(planner, executor1)
@@ -334,11 +334,11 @@ class TestRejectIdleE2E:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="민원 답변 초안 작성",
             reason="사용자가 답변 초안을 요청했습니다",
-            tools=["rag_search", "draft_civil_response"],
+            tools=["rag_search", "draft_response"],
         )
         executor2 = TrackingStubExecutor(
             results={
-                "draft_civil_response": {
+                "draft_response": {
                     "success": True,
                     "text": "두 번째 실행 민원 답변 초안입니다.",
                     "latency_ms": 1.0,
@@ -489,11 +489,11 @@ class TestEvidenceAugmentationE2E:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="민원 답변 초안 작성",
             reason="사용자가 답변 초안을 요청했습니다",
-            tools=["rag_search", "draft_civil_response"],
+            tools=["rag_search", "draft_response"],
         )
         executor1 = TrackingStubExecutor(
             results={
-                "draft_civil_response": {
+                "draft_response": {
                     "success": True,
                     "text": "초안 답변 텍스트",
                     "latency_ms": 1.0,
@@ -578,7 +578,7 @@ class TestSessionTraceConsistency:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="민원 답변 초안 작성",
             reason="사용자가 답변 초안을 요청했습니다",
-            tools=["rag_search", "draft_civil_response"],
+            tools=["rag_search", "draft_response"],
         )
         executor = TrackingStubExecutor()
         graph = make_graph(planner, executor)
@@ -615,7 +615,7 @@ class TestSessionTraceConsistency:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="민원 답변 초안 작성",
             reason="사용자가 답변 초안을 요청했습니다",
-            tools=["rag_search", "draft_civil_response"],
+            tools=["rag_search", "draft_response"],
         )
 
         # 첫 번째 실행
@@ -634,7 +634,7 @@ class TestSessionTraceConsistency:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="민원 답변 초안 작성",
             reason="사용자가 답변 초안을 요청했습니다",
-            tools=["rag_search", "draft_civil_response"],
+            tools=["rag_search", "draft_response"],
         )
         graph2 = make_graph(planner2, TrackingStubExecutor())
         config2 = await _run_to_interrupt(
@@ -660,7 +660,7 @@ class TestSessionTraceConsistency:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="민원 답변 초안 작성",
             reason="사용자가 답변 초안을 요청했습니다",
-            tools=["rag_search", "draft_civil_response"],
+            tools=["rag_search", "draft_response"],
         )
         executor = TrackingStubExecutor()
         graph = make_graph(planner, executor)
@@ -695,11 +695,11 @@ class TestSessionTraceConsistency:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="민원 답변 초안 작성",
             reason="사용자가 답변 초안을 요청했습니다",
-            tools=["rag_search", "draft_civil_response"],
+            tools=["rag_search", "draft_response"],
         )
         executor = TrackingStubExecutor(
             results={
-                "draft_civil_response": {
+                "draft_response": {
                     "success": True,
                     "text": "작성된 민원 답변 초안입니다.",
                     "latency_ms": 1.0,

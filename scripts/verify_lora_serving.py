@@ -409,7 +409,7 @@ _RUN_SESSION_ID = str(uuid4())
 
 
 async def scenario3_civil_lora() -> dict:
-    """Scenario 3: Civil LoRA — draft_civil_response (v2/agent/stream)."""
+    """Scenario 3: Public Admin LoRA — draft_response (v2/agent/stream)."""
     t0 = time.monotonic()
     try:
         ok, text, err = await _call_agent(
@@ -420,7 +420,7 @@ async def scenario3_civil_lora() -> dict:
         if not ok:
             return _record(
                 3,
-                "Civil LoRA (draft_civil_response)",
+                "Public Admin LoRA (draft_response)",
                 False,
                 elapsed,
                 err,
@@ -428,23 +428,23 @@ async def scenario3_civil_lora() -> dict:
             )
         if not text.strip():
             return _record(
-                3, "Civil LoRA (draft_civil_response)", False, elapsed, "응답 텍스트가 비어있음"
+                3, "Public Admin LoRA (draft_response)", False, elapsed, "응답 텍스트가 비어있음"
             )
         return _record(
             3,
-            "Civil LoRA (draft_civil_response)",
+            "Public Admin LoRA (draft_response)",
             True,
             elapsed,
             detail={"text_preview": text[:200]},
         )
     except Exception as exc:
         return _record(
-            3, "Civil LoRA (draft_civil_response)", False, time.monotonic() - t0, str(exc)
+            3, "Public Admin LoRA (draft_response)", False, time.monotonic() - t0, str(exc)
         )
 
 
 async def scenario4_legal_lora() -> dict:
-    """Scenario 4: Legal LoRA — append_evidence (v2/agent/stream).
+    """Scenario 4: Legal LoRA — draft_response (v2/agent/stream).
 
     독립 세션에서 민원 답변 초안 요청 후 동일 세션에서 법령 근거 보강을 요청한다.
     응답에 법령/조항 관련 패턴이 포함되어 있는지 확인한다.
@@ -452,7 +452,7 @@ async def scenario4_legal_lora() -> dict:
     t0 = time.monotonic()
     session_id = str(uuid4())
     try:
-        # 동일 세션에서 civil 요청 먼저 (append_evidence는 이전 답변 컨텍스트 필요)
+        # 동일 세션에서 civil 요청 먼저 (draft_response는 이전 답변 컨텍스트 필요)
         ok_civil, _, err_civil = await _call_agent(
             message="건축 허가 신청 민원에 대한 답변 초안을 작성해줘",
             session_id=session_id,
@@ -461,7 +461,7 @@ async def scenario4_legal_lora() -> dict:
             elapsed = time.monotonic() - t0
             return _record(
                 4,
-                "Legal LoRA (append_evidence)",
+                "Legal LoRA (draft_response)",
                 False,
                 elapsed,
                 f"civil 선행 요청 실패: {err_civil}",
@@ -475,7 +475,7 @@ async def scenario4_legal_lora() -> dict:
         if not ok:
             return _record(
                 4,
-                "Legal LoRA (append_evidence)",
+                "Legal LoRA (draft_response)",
                 False,
                 elapsed,
                 err,
@@ -483,7 +483,7 @@ async def scenario4_legal_lora() -> dict:
             )
         if not text.strip():
             return _record(
-                4, "Legal LoRA (append_evidence)", False, elapsed, "응답 텍스트가 비어있음"
+                4, "Legal LoRA (draft_response)", False, elapsed, "응답 텍스트가 비어있음"
             )
 
         has_legal = _contains_legal_keyword(text)
@@ -496,15 +496,15 @@ async def scenario4_legal_lora() -> dict:
         if not has_legal:
             return _record(
                 4,
-                "Legal LoRA (append_evidence)",
+                "Legal LoRA (draft_response)",
                 False,
                 elapsed,
                 f"법령 패턴 미발견 ({LEGAL_PATTERNS[:3]}...)",
                 detail,
             )
-        return _record(4, "Legal LoRA (append_evidence)", True, elapsed, detail=detail)
+        return _record(4, "Legal LoRA (draft_response)", True, elapsed, detail=detail)
     except Exception as exc:
-        return _record(4, "Legal LoRA (append_evidence)", False, time.monotonic() - t0, str(exc))
+        return _record(4, "Legal LoRA (draft_response)", False, time.monotonic() - t0, str(exc))
 
 
 async def scenario5_sequential_multi_lora_switching() -> dict:

@@ -3,8 +3,8 @@
 Issue #397: draft_civil_response / append_evidence capability 구현.
 
 검증 항목:
-- DraftCivilResponseCapability: 정상/에러 응답 LookupResult 변환
-- DraftCivilResponseCapability: timeout_sec=30.0, metadata.provider="local_llm"
+- DraftResponseCapability: 정상/에러 응답 LookupResult 변환
+- DraftResponseCapability: timeout_sec=30.0, metadata.provider="local_llm"
 - AppendEvidenceCapability: 정상/에러/혼합/빈 결과 처리
 - AppendEvidenceCapability: timeout_sec=30.0, metadata.provider="local_vectordb+data.go.kr"
 - registry에 두 capability가 모두 등록되는지 검증
@@ -75,7 +75,7 @@ except ImportError:
 
 from src.inference.graph.capabilities.append_evidence import AppendEvidenceCapability
 from src.inference.graph.capabilities.base import CapabilityBase, LookupResult
-from src.inference.graph.capabilities.draft_civil_response import DraftCivilResponseCapability
+from src.inference.graph.capabilities.draft_civil_response import DraftResponseCapability
 from src.inference.graph.capabilities.registry import (
     MVP_CAPABILITY_IDS,
     build_mvp_registry,
@@ -126,12 +126,12 @@ def registry(mock_registry_fns):
 
 
 # ===========================================================================
-# TestDraftCivilResponseCapability — 단위 테스트
+# TestDraftResponseCapability — 단위 테스트
 # ===========================================================================
 
 
-class TestDraftCivilResponseCapability:
-    """DraftCivilResponseCapability 단위 테스트."""
+class TestDraftResponseCapability:
+    """DraftResponseCapability 단위 테스트."""
 
     # -----------------------------------------------------------------------
     # metadata 검증
@@ -139,27 +139,27 @@ class TestDraftCivilResponseCapability:
 
     def test_metadata_provider_is_local_llm(self):
         """metadata.provider가 'local_llm'이다."""
-        cap = DraftCivilResponseCapability(execute_fn=_make_async_fn({}))
+        cap = DraftResponseCapability(execute_fn=_make_async_fn({}))
         assert cap.metadata.provider == "local_llm"
 
     def test_metadata_timeout_sec_is_30(self):
         """timeout_sec이 30.0이다."""
-        cap = DraftCivilResponseCapability(execute_fn=_make_async_fn({}))
+        cap = DraftResponseCapability(execute_fn=_make_async_fn({}))
         assert cap.metadata.timeout_sec == 30.0
 
     def test_metadata_name(self):
-        """metadata.name이 'draft_civil_response'이다."""
-        cap = DraftCivilResponseCapability(execute_fn=_make_async_fn({}))
-        assert cap.metadata.name == "draft_civil_response"
+        """metadata.name이 'draft_response'이다."""
+        cap = DraftResponseCapability(execute_fn=_make_async_fn({}))
+        assert cap.metadata.name == "draft_response"
 
     def test_metadata_has_description(self):
         """metadata.description이 비어있지 않다."""
-        cap = DraftCivilResponseCapability(execute_fn=_make_async_fn({}))
+        cap = DraftResponseCapability(execute_fn=_make_async_fn({}))
         assert cap.metadata.description
 
     def test_metadata_has_approval_summary(self):
         """metadata.approval_summary가 비어있지 않다."""
-        cap = DraftCivilResponseCapability(execute_fn=_make_async_fn({}))
+        cap = DraftResponseCapability(execute_fn=_make_async_fn({}))
         assert cap.metadata.approval_summary
 
     # -----------------------------------------------------------------------
@@ -170,7 +170,7 @@ class TestDraftCivilResponseCapability:
     async def test_success_sets_context_text(self, session):
         """정상 응답 시 context_text가 raw['text']로 채워진다."""
         fn = _make_async_fn({"text": "민원 답변 초안입니다.", "results": []})
-        cap = DraftCivilResponseCapability(execute_fn=fn)
+        cap = DraftResponseCapability(execute_fn=fn)
 
         result = await cap.execute("민원 처리 방법", {}, session)
 
@@ -182,7 +182,7 @@ class TestDraftCivilResponseCapability:
         """정상 응답 시 results에 raw dict가 포함된다."""
         raw = {"text": "초안", "extra_field": "값"}
         fn = _make_async_fn(raw)
-        cap = DraftCivilResponseCapability(execute_fn=fn)
+        cap = DraftResponseCapability(execute_fn=fn)
 
         result = await cap.execute("테스트", {}, session)
 
@@ -193,7 +193,7 @@ class TestDraftCivilResponseCapability:
     async def test_success_provider_matches_metadata(self, session):
         """정상 응답 시 result.provider가 metadata.provider와 동일하다."""
         fn = _make_async_fn({"text": "초안"})
-        cap = DraftCivilResponseCapability(execute_fn=fn)
+        cap = DraftResponseCapability(execute_fn=fn)
 
         result = await cap.execute("테스트", {}, session)
 
@@ -203,7 +203,7 @@ class TestDraftCivilResponseCapability:
     async def test_success_query_is_preserved(self, session):
         """정상 응답 시 result.query가 입력 query와 동일하다."""
         fn = _make_async_fn({"text": "초안"})
-        cap = DraftCivilResponseCapability(execute_fn=fn)
+        cap = DraftResponseCapability(execute_fn=fn)
 
         result = await cap.execute("입력된 민원", {}, session)
 
@@ -213,7 +213,7 @@ class TestDraftCivilResponseCapability:
     async def test_success_no_error(self, session):
         """정상 응답 시 error가 None이다."""
         fn = _make_async_fn({"text": "초안"})
-        cap = DraftCivilResponseCapability(execute_fn=fn)
+        cap = DraftResponseCapability(execute_fn=fn)
 
         result = await cap.execute("테스트", {}, session)
 
@@ -227,7 +227,7 @@ class TestDraftCivilResponseCapability:
     async def test_error_response_sets_success_false(self, session):
         """에러 응답 시 success=False이다."""
         fn = _make_async_fn({"error": "vLLM 연결 실패"})
-        cap = DraftCivilResponseCapability(execute_fn=fn)
+        cap = DraftResponseCapability(execute_fn=fn)
 
         result = await cap.execute("테스트", {}, session)
 
@@ -237,7 +237,7 @@ class TestDraftCivilResponseCapability:
     async def test_error_response_maps_error_field(self, session):
         """에러 응답 시 error 필드가 raw['error']로 매핑된다."""
         fn = _make_async_fn({"error": "vLLM 연결 실패"})
-        cap = DraftCivilResponseCapability(execute_fn=fn)
+        cap = DraftResponseCapability(execute_fn=fn)
 
         result = await cap.execute("테스트", {}, session)
 
@@ -247,7 +247,7 @@ class TestDraftCivilResponseCapability:
     async def test_error_response_sets_empty_reason(self, session):
         """에러 응답 시 empty_reason이 'provider_error'이다."""
         fn = _make_async_fn({"error": "타임아웃"})
-        cap = DraftCivilResponseCapability(execute_fn=fn)
+        cap = DraftResponseCapability(execute_fn=fn)
 
         result = await cap.execute("테스트", {}, session)
 
@@ -257,7 +257,7 @@ class TestDraftCivilResponseCapability:
     async def test_error_response_provider_is_set(self, session):
         """에러 응답 시에도 provider가 올바르게 설정된다."""
         fn = _make_async_fn({"error": "오류"})
-        cap = DraftCivilResponseCapability(execute_fn=fn)
+        cap = DraftResponseCapability(execute_fn=fn)
 
         result = await cap.execute("테스트", {}, session)
 
@@ -271,7 +271,7 @@ class TestDraftCivilResponseCapability:
     async def test_call_returns_dict(self, session):
         """__call__이 dict를 반환한다 (RegistryExecutorAdapter 호환)."""
         fn = _make_async_fn({"text": "초안"})
-        cap = DraftCivilResponseCapability(execute_fn=fn)
+        cap = DraftResponseCapability(execute_fn=fn)
 
         result = await cap(query="테스트", context={}, session=session)
 
@@ -281,7 +281,7 @@ class TestDraftCivilResponseCapability:
     async def test_call_includes_success_field(self, session):
         """__call__ 결과 dict에 'success' 필드가 포함된다."""
         fn = _make_async_fn({"text": "초안"})
-        cap = DraftCivilResponseCapability(execute_fn=fn)
+        cap = DraftResponseCapability(execute_fn=fn)
 
         result = await cap(query="테스트", context={}, session=session)
 
@@ -291,7 +291,7 @@ class TestDraftCivilResponseCapability:
     async def test_call_includes_latency_ms(self, session):
         """__call__ 결과 dict에 'latency_ms' 필드가 포함된다."""
         fn = _make_async_fn({"text": "초안"})
-        cap = DraftCivilResponseCapability(execute_fn=fn)
+        cap = DraftResponseCapability(execute_fn=fn)
 
         result = await cap(query="테스트", context={}, session=session)
 
@@ -302,7 +302,7 @@ class TestDraftCivilResponseCapability:
     async def test_call_includes_context_text(self, session):
         """__call__ 결과 dict에 'context_text' 필드가 포함된다."""
         fn = _make_async_fn({"text": "초안 본문"})
-        cap = DraftCivilResponseCapability(execute_fn=fn)
+        cap = DraftResponseCapability(execute_fn=fn)
 
         result = await cap(query="테스트", context={}, session=session)
 
@@ -312,7 +312,7 @@ class TestDraftCivilResponseCapability:
     async def test_execute_fn_called_with_correct_args(self, session):
         """execute_fn이 올바른 인자로 호출된다."""
         fn = _make_async_fn({"text": "초안"})
-        cap = DraftCivilResponseCapability(execute_fn=fn)
+        cap = DraftResponseCapability(execute_fn=fn)
         ctx = {"session_id": "test-session"}
 
         await cap.execute("민원 처리", ctx, session)
@@ -608,7 +608,7 @@ class TestRegistryIntegration:
 
     def test_draft_civil_response_in_registry(self, registry):
         """draft_civil_response가 registry에 등록되어 있다."""
-        assert "draft_civil_response" in registry
+        assert "draft_response" in registry
 
     def test_append_evidence_in_registry(self, registry):
         """append_evidence가 registry에 등록되어 있다."""
@@ -616,7 +616,7 @@ class TestRegistryIntegration:
 
     def test_draft_civil_response_is_capability_base(self, registry):
         """registry의 draft_civil_response가 CapabilityBase 인스턴스이다."""
-        assert isinstance(registry["draft_civil_response"], CapabilityBase)
+        assert isinstance(registry["draft_response"], CapabilityBase)
 
     def test_append_evidence_is_capability_base(self, registry):
         """registry의 append_evidence가 CapabilityBase 인스턴스이다."""
@@ -624,8 +624,8 @@ class TestRegistryIntegration:
 
     def test_draft_civil_response_metadata_name_matches_key(self, registry):
         """draft_civil_response의 metadata.name이 registry key와 동일하다."""
-        cap = registry["draft_civil_response"]
-        assert cap.metadata.name == "draft_civil_response"
+        cap = registry["draft_response"]
+        assert cap.metadata.name == "draft_response"
 
     def test_append_evidence_metadata_name_matches_key(self, registry):
         """append_evidence의 metadata.name이 registry key와 동일하다."""
@@ -638,7 +638,7 @@ class TestRegistryIntegration:
 
     def test_draft_civil_response_provider_in_registry(self, registry):
         """registry에서 가져온 draft_civil_response의 provider가 'local_llm'이다."""
-        cap = registry["draft_civil_response"]
+        cap = registry["draft_response"]
         assert cap.metadata.provider == "local_llm"
 
     def test_append_evidence_provider_in_registry(self, registry):
@@ -648,7 +648,7 @@ class TestRegistryIntegration:
 
     def test_draft_civil_response_timeout_in_registry(self, registry):
         """registry에서 가져온 draft_civil_response의 timeout_sec이 30.0이다."""
-        cap = registry["draft_civil_response"]
+        cap = registry["draft_response"]
         assert cap.metadata.timeout_sec == 30.0
 
     def test_append_evidence_timeout_in_registry(self, registry):
@@ -682,7 +682,7 @@ class TestExecutorAdapterIntegration:
     def test_list_tools_includes_draft_civil_response(self, registry):
         """list_tools()에 draft_civil_response가 포함된다."""
         adapter = self._make_adapter(registry)
-        assert "draft_civil_response" in adapter.list_tools()
+        assert "draft_response" in adapter.list_tools()
 
     def test_list_tools_includes_append_evidence(self, registry):
         """list_tools()에 append_evidence가 포함된다."""
@@ -696,10 +696,10 @@ class TestExecutorAdapterIntegration:
     def test_get_tool_metadata_draft_civil_response(self, registry):
         """adapter.get_tool_metadata()가 draft_civil_response의 올바른 metadata를 반환한다."""
         adapter = self._make_adapter(registry)
-        meta = adapter.get_tool_metadata("draft_civil_response")
+        meta = adapter.get_tool_metadata("draft_response")
 
         assert meta is not None
-        assert meta["name"] == "draft_civil_response"
+        assert meta["name"] == "draft_response"
         assert meta["provider"] == "local_llm"
         assert meta["description"]
         assert meta["approval_summary"]
@@ -724,7 +724,7 @@ class TestExecutorAdapterIntegration:
         """adapter를 통해 draft_civil_response 실행 시 success=True를 반환한다."""
         adapter = self._make_adapter(registry)
         result = await adapter.execute(
-            "draft_civil_response",
+            "draft_response",
             "민원 답변 초안 작성",
             {"session_id": "test"},
         )
@@ -750,7 +750,7 @@ class TestExecutorAdapterIntegration:
         """adapter를 통한 draft_civil_response 실행 결과에 latency_ms가 있다."""
         adapter = self._make_adapter(registry)
         result = await adapter.execute(
-            "draft_civil_response",
+            "draft_response",
             "테스트",
             {"session_id": "test"},
         )
@@ -787,7 +787,7 @@ class TestExecutorAdapterIntegration:
 
         # draft_civil_response 실행
         draft_result = await adapter.execute(
-            "draft_civil_response",
+            "draft_response",
             "민원 답변",
             {"session_id": "s1"},
         )
@@ -812,7 +812,7 @@ class TestExecutorAdapterIntegration:
         """adapter를 통한 draft_civil_response 결과에 'context_text'가 포함된다."""
         adapter = self._make_adapter(registry)
         result = await adapter.execute(
-            "draft_civil_response",
+            "draft_response",
             "테스트 민원",
             {"session_id": "test"},
         )
@@ -863,7 +863,7 @@ class TestExecutorAdapterIntegration:
         )
 
         result = await adapter.execute(
-            "draft_civil_response",
+            "draft_response",
             "테스트",
             {"session_id": "test"},
         )

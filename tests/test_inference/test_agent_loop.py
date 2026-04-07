@@ -59,7 +59,7 @@ class TestAgentLoop:
         registry = {
             ToolType.RAG_SEARCH: mock_rag_search,
             ToolType.API_LOOKUP: mock_api_lookup,
-            ToolType.DRAFT_CIVIL_RESPONSE: mock_draft_civil_response,
+            ToolType.DRAFT_RESPONSE: mock_draft_civil_response,
             ToolType.APPEND_EVIDENCE: mock_append_evidence,
         }
         if overrides:
@@ -74,7 +74,7 @@ class TestAgentLoop:
         trace = await loop.run("도로 포장이 파손되어 위험합니다", session)
 
         assert trace.error is None
-        assert trace.plan.tool_names == ["rag_search", "api_lookup", "draft_civil_response"]
+        assert trace.plan.tool_names == ["rag_search", "api_lookup", "draft_response"]
         assert len(trace.tool_results) == 3
         assert all(result.success for result in trace.tool_results)
         assert "최종 초안" in trace.final_text
@@ -99,7 +99,7 @@ class TestAgentLoop:
         assert session.graph_runs[0].executed_capabilities == [
             "rag_search",
             "api_lookup",
-            "draft_civil_response",
+            "draft_response",
         ]
         assert session.graph_runs[0].status == "completed"
 
@@ -222,7 +222,7 @@ class TestAgentLoopStream:
             tool_registry={
                 ToolType.RAG_SEARCH: mock_rag_search,
                 ToolType.API_LOOKUP: mock_api_lookup,
-                ToolType.DRAFT_CIVIL_RESPONSE: mock_draft_civil_response,
+                ToolType.DRAFT_RESPONSE: mock_draft_civil_response,
             }
         )
         session = SessionContext()
@@ -245,7 +245,7 @@ class TestAgentLoopStream:
             tool_registry={
                 ToolType.RAG_SEARCH: mock_failing_tool,
                 ToolType.API_LOOKUP: mock_api_lookup,
-                ToolType.DRAFT_CIVIL_RESPONSE: mock_draft_civil_response,
+                ToolType.DRAFT_RESPONSE: mock_draft_civil_response,
             }
         )
         session = SessionContext()

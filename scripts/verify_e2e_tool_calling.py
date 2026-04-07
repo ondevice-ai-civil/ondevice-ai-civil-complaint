@@ -56,9 +56,8 @@ VALID_TOOLS = frozenset(
     {
         "rag_search",
         "api_lookup",
-        "draft_civil_response",
-        "append_evidence",
-        "issue_detector",
+        "draft_response",
+                "issue_detector",
         "stats_lookup",
         "keyword_analyzer",
         "demographics_lookup",
@@ -937,11 +936,11 @@ async def scenario5_civil_lora_draft() -> dict:
                     detail={"meta": meta},
                 )
 
-            has_draft = "draft_civil_response" in planned
+            has_draft = "draft_response" in planned
             if has_draft:
-                assertions.append("draft_civil_response in planned_tools")
+                assertions.append("draft_response in planned_tools")
             else:
-                assertions.append(f"draft_civil_response NOT in planned_tools ({planned})")
+                assertions.append(f"draft_response NOT in planned_tools ({planned})")
 
             if len(text) >= 50:
                 assertions.append(f"text length {len(text)} >= 50")
@@ -962,7 +961,7 @@ async def scenario5_civil_lora_draft() -> dict:
 
             warnings = []
             if not has_draft:
-                warnings.append("draft_civil_response not in planned_tools")
+                warnings.append("draft_response not in planned_tools")
             if task_type != "draft_response":
                 warnings.append(f"task_type={task_type}, expected draft_response")
 
@@ -1048,11 +1047,11 @@ async def scenario6_legal_lora_evidence() -> dict:
                     detail={"meta": meta},
                 )
 
-            has_evidence = "append_evidence" in planned
+            has_evidence = "draft_response" in planned
             if has_evidence:
-                assertions.append("append_evidence in planned_tools")
+                assertions.append("draft_response in planned_tools")
             else:
-                assertions.append(f"append_evidence NOT in planned_tools ({planned})")
+                assertions.append(f"draft_response NOT in planned_tools ({planned})")
 
             has_legal = _contains_legal_keyword(text)
             matched = [p for p in LEGAL_PATTERNS if re.search(p, text)]
@@ -1063,7 +1062,7 @@ async def scenario6_legal_lora_evidence() -> dict:
 
             warnings = []
             if not has_evidence:
-                warnings.append("append_evidence not in planned_tools")
+                warnings.append("draft_response not in planned_tools")
 
             if has_legal:
                 return _record(
@@ -1201,10 +1200,10 @@ async def _legal_category_scenario(
         if planned:
             _observed_tools.update(planned)
 
-        if "append_evidence" in planned:
-            assertions.append("append_evidence in planned_tools")
+        if "draft_response" in planned:
+            assertions.append("draft_response in planned_tools")
         else:
-            warnings.append("append_evidence not in planned_tools")
+            warnings.append("draft_response not in planned_tools")
 
         if has_legal:
             assertions.append(f"법령 패턴 발견: {matched[:3]}")
@@ -1287,7 +1286,7 @@ async def scenario7_task_type_classification() -> dict:
     test_cases = [
         ("민원 답변 초안을 작성해줘", {"draft_response"}),
         ("관련 통계 데이터를 조회해줘", {"stats_query", "lookup_stats"}),
-        ("이 민원의 근거를 보강해줘", {"append_evidence"}),
+        ("이 민원의 근거를 보강해줘", {"draft_response"}),
     ]
 
     t0 = time.monotonic()

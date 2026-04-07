@@ -140,6 +140,17 @@ class GenerationDefaults:
 # ---------------------------------------------------------------------------
 
 
+def _parse_adapter_paths(raw: str) -> List[str]:
+    """ADAPTER_PATHS 환경변수를 파싱하여 vLLM --lora-modules 형식 목록으로 반환.
+
+    예: "civil-adapter=/path/to/civil,legal-adapter=siwo/govon-legal-adapter"
+    →  ["civil-adapter=/path/to/civil", "legal-adapter=siwo/govon-legal-adapter"]
+    """
+    if not raw or not raw.strip():
+        return []
+    return [p.strip() for p in raw.split(",") if p.strip()]
+
+
 @dataclass(frozen=True)
 class ModelConfig:
     """모델 및 어댑터 설정.
@@ -151,6 +162,7 @@ class ModelConfig:
     Multi-LoRA 어댑터:
     - civil-adapter (LoRA #1): draft_civil_response 용도
       학습 데이터: umyunsang/govon-civil-response-data (74K건), QLoRA on AWQ base
+      HF Hub: umyunsang/GovOn-EXAONE-LoRA-v2
     - legal-adapter (LoRA #2): append_evidence 용도
       학습 데이터: umyunsang/govon-legal-response-data (243K건), QLoRA on AWQ base
       HuggingFace: siwo/govon-legal-adapter

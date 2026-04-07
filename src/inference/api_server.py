@@ -1729,7 +1729,9 @@ async def v2_agent_stream(
                             event["evidence_items"] = state_delta["evidence_items"]
                         if state_delta.get("task_type"):
                             event["task_type"] = state_delta["task_type"]
-                    if node_name == "approval_wait":
+                    # approval_wait: 명시적 노드명 또는 LangGraph interrupt() 호출 시
+                    # stream_mode="updates"에서 emit되는 "__interrupt__" 청크 모두 처리
+                    if node_name in ("approval_wait", "__interrupt__"):
                         try:
                             graph_state = await manager.graph.aget_state(config)
                             if graph_state.next:
@@ -1742,7 +1744,9 @@ async def v2_agent_stream(
                                 }
                         except Exception as exc:
                             logger.warning(f"[v2/agent/stream] aget_state 실패: {exc}")
+                            event["node"] = "approval_wait"
                             event["status"] = "awaiting_approval"
+                            event["thread_id"] = thread_id
                             event["approval_request"] = {
                                 "prompt": "승인 정보를 불러올 수 없습니다. /v2/agent/approve로 진행하세요."
                             }

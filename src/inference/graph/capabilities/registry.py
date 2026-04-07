@@ -147,13 +147,17 @@ def build_tool_definitions(
             "function": {
                 "name": meta.name,
                 "description": meta.description,
-                "parameters": meta.parameters if meta.parameters else {
-                    "type": "object",
-                    "properties": {
-                        "query": {"type": "string", "description": "질의문"},
-                    },
-                    "required": ["query"],
-                },
+                "parameters": (
+                    meta.parameters
+                    if meta.parameters
+                    else {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string", "description": "질의문"},
+                        },
+                        "required": ["query"],
+                    }
+                ),
             },
         }
         definitions.append(tool_def)

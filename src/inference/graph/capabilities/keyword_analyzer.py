@@ -51,7 +51,11 @@ class KeywordAnalyzerCapability(CapabilityBase):
                     "date_from": {"type": "string", "description": "분석 시작일 (예: 20260101)"},
                     "date_to": {"type": "string", "description": "분석 종료일 (예: 20260407)"},
                     "searchword": {"type": "string", "description": "핵심 검색어"},
-                    "result_count": {"type": "integer", "description": "반환할 키워드 수", "default": 5},
+                    "result_count": {
+                        "type": "integer",
+                        "description": "반환할 키워드 수",
+                        "default": 5,
+                    },
                 },
                 "required": ["query"],
             },

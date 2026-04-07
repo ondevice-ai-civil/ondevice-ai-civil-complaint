@@ -922,7 +922,7 @@ class vLLMEngineManager:
 
             # Multi-LoRA: LLM이 선택한 어댑터 또는 기본 civil 어댑터 사용
             adapter_name = context.get("adapter") if context else None
-            if not adapter_name or adapter_name == "none":
+            if not adapter_name:
                 adapter_name = "civil"  # 기본 fallback
             _adapter_reg = AdapterRegistry.get_instance()
             lora_req = _adapter_reg.get_lora_request(adapter_name)
@@ -1004,7 +1004,7 @@ class vLLMEngineManager:
 
                     # Multi-LoRA: LLM이 선택한 어댑터 또는 기본 legal 어댑터 사용
                     adapter_name = context.get("adapter") if context else None
-                    if not adapter_name or adapter_name == "none":
+                    if not adapter_name:
                         adapter_name = "legal"  # 기본 fallback
                     _adapter_reg = AdapterRegistry.get_instance()
                     lora_req = _adapter_reg.get_lora_request(adapter_name)

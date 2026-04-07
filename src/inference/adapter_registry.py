@@ -39,6 +39,7 @@ _DEFAULT_CONFIG = _PROJECT_ROOT / "config" / "adapters.yaml"
 # 어댑터 메타데이터 데이터클래스
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class AdapterMeta:
     """단일 LoRA 어댑터의 메타데이터."""
@@ -53,6 +54,7 @@ class AdapterMeta:
 # ---------------------------------------------------------------------------
 # 레지스트리
 # ---------------------------------------------------------------------------
+
 
 class AdapterRegistry:
     """LoRA 어댑터 레지스트리 (싱글톤).
@@ -105,6 +107,7 @@ class AdapterRegistry:
                     logger.info("어댑터 설정 로드 완료: {} ({}건)", config_path, len(raw_adapters))
                 except Exception as exc:  # noqa: BLE001
                     logger.error("어댑터 설정 로드 실패: {} — {}", config_path, exc)
+                    raise RuntimeError(f"어댑터 설정 로드 실패: {config_path}") from exc
         else:
             logger.debug("어댑터 설정 파일 없음, 빈 레지스트리로 동작: {}", config_path)
 
@@ -147,6 +150,8 @@ class AdapterRegistry:
 
         vllm 미설치 환경이거나 존재하지 않는 어댑터 이름이면 ``None`` 을 반환한다.
         """
+        if name in {"", "none"}:
+            return None
         if LoRARequest is None:
             return None
         adapter = self._adapters.get(name)
@@ -172,7 +177,7 @@ class AdapterRegistry:
         for name in sorted(self._adapters.keys()):
             adapter = self._adapters[name]
             lines.append(f"{name}: {adapter.description}")
-        lines.append('none: 기본 모델 사용 (어댑터 미적용)')
+        lines.append("none: 기본 모델 사용 (어댑터 미적용)")
         return "\n".join(lines)
 
     def list_available(self) -> List[str]:

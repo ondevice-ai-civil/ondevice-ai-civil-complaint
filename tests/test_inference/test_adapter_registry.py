@@ -93,16 +93,15 @@ class TestAdapterRegistryToolDefs:
 class TestAdapterRegistryLoraRequest:
     """get_lora_request 검증."""
 
-    def test_returns_none_without_vllm(self):
+    def test_returns_none_without_vllm(self, monkeypatch):
         """vllm 미설치 시 None을 반환한다."""
+        import src.inference.adapter_registry as adapter_registry_module
         from src.inference.adapter_registry import AdapterRegistry
 
         AdapterRegistry.reset()
+        monkeypatch.setattr(adapter_registry_module, "LoRARequest", None)
         reg = AdapterRegistry.get_instance()
-        # In CI without vllm, should return None gracefully
-        result = reg.get_lora_request("civil")
-        # result is either LoRARequest or None depending on vllm availability
-        assert result is None or result is not None  # does not raise
+        assert reg.get_lora_request("civil") is None, "vllm 미설치 시 None이어야 함"
 
     def test_none_adapter_returns_none(self):
         """'none' 어댑터는 항상 None을 반환한다."""

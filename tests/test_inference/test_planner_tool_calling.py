@@ -78,7 +78,10 @@ class TestLLMPlannerToolCalling:
         mock_response = MagicMock()
         mock_response.tool_calls = [
             {"name": "rag_search", "args": {"query": "소음 민원"}},
-            {"name": "draft_civil_response", "args": {"query": "소음 민원 답변", "adapter": "civil"}},
+            {
+                "name": "draft_civil_response",
+                "args": {"query": "소음 민원 답변", "adapter": "civil"},
+            },
         ]
         mock_response.content = ""
 
@@ -93,22 +96,26 @@ class TestLLMPlannerToolCalling:
 
         plan = await adapter.plan(messages=[mock_msg], context={})
 
-        assert "rag_search" in plan.tools
-        assert "draft_civil_response" in plan.tools
-        assert plan.tool_args.get("draft_civil_response", {}).get("adapter") == "civil"
-        assert "tool_calling" in plan.adapter_mode
+        assert "rag_search" in plan.tools, f"rag_search가 plan.tools에 없음: {plan.tools}"
+        assert "draft_civil_response" in plan.tools, f"draft_civil_response가 plan.tools에 없음: {plan.tools}"
+        assert plan.tool_args.get("draft_civil_response", {}).get("adapter") == "civil", (
+            f"adapter가 civil이어야 함: {plan.tool_args}"
+        )
+        assert "tool_calling" in plan.adapter_mode, f"adapter_mode에 tool_calling 포함 필요: {plan.adapter_mode}"
 
     @pytest.mark.asyncio
     async def test_json_fallback(self):
         """tool_calls가 없으면 JSON 텍스트 fallback으로 파싱된다."""
         from src.inference.graph.planner_adapter import LLMPlannerAdapter
 
-        json_response = json.dumps({
-            "task_type": "draft_response",
-            "goal": "민원 답변 작성",
-            "reason": "사용자가 답변을 요청함",
-            "tools": ["rag_search", "draft_civil_response"],
-        })
+        json_response = json.dumps(
+            {
+                "task_type": "draft_response",
+                "goal": "민원 답변 작성",
+                "reason": "사용자가 답변을 요청함",
+                "tools": ["rag_search", "draft_civil_response"],
+            }
+        )
 
         mock_response = MagicMock()
         mock_response.tool_calls = []  # empty
@@ -125,8 +132,57 @@ class TestLLMPlannerToolCalling:
 
         plan = await adapter.plan(messages=[mock_msg], context={})
 
-        assert plan.tools == ["rag_search", "draft_civil_response"]
-        assert plan.adapter_mode == "llm"
+        assert plan.tools == ["rag_search", "draft_civil_response"], f"tools 불일치: {plan.tools}"
+        assert plan.adapter_mode == "llm", f"adapter_mode는 llm이어야 함: {plan.adapter_mode}"
+
+    @pytest.mark.asyncio
+    async def test_duplicate_tool_names_deduplicated(self):
+        """중복 tool name은 첫 번째만 사용된다."""
+        from src.inference.graph.planner_adapter import LLMPlannerAdapter
+
+        mock_response = MagicMock()
+        mock_response.tool_calls = [
+            {"name": "rag_search", "args": {"query": "첫 번째"}},
+            {"name": "rag_search", "args": {"query": "두 번째"}},
+        ]
+        mock_response.content = ""
+
+        mock_llm = MagicMock()
+        mock_llm_with_tools = AsyncMock(return_value=mock_response)
+        mock_llm.bind_tools = MagicMock(return_value=MagicMock(ainvoke=mock_llm_with_tools))
+
+        adapter = LLMPlannerAdapter(llm=mock_llm)
+        mock_msg = MagicMock()
+        mock_msg.content = "테스트"
+
+        plan = await adapter.plan(messages=[mock_msg], context={})
+        # 중복 제거: rag_search는 1번만
+        assert plan.tools.count("rag_search") == 1, f"중복 tool 제거 실패: {plan.tools}"
+        assert plan.tool_args.get("rag_search", {}).get("query") == "첫 번째", "첫 번째 args 유지 필요"
+
+    @pytest.mark.asyncio
+    async def test_non_dict_args_normalized(self):
+        """dict가 아닌 args는 빈 dict로 정규화된다."""
+        from src.inference.graph.planner_adapter import LLMPlannerAdapter
+
+        mock_response = MagicMock()
+        mock_response.tool_calls = [
+            {"name": "rag_search", "args": "잘못된 문자열 args"},
+        ]
+        mock_response.content = ""
+
+        mock_llm = MagicMock()
+        mock_llm_with_tools = AsyncMock(return_value=mock_response)
+        mock_llm.bind_tools = MagicMock(return_value=MagicMock(ainvoke=mock_llm_with_tools))
+
+        adapter = LLMPlannerAdapter(llm=mock_llm)
+        mock_msg = MagicMock()
+        mock_msg.content = "테스트"
+
+        plan = await adapter.plan(messages=[mock_msg], context={})
+        assert "rag_search" in plan.tools, f"tool이 포함되어야 함: {plan.tools}"
+        # args가 빈 dict로 정규화되므로 tool_args에 없거나 빈 dict
+        assert plan.tool_args.get("rag_search", {}) == {}, f"빈 args 예상: {plan.tool_args}"
 
 
 class TestDirectEnginePlannerToolCalling:
@@ -143,17 +199,17 @@ class TestDirectEnginePlannerToolCalling:
 
         result = DirectEnginePlannerAdapter._parse_hermes_tool_calls(text)
 
-        assert len(result) == 2
-        assert result[0]["name"] == "rag_search"
-        assert result[1]["name"] == "draft_civil_response"
-        assert result[1]["arguments"]["adapter"] == "civil"
+        assert len(result) == 2, f"tool_call 2개 예상: {len(result)}"
+        assert result[0]["name"] == "rag_search", f"첫 번째 tool: {result[0]['name']}"
+        assert result[1]["name"] == "draft_civil_response", f"두 번째 tool: {result[1]['name']}"
+        assert result[1]["arguments"]["adapter"] == "civil", f"adapter: {result[1]['arguments']}"
 
     def test_parse_hermes_empty(self):
         """tool_call 태그가 없으면 빈 리스트를 반환한다."""
         from src.inference.graph.planner_adapter import DirectEnginePlannerAdapter
 
         result = DirectEnginePlannerAdapter._parse_hermes_tool_calls("그냥 텍스트")
-        assert result == []
+        assert result == [], f"빈 결과 예상: {result}"
 
     def test_parse_hermes_malformed_json(self):
         """잘못된 JSON은 무시한다."""
@@ -162,8 +218,8 @@ class TestDirectEnginePlannerToolCalling:
         text = '<tool_call>{bad json}</tool_call>\n<tool_call>{"name": "rag_search", "arguments": {}}</tool_call>'
 
         result = DirectEnginePlannerAdapter._parse_hermes_tool_calls(text)
-        assert len(result) == 1
-        assert result[0]["name"] == "rag_search"
+        assert len(result) == 1, f"유효한 tool_call 1개 예상: {len(result)}"
+        assert result[0]["name"] == "rag_search", f"tool name: {result[0]['name']}"
 
 
 class TestToolPlanWithArgs:
@@ -179,7 +235,7 @@ class TestToolPlanWithArgs:
             reason="test",
             tools=["rag_search"],
         )
-        assert plan.tool_args == {}
+        assert plan.tool_args == {}, f"기본 tool_args는 빈 dict: {plan.tool_args}"
 
     def test_tool_plan_with_adapter_args(self):
         """tool_args에 adapter 정보가 포함된다."""
@@ -192,7 +248,7 @@ class TestToolPlanWithArgs:
             tools=["draft_civil_response"],
             tool_args={"draft_civil_response": {"query": "test", "adapter": "civil"}},
         )
-        assert plan.tool_args["draft_civil_response"]["adapter"] == "civil"
+        assert plan.tool_args["draft_civil_response"]["adapter"] == "civil", f"adapter 불일치: {plan.tool_args}"
 
 
 class TestBuildToolDefinitions:
@@ -200,7 +256,10 @@ class TestBuildToolDefinitions:
 
     def test_returns_openai_format(self):
         """OpenAI tool definition 형식을 반환한다."""
-        from src.inference.graph.capabilities.registry import build_mvp_registry, build_tool_definitions
+        from src.inference.graph.capabilities.registry import (
+            build_mvp_registry,
+            build_tool_definitions,
+        )
 
         registry = build_mvp_registry(
             rag_search_fn=AsyncMock(return_value={"text": "", "results": []}),
@@ -211,16 +270,19 @@ class TestBuildToolDefinitions:
 
         definitions = build_tool_definitions(registry)
 
-        assert len(definitions) == 8
+        assert len(definitions) == 8, f"tool definition 8개 예상: {len(definitions)}"
         for defn in definitions:
-            assert defn["type"] == "function"
-            assert "name" in defn["function"]
-            assert "description" in defn["function"]
-            assert "parameters" in defn["function"]
+            assert defn["type"] == "function", f"type은 function: {defn}"
+            assert "name" in defn["function"], f"name 누락: {defn}"
+            assert "description" in defn["function"], f"description 누락: {defn}"
+            assert "parameters" in defn["function"], f"parameters 누락: {defn}"
 
     def test_adapter_tools_have_adapter_param(self):
         """draft_civil_response, append_evidence에 adapter 파라미터가 있다."""
-        from src.inference.graph.capabilities.registry import build_mvp_registry, build_tool_definitions
+        from src.inference.graph.capabilities.registry import (
+            build_mvp_registry,
+            build_tool_definitions,
+        )
 
         registry = build_mvp_registry(
             rag_search_fn=AsyncMock(return_value={"text": "", "results": []}),

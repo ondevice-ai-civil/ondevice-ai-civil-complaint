@@ -177,21 +177,23 @@ class LLMPlannerAdapter(PlannerAdapter):
                 tool_args: Dict[str, Dict[str, Any]] = {}
                 for tc in tool_calls:
                     name = tc["name"] if isinstance(tc, dict) else tc.name
-                    args = (
-                        tc.get("args", {})
-                        if isinstance(tc, dict)
-                        else getattr(tc, "args", {})
-                    )
+                    args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
+                    # args가 dict가 아니면 빈 dict로 정규화
+                    if not isinstance(args, dict):
+                        logger.warning(
+                            f"[LLMPlanner] tool_call args가 dict가 아님: {name}, type={type(args).__name__}"
+                        )
+                        args = {}
+                    # 중복 tool name은 건너뜀 (첫 번째 호출만 사용)
+                    if name in tool_args:
+                        logger.warning(f"[LLMPlanner] 중복 tool call 무시: {name}")
+                        continue
                     tools.append(name)
                     if args:
-                        if name in tool_args:
-                            logger.warning(f"[LLMPlanner] 중복 tool call: {name}, 이전 args 덮어씀")
                         tool_args[name] = args
 
                 task_type = RegexPlannerAdapter._infer_task_type(tools)
-                goal_text = (
-                    tool_args.get(tools[0], {}).get("query", "") if tools else ""
-                )
+                goal_text = tool_args.get(tools[0], {}).get("query", "") if tools else ""
 
                 return ToolPlan(
                     task_type=task_type,
@@ -332,14 +334,24 @@ class DirectEnginePlannerAdapter(PlannerAdapter):
         # 1차: <tool_call> 태그 파싱
         tool_calls = self._parse_hermes_tool_calls(content)
         if tool_calls:
-            tools: list[str] = [tc["name"] for tc in tool_calls]
+            tools: list[str] = []
             tool_args: Dict[str, Dict[str, Any]] = {}
             for tc in tool_calls:
-                if tc.get("arguments"):
-                    tc_name = tc["name"]
-                    if tc_name in tool_args:
-                        logger.warning(f"[DirectEnginePlanner] 중복 tool call: {tc_name}, 이전 args 덮어씀")
-                    tool_args[tc_name] = tc["arguments"]
+                tc_name = tc["name"]
+                args = tc.get("arguments", {})
+                # args가 dict가 아니면 빈 dict로 정규화
+                if not isinstance(args, dict):
+                    logger.warning(
+                        f"[DirectEnginePlanner] tool_call args가 dict가 아님: {tc_name}, type={type(args).__name__}"
+                    )
+                    args = {}
+                # 중복 tool name은 건너뜀 (첫 번째 호출만 사용)
+                if tc_name in tool_args:
+                    logger.warning(f"[DirectEnginePlanner] 중복 tool call 무시: {tc_name}")
+                    continue
+                tools.append(tc_name)
+                if args:
+                    tool_args[tc_name] = args
             task_type = RegexPlannerAdapter._infer_task_type(tools)
             goal_text = tool_args.get(tools[0], {}).get("query", "") if tools else ""
 

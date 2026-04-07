@@ -154,10 +154,29 @@ class RagSearchCapability(CapabilityBase):
             parameters={
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "검색할 민원 관련 키워드 또는 질의문"},
-                    "top_k": {"type": "integer", "description": "반환할 최대 결과 수", "default": 5, "minimum": 1, "maximum": 50},
-                    "source_types": {"type": "array", "items": {"type": "string"}, "description": "검색 대상 문서 유형 (예: civil, legal, manual, notice)"},
-                    "min_confidence": {"type": "number", "description": "최소 신뢰도 점수 (0.0~1.0)", "default": 0.3, "minimum": 0.0, "maximum": 1.0},
+                    "query": {
+                        "type": "string",
+                        "description": "검색할 민원 관련 키워드 또는 질의문",
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "description": "반환할 최대 결과 수",
+                        "default": 5,
+                        "minimum": 1,
+                        "maximum": 50,
+                    },
+                    "source_types": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "검색 대상 문서 유형 (예: civil, legal, manual, notice)",
+                    },
+                    "min_confidence": {
+                        "type": "number",
+                        "description": "최소 신뢰도 점수 (0.0~1.0)",
+                        "default": 0.3,
+                        "minimum": 0.0,
+                        "maximum": 1.0,
+                    },
                 },
                 "required": ["query"],
             },

@@ -104,8 +104,20 @@ class ApiLookupCapability(CapabilityBase):
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "민원 검색 키워드"},
-                    "ret_count": {"type": "integer", "description": "반환할 유사 민원 수", "default": 5, "minimum": 1, "maximum": 20},
-                    "min_score": {"type": "integer", "description": "최소 유사도 점수", "default": 2, "minimum": 0, "maximum": 10},
+                    "ret_count": {
+                        "type": "integer",
+                        "description": "반환할 유사 민원 수",
+                        "default": 5,
+                        "minimum": 1,
+                        "maximum": 20,
+                    },
+                    "min_score": {
+                        "type": "integer",
+                        "description": "최소 유사도 점수",
+                        "default": 2,
+                        "minimum": 0,
+                        "maximum": 10,
+                    },
                 },
                 "required": ["query"],
             },

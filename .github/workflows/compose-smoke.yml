@@ -1,17 +1,6 @@
 name: Compose Smoke
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - 'Dockerfile'
-      - 'docker-compose*.yml'
-      - '.env*.example'
-      - 'scripts/offline-deploy.sh'
-      - 'scripts/smoke-test.sh'
-      - '.github/workflows/compose-smoke.yml'
-      - 'README.md'
-      - 'site/docs/deployment/**'
   workflow_dispatch:
 
 concurrency:

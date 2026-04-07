@@ -575,7 +575,7 @@ async def scenario6_lora_id_consistency() -> dict:
 
 
 async def main() -> int:
-    print(f"GovOn Legal LoRA 서빙 통합 검증")
+    print("GovOn Legal LoRA 서빙 통합 검증")
     print(f"  대상 서버: {BASE_URL}")
     print(f"  인증: {'API_KEY 설정됨' if API_KEY else '미설정 (비인증)'}")
     print(f"  HTTP 백엔드: {_HTTP_BACKEND}")

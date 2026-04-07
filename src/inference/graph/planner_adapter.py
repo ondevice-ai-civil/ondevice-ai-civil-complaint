@@ -240,7 +240,15 @@ class DirectEnginePlannerAdapter(PlannerAdapter):
         if output is None or not output.outputs:
             raise PlanValidationError("Engine 출력이 비어 있음")
 
-        content = self._engine_manager._strip_thought_blocks(output.outputs[0].text)
+        raw_text = output.outputs[0].text
+        if not raw_text or not raw_text.strip():
+            raise PlanValidationError(
+                f"Engine 생성 텍스트가 비어 있음 (max_tokens={sampling_params.max_tokens})"
+            )
+
+        content = self._engine_manager._strip_thought_blocks(raw_text)
+        if not content or not content.strip():
+            raise PlanValidationError("Thought block 제거 후 내용이 비어 있음")
 
         try:
             parsed = json.loads(content)

@@ -381,7 +381,10 @@ class vLLMEngineManager:
 
     @staticmethod
     def _strip_thought_blocks(text: str) -> str:
-        return re.sub(r"<thought>.*?</thought>\s*", "", text, flags=re.DOTALL).strip()
+        # <thought>...</thought> (구형) 및 <think>...</think> (EXAONE-4.0 추론 모드) 모두 제거
+        text = re.sub(r"<thought>.*?</thought>\s*", "", text, flags=re.DOTALL)
+        text = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL)
+        return text.strip()
 
     def _build_rag_context(self, retrieved_cases: List[dict]) -> str:
         if not retrieved_cases:

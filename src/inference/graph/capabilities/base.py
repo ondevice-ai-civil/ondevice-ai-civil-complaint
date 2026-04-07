@@ -85,6 +85,7 @@ class LookupResult:
             "count": len(self.results),
             "results": self.results,
             "context_text": self.context_text,
+            "text": self.context_text,
             "citations": self.citations,
             "provider": self.provider,
             "error": self.error,

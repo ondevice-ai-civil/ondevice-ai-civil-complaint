@@ -107,9 +107,12 @@ class RegistryExecutorAdapter(ExecutorAdapter):
         session = self._session_store.get_or_create(context.get("session_id"))
         start = time.monotonic()
         try:
+            timeout = self._default_timeout
+            if hasattr(tool_fn, "metadata"):
+                timeout = tool_fn.metadata.timeout_sec
             result = await asyncio.wait_for(
                 tool_fn(query=query, context=context, session=session),
-                timeout=self._default_timeout,
+                timeout=timeout,
             )
             latency = (time.monotonic() - start) * 1000
             if isinstance(result, dict):
@@ -122,7 +125,7 @@ class RegistryExecutorAdapter(ExecutorAdapter):
             latency = (time.monotonic() - start) * 1000
             return {
                 "success": False,
-                "error": f"tool {tool_name} 타임아웃 ({self._default_timeout}초)",
+                "error": f"tool {tool_name} 타임아웃 ({timeout}초)",
                 "latency_ms": latency,
             }
         except Exception as exc:

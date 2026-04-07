@@ -1,0 +1,45 @@
+version: "2"
+
+language: "ko"
+
+reviews:
+  # PR에 새 커밋 push될 때마다 자동 리뷰
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - "main"
+
+  # 리뷰 범위 설정
+  profile: "chill"   # assertive / chill 중 선택 (chill = 핵심 이슈만)
+  request_changes_workflow: false
+
+  # 리뷰 포함 항목
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+
+  path_filters:
+    - "!metrics/**"        # DORA 메트릭 자동 생성 파일 제외
+    - "!site/**"           # 빌드 산출물 제외
+    - "!**/*.png"
+    - "!**/*.jpg"
+    - "!**/*.html"
+
+  path_instructions:
+    - path: "src/**/*.py"
+      instructions: |
+        - Python 코드는 타입 힌트 사용 여부 확인
+        - 보안 취약점(SQL injection, command injection 등) 우선 검토
+        - GovOn은 공공행정 AI 서비스이므로 개인정보 처리 로직에 특히 주의
+    - path: "tests/**/*.py"
+      instructions: |
+        - 테스트 커버리지 누락 케이스 지적
+        - mock 과다 사용 여부 검토 (실제 통합 테스트 권장)
+    - path: ".github/workflows/*.yml"
+      instructions: |
+        - GitHub Actions 보안 취약점(script injection 등) 검토
+        - secret 노출 여부 확인
+
+chat:
+  auto_reply: true

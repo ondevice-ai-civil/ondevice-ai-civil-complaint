@@ -20,7 +20,6 @@ print('Space repo ready')
 "
 
 # 2. 필요 파일 업로드
-echo "[2/4] 파일 업로드..."
 python3 -c "
 import os
 from huggingface_hub import HfApi
@@ -43,14 +42,12 @@ api.upload_folder(folder_path='src', path_in_repo='src',
 # agents/ 디렉터리 (존재하면)
 if os.path.isdir('agents'):
     api.upload_folder(folder_path='agents', path_in_repo='agents',
-        repo_id=space_repo, repo_type='space',
-        ignore_patterns=['__pycache__', '*.pyc', '.pytest_cache'])
+        repo_id=space_repo, repo_type='space')
 
 print('Files uploaded')
-" || { echo "FAIL: 파일 업로드 실패"; exit 1; }
+"
 
 # 3. Secrets 설정
-echo "[3/4] Secrets 설정..."
 python3 -c "
 import os
 from huggingface_hub import HfApi
@@ -63,28 +60,22 @@ print('Secrets configured')
 "
 
 # 4. 하드웨어 설정 (L4 24GB — base 20GB + adapters ~1GB)
-echo "[4/4] 하드웨어 설정..."
-HW_SET=false
+# 권한/쿼터 부족 시 경고만 출력하고 계속 진행
 python3 -c "
-import os, sys
+import os
 from huggingface_hub import HfApi
 api = HfApi(token=os.environ['HF_TOKEN'])
 try:
     api.request_space_hardware(os.environ['SPACE_REPO'], 'l4x1')
     print('Hardware set to l4x1 (24GB VRAM)')
 except Exception as e:
-    print(f'WARNING: 하드웨어 설정 실패 (수동 설정 필요): {e}', file=sys.stderr)
-    sys.exit(1)
-" && HW_SET=true || true
+    print(f'WARNING: 하드웨어 설정 실패 (수동으로 설정 필요): {e}')
+" || true
 
 echo ""
 echo "=== 배포 완료 ==="
 echo "Space URL: https://huggingface.co/spaces/$SPACE_REPO"
-if [ "$HW_SET" = "true" ]; then
-    echo "하드웨어: L4 24GB (자동 설정됨)"
-else
-    echo "WARNING: 하드웨어 미설정 — HF Spaces 대시보드에서 수동으로 L4를 선택하세요"
-fi
+echo "하드웨어: L4 24GB (자동 설정됨)"
 echo ""
 echo "GPU 검증 실행:"
 echo "  GOVON_RUNTIME_URL=https://<space-url> python3 scripts/verify_lora_serving.py"

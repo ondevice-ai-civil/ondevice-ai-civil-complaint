@@ -11,7 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.inference.api_server import vLLMEngineManager
+# vLLMEngineManager는 TestLoraEngineConfig / TestSkipModelLoadLora에서 각 테스트 내부에서 import함
+# (top-level import 시 모듈 로드 부작용을 피하기 위해 지역 import 패턴 유지)
 
 # ---------------------------------------------------------------------------
 # 1. ADAPTER_PATHS 환경변수 파싱 테스트
@@ -476,22 +477,14 @@ class TestMultiLoraPerRequestSwitching:
 
 
 class TestAppendEvidenceLLMPath:
-    """append_evidence가 LLM 호출 성공/실패 시 올바르게 동작하는지 검증."""
+    """append_evidence 경로에서 사용하는 _LORA_ID_MAP 유효성 검증."""
 
-    def test_evidence_llm_failure_uses_fallback(self):
-        """_LORA_ID_MAP에 'legal' 키가 존재하고 값이 양의 정수임을 검증한다.
+    def test_legal_lora_id_is_positive_int(self):
+        """_LORA_ID_MAP에 'legal' 키가 존재하고 값이 양의 정수여야 한다.
 
-        frozen dataclass 패치의 어려움으로 인해 단순화:
-        실제 LLM 경로 대신 LoRA ID 맵의 유효성을 직접 검증한다.
+        frozen dataclass 패치의 어려움으로 인해 실제 LLM 경로 대신
+        LoRA ID 맵의 유효성을 직접 검증한다.
         """
-        from src.inference.api_server import _LORA_ID_MAP
-
-        assert "legal" in _LORA_ID_MAP
-        assert isinstance(_LORA_ID_MAP["legal"], int)
-        assert _LORA_ID_MAP["legal"] > 0
-
-    def test_lora_id_map_contains_legal(self):
-        """_LORA_ID_MAP에 'legal' 키가 포함되어야 한다."""
         from src.inference.api_server import _LORA_ID_MAP
 
         assert "legal" in _LORA_ID_MAP

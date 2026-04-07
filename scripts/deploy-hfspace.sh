@@ -60,13 +60,17 @@ print('Secrets configured')
 "
 
 # 4. 하드웨어 설정 (L4 24GB — base 20GB + adapters ~1GB)
+# 권한/쿼터 부족 시 경고만 출력하고 계속 진행
 python3 -c "
 import os
 from huggingface_hub import HfApi
 api = HfApi(token=os.environ['HF_TOKEN'])
-api.request_space_hardware(os.environ['SPACE_REPO'], 'l4x1')
-print('Hardware set to l4x1 (24GB VRAM)')
-"
+try:
+    api.request_space_hardware(os.environ['SPACE_REPO'], 'l4x1')
+    print('Hardware set to l4x1 (24GB VRAM)')
+except Exception as e:
+    print(f'WARNING: 하드웨어 설정 실패 (수동으로 설정 필요): {e}')
+" || true
 
 echo ""
 echo "=== 배포 완료 ==="

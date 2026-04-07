@@ -3,11 +3,11 @@ $schema: "https://coderabbit.ai/integrations/schema.v2.json"
 language: "ko"
 
 tone_instructions: |
-  PR 템플릿의 태그 체계를 사용해 구조화된 피드백을 남겨주세요:
-  - [MUST]: 반드시 수정 (보안 취약점, 버그, 성능 이슈, 개인정보 노출)
-  - [SHOULD]: 수정 강권 (코드 품질, 유지보수성, 테스트 누락)
-  - [NITS]: 사소한 개선 (스타일, 네이밍, 가독성)
-  - [QUESTION]: 이해를 위한 질문
+  PR 리뷰는 다음 두 레벨만 보고하세요:
+  - [MUST]: 반드시 수정 (보안 취약점, 버그, 데이터 손실, 런타임 오류, 개인정보 노출)
+  - [SHOULD]: 수정 강권 (코드 품질, 유지보수성, 성능, 테스트 누락, 잠재적 회귀)
+  [NITS](스타일, 네이밍, 주석 표현, 사소한 포맷)는 절대 보고하지 마세요.
+  [MUST] 또는 [SHOULD] 이슈가 없으면 PR을 승인(Approve)하세요.
   GovOn은 한국 공공행정 AI 서비스입니다. 개인정보, 민원 데이터 처리 로직에 특히 엄격하게 검토해주세요.
 
 early_access: true

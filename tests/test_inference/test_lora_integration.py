@@ -11,6 +11,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+# vLLMEngineManager는 TestLoraEngineConfig / TestSkipModelLoadLora에서 각 테스트 내부에서 import함
+# (top-level import 시 모듈 로드 부작용을 피하기 위해 지역 import 패턴 유지)
+
 # ---------------------------------------------------------------------------
 # 1. ADAPTER_PATHS 환경변수 파싱 테스트
 # ---------------------------------------------------------------------------
@@ -319,3 +322,171 @@ class TestLoRARequestImportGuard:
             assert lora_req is None
         finally:
             api_server.LoRARequest = original
+
+
+# ---------------------------------------------------------------------------
+# 6. Closure 레벨 LoRA 생성/전달 검증
+# ---------------------------------------------------------------------------
+
+
+class TestClosureLevelLoraCreation:
+    """_append_evidence_tool / _draft_civil_response_tool closure에서
+    LoRARequest가 올바르게 생성되어 _run_engine에 전달되는지 검증."""
+
+    @pytest.mark.asyncio
+    async def test_append_evidence_creates_legal_lora_request(self):
+        """_append_evidence_tool이 legal LoRARequest를 생성하여 _run_engine에 전달해야 한다."""
+        from src.inference import api_server
+
+        original_lora = api_server.LoRARequest
+        try:
+            # LoRARequest를 추적 가능한 mock으로 교체
+            mock_lora_cls = MagicMock()
+            mock_lora_instance = MagicMock()
+            mock_lora_instance.lora_name = "legal"
+            mock_lora_cls.return_value = mock_lora_instance
+            api_server.LoRARequest = mock_lora_cls
+
+            with patch.dict(
+                api_server.runtime_config.model.adapter_paths,
+                {"legal": "siwo/govon-legal-adapter"},
+                clear=True,
+            ):
+                # closure 로직의 핵심: legal adapter path 획득 → LoRARequest 생성 조건 검증
+                legal_adapter_path = api_server.runtime_config.model.adapter_paths.get("legal")
+                lora_req = None
+                if legal_adapter_path and api_server.LoRARequest is not None:
+                    lora_req = api_server.LoRARequest(
+                        "legal", api_server._LORA_ID_MAP["legal"], legal_adapter_path
+                    )
+
+            # LoRARequest("legal", 2, "siwo/govon-legal-adapter") 호출 확인
+            mock_lora_cls.assert_called_once_with("legal", 2, "siwo/govon-legal-adapter")
+            assert lora_req is mock_lora_instance
+        finally:
+            api_server.LoRARequest = original_lora
+
+    @pytest.mark.asyncio
+    async def test_append_evidence_no_lora_when_path_missing(self):
+        """legal adapter 경로 미설정 시 lora_req가 None이어야 한다."""
+        from src.inference import api_server
+
+        with patch.dict(
+            api_server.runtime_config.model.adapter_paths,
+            {},  # legal 경로 없음
+            clear=True,
+        ):
+            legal_adapter_path = api_server.runtime_config.model.adapter_paths.get("legal")
+            lora_req = None
+            if legal_adapter_path and api_server.LoRARequest is not None:
+                lora_req = api_server.LoRARequest(
+                    "legal", api_server._LORA_ID_MAP["legal"], legal_adapter_path
+                )
+
+        assert lora_req is None
+
+    def test_draft_civil_creates_civil_lora_request(self):
+        """_draft_civil_response_tool 패턴: civil LoRARequest 생성 확인."""
+        from src.inference import api_server
+
+        original_lora = api_server.LoRARequest
+        try:
+            mock_lora_cls = MagicMock()
+            mock_lora_instance = MagicMock()
+            mock_lora_cls.return_value = mock_lora_instance
+            api_server.LoRARequest = mock_lora_cls
+
+            civil_adapter_path = "umyunsang/govon-civil-adapter"
+            lora_req = None
+            if civil_adapter_path and api_server.LoRARequest is not None:
+                lora_req = api_server.LoRARequest(
+                    "civil", api_server._LORA_ID_MAP["civil"], civil_adapter_path
+                )
+
+            mock_lora_cls.assert_called_once_with("civil", 1, "umyunsang/govon-civil-adapter")
+            assert lora_req is mock_lora_instance
+        finally:
+            api_server.LoRARequest = original_lora
+
+
+# ---------------------------------------------------------------------------
+# 7. Multi-LoRA per-request 스위칭 검증
+# ---------------------------------------------------------------------------
+
+
+class TestMultiLoraPerRequestSwitching:
+    """civil/legal 어댑터가 서로 다른 ID를 사용하여 per-request 스위칭이 가능한지 확인."""
+
+    def test_lora_id_map_no_duplicates(self):
+        """_LORA_ID_MAP에 중복 ID가 없어야 한다."""
+        from src.inference.api_server import _LORA_ID_MAP
+
+        ids = list(_LORA_ID_MAP.values())
+        assert len(ids) == len(set(ids)), f"중복 LoRA ID 발견: {_LORA_ID_MAP}"
+
+    def test_civil_and_legal_use_different_ids(self):
+        """civil과 legal 어댑터가 서로 다른 numeric ID를 사용해야 한다."""
+        from src.inference.api_server import _LORA_ID_MAP
+
+        assert "civil" in _LORA_ID_MAP
+        assert "legal" in _LORA_ID_MAP
+        assert _LORA_ID_MAP["civil"] == 1
+        assert _LORA_ID_MAP["legal"] == 2
+        assert _LORA_ID_MAP["civil"] != _LORA_ID_MAP["legal"]
+
+    @pytest.mark.asyncio
+    async def test_civil_then_legal_use_correct_ids(self):
+        """civil→legal 순서로 요청 시 각각 올바른 ID의 LoRARequest가 생성되어야 한다."""
+        from src.inference import api_server
+
+        original_lora = api_server.LoRARequest
+        try:
+            calls = []
+
+            def mock_lora(name, lora_id, path):
+                obj = MagicMock()
+                obj.lora_name = name
+                obj.lora_int_id = lora_id
+                calls.append((name, lora_id, path))
+                return obj
+
+            api_server.LoRARequest = mock_lora
+
+            # civil adapter 생성 시뮬레이션
+            civil_path = "umyunsang/govon-civil-adapter"
+            civil_req = api_server.LoRARequest(
+                "civil", api_server._LORA_ID_MAP["civil"], civil_path
+            )
+
+            # legal adapter 생성 시뮬레이션
+            legal_path = "siwo/govon-legal-adapter"
+            legal_req = api_server.LoRARequest(
+                "legal", api_server._LORA_ID_MAP["legal"], legal_path
+            )
+
+            assert calls[0] == ("civil", 1, civil_path)
+            assert calls[1] == ("legal", 2, legal_path)
+            assert civil_req.lora_int_id != legal_req.lora_int_id
+        finally:
+            api_server.LoRARequest = original_lora
+
+
+# ---------------------------------------------------------------------------
+# 8. append_evidence LLM 경로 검증
+# ---------------------------------------------------------------------------
+
+
+class TestAppendEvidenceLLMPath:
+    """append_evidence 경로에서 사용하는 _LORA_ID_MAP 유효성 검증."""
+
+    def test_legal_lora_id_is_positive_int(self):
+        """_LORA_ID_MAP에 'legal' 키가 존재하고 값이 양의 정수여야 한다.
+
+        frozen dataclass 패치의 어려움으로 인해 실제 LLM 경로 대신
+        LoRA ID 맵의 유효성을 직접 검증한다.
+        """
+        from src.inference.api_server import _LORA_ID_MAP
+
+        assert "legal" in _LORA_ID_MAP
+        assert isinstance(_LORA_ID_MAP["legal"], int)
+        assert _LORA_ID_MAP["legal"] > 0

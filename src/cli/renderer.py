@@ -192,7 +192,7 @@ def _build_citations_text(citations: list[str]) -> Text:
     return content
 
 
-def _build_rich_result_content(text_body: str, evidence_items: list, citations: list):
+def _build_rich_result_content(text_body: str, evidence_items: list, citations: list) -> Text | Markdown | Group:
     """Build the rich renderable used inside the result panel."""
     renderables = []
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict
 
+from src.inference.adapter_registry import AdapterRegistry
+
 from .base import CapabilityBase, CapabilityMetadata, EvidenceEnvelope, EvidenceItem, LookupResult
 from .defaults import get_timeout
 
@@ -22,9 +24,12 @@ class DraftCivilResponseCapability(CapabilityBase):
 
     def __init__(self, execute_fn: Callable[..., Any]) -> None:
         self._execute_fn = execute_fn
+        self._cached_metadata = self._build_metadata()
 
-    @property
-    def metadata(self) -> CapabilityMetadata:
+    @staticmethod
+    def _build_metadata() -> CapabilityMetadata:
+        """metadata를 한 번만 계산하여 반환한다."""
+        _reg = AdapterRegistry.get_instance()
         return CapabilityMetadata(
             name="draft_civil_response",
             description=(
@@ -33,7 +38,23 @@ class DraftCivilResponseCapability(CapabilityBase):
             approval_summary="AI 모델이 검색 결과를 종합하여 민원 답변 초안을 생성합니다.",
             provider="local_llm",
             timeout_sec=get_timeout("draft_civil_response"),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "민원 요청 내용"},
+                    "adapter": {
+                        "type": "string",
+                        "enum": _reg.build_adapter_enum(),
+                        "description": f"도메인 특화 어댑터 선택:\n{_reg.build_adapter_description()}\n- none: 베이스 모델 사용",
+                    },
+                },
+                "required": ["query"],
+            },
         )
+
+    @property
+    def metadata(self) -> CapabilityMetadata:
+        return self._cached_metadata
 
     async def execute(
         self,

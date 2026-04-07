@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional, Sequence
 from langchain_core.messages import AnyMessage
 from loguru import logger
 
-from .capabilities.registry import get_mvp_capability_ids
+from .capabilities.registry import build_tool_definitions, get_mvp_capability_ids
 from .state import TaskType, ToolPlan
 
 # ---------------------------------------------------------------------------
@@ -92,6 +92,9 @@ class LLMPlannerAdapter(PlannerAdapter):
     사용자 요청을 분석하고 ToolPlan을 생성한다.
     로컬 vLLM을 OpenAI-compatible endpoint로 연결 가능.
 
+    네이티브 tool calling을 1차로 시도하고, tool_calls가 없으면
+    텍스트 JSON 파싱으로 fallback한다.
+
     Parameters
     ----------
     llm : BaseChatModel
@@ -99,27 +102,43 @@ class LLMPlannerAdapter(PlannerAdapter):
     """
 
     @staticmethod
+    def _build_tool_definitions(registry: "dict[str, Any] | None") -> list[dict]:
+        """registry에서 OpenAI-compatible tool definitions를 생성한다."""
+        if registry:
+            return build_tool_definitions(registry)
+        # registry 없으면 이름만으로 minimal definition 생성
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": name,
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"query": {"type": "string"}},
+                        "required": ["query"],
+                    },
+                },
+            }
+            for name in sorted(get_mvp_capability_ids())
+        ]
+
+    @staticmethod
     def _build_system_prompt() -> str:
-        """사용 가능한 도구 목록을 동적으로 반영한 system prompt를 생성한다."""
-        tools = ", ".join(sorted(get_mvp_capability_ids()))
+        """네이티브 tool calling용 system prompt를 생성한다."""
         return (
             "당신은 GovOn 민원 답변 보조 시스템의 작업 계획기입니다.\n"
-            "사용자의 요청을 분석하여 다음 JSON 형식으로 실행 계획을 출력하세요:\n\n"
-            '{"task_type": "<draft_response|revise_response|append_evidence|lookup_stats>",\n'
-            ' "goal": "<사용자에게 보여줄 작업 설명 (한국어, 1-2문장)>",\n'
-            ' "reason": "<이 작업이 필요한 이유 (한국어, 1문장)>",\n'
-            ' "tools": ["<tool1>", "<tool2>", ...]}\n\n'
-            f"사용 가능한 도구: {tools}\n"
+            "사용자의 요청을 분석하여 적절한 도구를 호출하세요.\n\n"
             "규칙:\n"
-            "- draft_response: rag_search, api_lookup, draft_civil_response 순서\n"
-            "- revise_response: rag_search, api_lookup, draft_civil_response 순서\n"
-            "- append_evidence: rag_search, api_lookup, append_evidence 순서\n"
-            "- lookup_stats: api_lookup 단독\n"
-            "- issue_detection: issue_detector 단독\n"
-            "- stats_query: stats_lookup 단독 또는 stats_lookup, issue_detector 조합\n"
-            "- keyword_analysis: keyword_analyzer 단독\n"
-            "- demographics_query: demographics_lookup 단독\n"
-            "- JSON만 출력하세요. 다른 텍스트 없이.\n"
+            "- 민원 답변 작성: rag_search → api_lookup → draft_civil_response 순서로 호출\n"
+            "- 답변 수정: rag_search → api_lookup → draft_civil_response 순서로 호출\n"
+            "- 근거 보강: rag_search → api_lookup → append_evidence 순서로 호출\n"
+            "- 통계 조회: api_lookup 단독 호출\n"
+            "- 이슈 탐지: issue_detector 단독 호출\n"
+            "- 통계 분석: stats_lookup 단독 또는 stats_lookup + issue_detector 조합\n"
+            "- 키워드 분석: keyword_analyzer 단독 호출\n"
+            "- 인구통계 조회: demographics_lookup 단독 호출\n"
+            "- 필요한 도구를 순서대로 모두 호출하세요.\n"
         )
 
     def __init__(self, llm: Any, registry: Optional[Dict[str, Any]] = None) -> None:
@@ -133,10 +152,13 @@ class LLMPlannerAdapter(PlannerAdapter):
     ) -> ToolPlan:
         """LLM을 호출하여 실행 계획을 생성한다.
 
-        LLM 호출 실패 또는 JSON 파싱 실패 시 PlanValidationError를 raise하여
-        planner_node의 fallback 핸들러가 처리하도록 한다.
+        1차: bind_tools()로 네이티브 tool calling 시도.
+        2차: tool_calls가 없으면 텍스트 JSON 파싱으로 fallback.
+        모든 실패 시 PlanValidationError를 raise한다.
         """
         from langchain_core.messages import HumanMessage, SystemMessage
+
+        tool_definitions = self._build_tool_definitions(self._registry)
 
         plan_messages = [
             SystemMessage(content=self._build_system_prompt()),
@@ -144,22 +166,62 @@ class LLMPlannerAdapter(PlannerAdapter):
         ]
 
         try:
-            response = await self._llm.ainvoke(plan_messages)
+            # 1차: 네이티브 tool calling 시도
+            llm_with_tools = self._llm.bind_tools(tool_definitions)
+            response = await llm_with_tools.ainvoke(plan_messages)
+
+            # tool_calls 파싱
+            tool_calls = getattr(response, "tool_calls", None) or []
+            if tool_calls:
+                tools: list[str] = []
+                tool_args: Dict[str, Dict[str, Any]] = {}
+                for tc in tool_calls:
+                    name = tc["name"] if isinstance(tc, dict) else tc.name
+                    args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
+                    # args가 dict가 아니면 빈 dict로 정규화
+                    if not isinstance(args, dict):
+                        logger.warning(
+                            f"[LLMPlanner] tool_call args가 dict가 아님: {name}, type={type(args).__name__}"
+                        )
+                        args = {}
+                    # 중복 tool name은 건너뜀 (첫 번째 호출만 사용)
+                    if name in tool_args:
+                        logger.warning(f"[LLMPlanner] 중복 tool call 무시: {name}")
+                        continue
+                    tools.append(name)
+                    if args:
+                        tool_args[name] = args
+
+                task_type = RegexPlannerAdapter._infer_task_type(tools)
+                goal_text = tool_args.get(tools[0], {}).get("query", "") if tools else ""
+
+                return ToolPlan(
+                    task_type=task_type,
+                    goal=f"요청 처리: {goal_text[:100]}" if goal_text else "요청을 처리합니다.",
+                    reason="LLM이 네이티브 tool calling으로 도구를 선택했습니다.",
+                    tools=tools,
+                    tool_args=tool_args,
+                    tool_summaries=_build_tool_summaries(tools, self._registry),
+                    adapter_mode="llm_tool_calling",
+                )
+
+            # 2차: fallback — 텍스트 JSON 파싱
             content = str(response.content or "")
             parsed = json.loads(content)
-            tools: list[str] = parsed["tools"]
+            tools_list: list[str] = parsed["tools"]
             return ToolPlan(
                 task_type=TaskType(parsed["task_type"]),
                 goal=parsed["goal"],
                 reason=parsed["reason"],
-                tools=tools,
-                tool_summaries=_build_tool_summaries(tools, self._registry),
+                tools=tools_list,
+                tool_args={},
+                tool_summaries=_build_tool_summaries(tools_list, self._registry),
                 adapter_mode="llm",
             )
         except (json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:
             from .plan_validator import PlanValidationError
 
-            logger.warning(f"[LLMPlanner] LLM 응답 파싱 실패: {exc}")
+            logger.warning(f"[LLMPlanner] 응답 파싱 실패: {exc}")
             raise PlanValidationError(f"LLM planner 응답 파싱 실패: {exc}") from exc
         except Exception as exc:
             from .plan_validator import PlanValidationError
@@ -196,11 +258,34 @@ class DirectEnginePlannerAdapter(PlannerAdapter):
 
     self-call HTTP 오버헤드를 제거하고 engine 인스턴스를 직접 참조한다.
     운영 환경 기본 planner로 사용된다.
+
+    Hermes tool calling 포맷(<tool_call> 태그)을 1차로 파싱하고,
+    태그가 없으면 텍스트 JSON 파싱으로 fallback한다.
     """
 
     def __init__(self, engine_manager: Any, registry: Optional[Dict[str, Any]] = None) -> None:
         self._engine_manager = engine_manager
         self._registry = registry
+
+    @staticmethod
+    def _parse_hermes_tool_calls(text: str) -> list[dict]:
+        """Hermes 포맷의 <tool_call> 태그를 파싱한다.
+
+        형식: <tool_call>{"name": "...", "arguments": {...}}</tool_call>
+        """
+        import re
+
+        pattern = r"<tool_call>\s*(\{.*?\})\s*</tool_call>"
+        matches = re.findall(pattern, text, re.DOTALL)
+        results: list[dict] = []
+        for match in matches:
+            try:
+                parsed = json.loads(match)
+                if "name" in parsed:
+                    results.append(parsed)
+            except json.JSONDecodeError:
+                continue
+        return results
 
     async def plan(
         self,
@@ -209,10 +294,14 @@ class DirectEnginePlannerAdapter(PlannerAdapter):
     ) -> ToolPlan:
         from .plan_validator import PlanValidationError
 
+        tool_definitions = LLMPlannerAdapter._build_tool_definitions(self._registry)
         system_prompt = LLMPlannerAdapter._build_system_prompt()
         user_prompt = LLMPlannerAdapter._build_user_prompt(messages, context)
 
+        # Hermes tool calling format
+        tools_json = json.dumps(tool_definitions, ensure_ascii=False)
         prompt = (
+            f"<tools>\n{tools_json}\n</tools>\n\n"
             f"[|system|]{system_prompt}[|endofturn|]\n"
             f"[|user|]{user_prompt}[|endofturn|]\n"
             "[|assistant|]"
@@ -242,15 +331,51 @@ class DirectEnginePlannerAdapter(PlannerAdapter):
 
         content = self._engine_manager._strip_thought_blocks(output.outputs[0].text)
 
+        # 1차: <tool_call> 태그 파싱
+        tool_calls = self._parse_hermes_tool_calls(content)
+        if tool_calls:
+            tools: list[str] = []
+            tool_args: Dict[str, Dict[str, Any]] = {}
+            for tc in tool_calls:
+                tc_name = tc["name"]
+                args = tc.get("arguments", {})
+                # args가 dict가 아니면 빈 dict로 정규화
+                if not isinstance(args, dict):
+                    logger.warning(
+                        f"[DirectEnginePlanner] tool_call args가 dict가 아님: {tc_name}, type={type(args).__name__}"
+                    )
+                    args = {}
+                # 중복 tool name은 건너뜀 (첫 번째 호출만 사용)
+                if tc_name in tool_args:
+                    logger.warning(f"[DirectEnginePlanner] 중복 tool call 무시: {tc_name}")
+                    continue
+                tools.append(tc_name)
+                if args:
+                    tool_args[tc_name] = args
+            task_type = RegexPlannerAdapter._infer_task_type(tools)
+            goal_text = tool_args.get(tools[0], {}).get("query", "") if tools else ""
+
+            return ToolPlan(
+                task_type=task_type,
+                goal=f"요청 처리: {goal_text[:100]}" if goal_text else "요청을 처리합니다.",
+                reason="LLM이 네이티브 tool calling으로 도구를 선택했습니다.",
+                tools=tools,
+                tool_args=tool_args,
+                tool_summaries=_build_tool_summaries(tools, self._registry),
+                adapter_mode="direct_engine_tool_calling",
+            )
+
+        # 2차: fallback — 텍스트 JSON 파싱
         try:
             parsed = json.loads(content)
-            tools: list[str] = parsed["tools"]
+            tools_list: list[str] = parsed["tools"]
             return ToolPlan(
                 task_type=TaskType(parsed["task_type"]),
                 goal=parsed["goal"],
                 reason=parsed["reason"],
-                tools=tools,
-                tool_summaries=_build_tool_summaries(tools, self._registry),
+                tools=tools_list,
+                tool_args={},
+                tool_summaries=_build_tool_summaries(tools_list, self._registry),
                 adapter_mode="direct_engine",
             )
         except (json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:

@@ -81,6 +81,7 @@ from src.inference.graph.capabilities.base import CapabilityBase, CapabilityMeta
 from src.inference.graph.capabilities.registry import (
     MVP_CAPABILITY_IDS,
     build_mvp_registry,
+    build_tool_definitions,
     get_all_metadata,
     get_mvp_capability_ids,
     is_mvp_capability,
@@ -217,6 +218,48 @@ class TestGetAllMetadata:
         """metadata 목록의 name 집합이 MVP_CAPABILITY_IDS와 동일하다."""
         names = {m["name"] for m in get_all_metadata(registry)}
         assert names == MVP_CAPABILITY_IDS
+
+    def test_each_metadata_has_parameters(self, registry):
+        """각 metadata dict에 parameters 필드가 포함되어 있다."""
+        for meta_dict in get_all_metadata(registry):
+            name = meta_dict.get("name", "?")
+            assert "parameters" in meta_dict, f"{name}에 parameters 필드 누락"
+            params = meta_dict["parameters"]
+            assert isinstance(params, dict), f"{name}의 parameters는 dict여야 함"
+            assert params.get("type") == "object", f"{name}의 parameters.type은 object여야 함"
+            assert "query" in params.get(
+                "properties", {}
+            ), f"{name}의 parameters에 query property 필요"
+            assert "query" in params.get(
+                "required", []
+            ), f"{name}의 parameters.required에 query 필요"
+
+
+# ---------------------------------------------------------------------------
+# build_tool_definitions 검증
+# ---------------------------------------------------------------------------
+
+
+class TestBuildToolDefinitions:
+    """build_tool_definitions() 검증."""
+
+    def test_returns_openai_format(self, registry):
+        definitions = build_tool_definitions(registry)
+        assert len(definitions) == len(MVP_CAPABILITY_IDS), "tool definition 개수 불일치"
+        for defn in definitions:
+            assert defn["type"] == "function", "OpenAI tool type은 function이어야 함"
+            assert "function" in defn, "function payload 누락"
+            fn = defn["function"]
+            assert "name" in fn, "function.name 누락"
+            assert fn.get("description"), f"{fn.get('name', '?')}의 function.description 누락"
+            assert "parameters" in fn, f"{fn.get('name', '?')}의 function.parameters 누락"
+
+    def test_all_names_match_mvp_ids(self, registry):
+        definitions = build_tool_definitions(registry)
+        names = {d["function"]["name"] for d in definitions}
+        assert (
+            names == MVP_CAPABILITY_IDS
+        ), f"tool definition 이름 불일치: {names ^ MVP_CAPABILITY_IDS}"
 
 
 # ---------------------------------------------------------------------------

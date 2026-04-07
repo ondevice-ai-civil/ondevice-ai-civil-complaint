@@ -61,6 +61,7 @@ class CapabilityMetadata:
     approval_summary: str  # approval_wait 프롬프트에 표시되는 요약
     provider: str  # 데이터 제공자 식별자 (예: "data.go.kr")
     timeout_sec: float = 10.0  # 기본 타임아웃
+    parameters: Dict[str, Any] = field(default_factory=dict)  # JSON Schema for tool parameters
 
 
 @dataclass

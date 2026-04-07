@@ -115,9 +115,53 @@ def get_all_metadata(
                 "approval_summary": meta.approval_summary,
                 "provider": meta.provider,
                 "timeout_sec": meta.timeout_sec,
+                "parameters": meta.parameters,
             }
         )
     return result
+
+
+def build_tool_definitions(
+    registry: Dict[str, CapabilityBase],
+) -> List[Dict[str, Any]]:
+    """registry를 OpenAI-compatible tool definition 리스트로 변환한다.
+
+    네이티브 tool calling에서 LLM에 전달할 도구 스키마를 생성한다.
+    각 capability의 metadata.parameters가 function parameters로 사용된다.
+
+    Parameters
+    ----------
+    registry : Dict[str, CapabilityBase]
+        build_mvp_registry()가 반환한 registry.
+
+    Returns
+    -------
+    List[Dict[str, Any]]
+        OpenAI tool definition 형식의 dict 리스트.
+    """
+    definitions: List[Dict[str, Any]] = []
+    for name, cap in registry.items():
+        meta = cap.metadata
+        tool_def: Dict[str, Any] = {
+            "type": "function",
+            "function": {
+                "name": meta.name,
+                "description": meta.description,
+                "parameters": (
+                    meta.parameters
+                    if meta.parameters
+                    else {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string", "description": "질의문"},
+                        },
+                        "required": ["query"],
+                    }
+                ),
+            },
+        }
+        definitions.append(tool_def)
+    return definitions
 
 
 def is_mvp_capability(name: str) -> bool:

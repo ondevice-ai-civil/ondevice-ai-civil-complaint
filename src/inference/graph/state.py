@@ -65,6 +65,9 @@ class ToolPlan:
     tools : List[str]
         실행할 tool 이름 목록 (순서대로).
         예: ["rag_search", "api_lookup", "draft_civil_response"]
+    tool_args : Dict[str, Dict[str, Any]]
+        tool별 인자 매핑. tool_name → arguments dict.
+        예: {"draft_civil_response": {"query": "...", "adapter": "civil"}}
     tool_summaries : List[str]
         각 tool의 human-readable approval_summary.
         CLI 렌더링과 approval prompt에 사용된다.
@@ -75,6 +78,7 @@ class ToolPlan:
     goal: str
     reason: str
     tools: List[str]
+    tool_args: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     tool_summaries: Optional[List[str]] = field(default=None)
     adapter_mode: str = "llm"  # "llm" | "regex" (CI fallback)
 
@@ -106,6 +110,8 @@ class GovOnGraphState(TypedDict, total=False):
     reason: str  # 작업 이유
     planned_tools: List[str]  # 실행 예정 tool 이름 리스트
     tool_summaries: List[str]  # 각 planned_tool의 human-readable approval_summary
+    # 계약: planner 노드만 tool_args를 설정해야 한다. 다른 노드에서 반환하면 planner의 adapter 선택이 덮어쓰인다.
+    tool_args: Annotated[Dict[str, Dict[str, Any]], _merge_dicts]  # tool별 인자 (adapter 등)
     adapter_mode: str  # planner adapter 모드 ("regex" | "llm")
 
     # --- approval gate ---

@@ -44,6 +44,21 @@ class KeywordAnalyzerCapability(CapabilityBase):
             approval_summary="공공데이터포털에서 민원 키워드를 분석합니다.",
             provider="data.go.kr",
             timeout_sec=get_timeout("keyword_analyzer"),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "키워드 분석 대상 질의문"},
+                    "date_from": {"type": "string", "description": "분석 시작일 (예: 20260101)"},
+                    "date_to": {"type": "string", "description": "분석 종료일 (예: 20260407)"},
+                    "searchword": {"type": "string", "description": "핵심 검색어"},
+                    "result_count": {
+                        "type": "integer",
+                        "description": "반환할 키워드 수",
+                        "default": 5,
+                    },
+                },
+                "required": ["query"],
+            },
         )
 
     async def execute(

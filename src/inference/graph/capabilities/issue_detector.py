@@ -47,6 +47,16 @@ class IssueDetectorCapability(CapabilityBase):
             approval_summary="공공데이터포털에서 민원 이슈 현황을 조회합니다.",
             provider="data.go.kr",
             timeout_sec=get_timeout("issue_detector"),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "이슈 탐지 대상 키워드 또는 질의문"},
+                    "analysis_time": {"type": "string", "description": "분석 시간대 (예: 202604)"},
+                    "search_date": {"type": "string", "description": "검색 일자 (예: 20260407)"},
+                    "max_result": {"type": "integer", "description": "최대 결과 수", "default": 5},
+                },
+                "required": ["query"],
+            },
         )
 
     async def execute(

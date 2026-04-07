@@ -45,6 +45,23 @@ class StatsLookupCapability(CapabilityBase):
             approval_summary="공공데이터포털에서 민원 통계 현황을 조회합니다.",
             provider="data.go.kr",
             timeout_sec=get_timeout("stats_lookup"),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "통계 조회 대상 키워드"},
+                    "date_from": {"type": "string", "description": "조회 시작일 (예: 20260101)"},
+                    "date_to": {"type": "string", "description": "조회 종료일 (예: 20260407)"},
+                    "searchword": {"type": "string", "description": "세부 검색어"},
+                    "period": {
+                        "type": "string",
+                        "description": "집계 기간 단위",
+                        "default": "DAILY",
+                        "enum": ["DAILY", "MONTHLY", "YEARLY"],
+                    },
+                    "top_n": {"type": "integer", "description": "상위 N개 결과", "default": 5},
+                },
+                "required": ["query"],
+            },
         )
 
     async def execute(
@@ -80,6 +97,9 @@ class StatsLookupCapability(CapabilityBase):
         date_to = context.get("date_to", "")
         searchword = context.get("searchword", "")
         period = context.get("period", "DAILY")
+        _VALID_PERIODS = {"DAILY", "MONTHLY", "YEARLY"}
+        if period not in _VALID_PERIODS:
+            period = "DAILY"
         top_n = int(context.get("top_n", 5))
 
         try:

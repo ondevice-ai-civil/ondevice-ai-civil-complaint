@@ -46,6 +46,17 @@ class DemographicsLookupCapability(CapabilityBase):
             approval_summary="공공데이터포털에서 민원 인구통계를 분석합니다.",
             provider="data.go.kr",
             timeout_sec=get_timeout("demographics_lookup"),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "인구통계 분석 대상 질의문"},
+                    "searchword": {"type": "string", "description": "분석 대상 민원 키워드"},
+                    "date_from": {"type": "string", "description": "분석 시작일 (예: 20260101)"},
+                    "date_to": {"type": "string", "description": "분석 종료일 (예: 20260407)"},
+                    "top_n": {"type": "integer", "description": "상위 N개 결과", "default": 5},
+                },
+                "required": ["query", "searchword"],
+            },
         )
 
     async def execute(

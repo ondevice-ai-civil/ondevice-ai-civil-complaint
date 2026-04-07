@@ -465,11 +465,15 @@ class TestMultiLoraPerRequestSwitching:
 
             # civil adapter 생성 시뮬레이션
             civil_path = "umyunsang/govon-civil-adapter"
-            civil_req = api_server.LoRARequest("civil", api_server._LORA_ID_MAP["civil"], civil_path)
+            civil_req = api_server.LoRARequest(
+                "civil", api_server._LORA_ID_MAP["civil"], civil_path
+            )
 
             # legal adapter 생성 시뮬레이션
             legal_path = "siwo/govon-legal-adapter"
-            legal_req = api_server.LoRARequest("legal", api_server._LORA_ID_MAP["legal"], legal_path)
+            legal_req = api_server.LoRARequest(
+                "legal", api_server._LORA_ID_MAP["legal"], legal_path
+            )
 
             assert calls[0] == ("civil", 1, civil_path)
             assert calls[1] == ("legal", 2, legal_path)

@@ -86,7 +86,7 @@ try:
                     line = line.strip()
                     if not line.startswith("data:"):
                         continue
-                    payload = line[len("data:"):].strip()
+                    payload = line[len("data:") :].strip()
                     if not payload:
                         continue
                     try:
@@ -142,7 +142,7 @@ except ImportError:
                     line = raw_line.decode("utf-8", errors="replace").strip()
                     if not line.startswith("data:"):
                         continue
-                    payload = line[len("data:"):].strip()
+                    payload = line[len("data:") :].strip()
                     if not payload:
                         continue
                     try:
@@ -157,6 +157,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # 결과 기록 / 출력 헬퍼
 # ---------------------------------------------------------------------------
+
 
 def _record(
     scenario_num: int,
@@ -213,6 +214,7 @@ def _contains_legal_keyword(text: str) -> bool:
 # 시나리오 구현
 # ---------------------------------------------------------------------------
 
+
 async def scenario1_health_check() -> dict:
     """Scenario 1: Health Check."""
     t0 = time.monotonic()
@@ -221,14 +223,19 @@ async def scenario1_health_check() -> dict:
         elapsed = time.monotonic() - t0
 
         if status_code != 200:
-            return _record(1, "Health Check", False, elapsed,
-                           f"HTTP {status_code}", {"body": body})
+            return _record(1, "Health Check", False, elapsed, f"HTTP {status_code}", {"body": body})
 
         # api_server.py: /health는 "status": "healthy" 반환
         srv_status = body.get("status", "")
         if srv_status not in ("ok", "healthy"):
-            return _record(1, "Health Check", False, elapsed,
-                           f"status 필드가 ok/healthy가 아님: {srv_status!r}", {"body": body})
+            return _record(
+                1,
+                "Health Check",
+                False,
+                elapsed,
+                f"status 필드가 ok/healthy가 아님: {srv_status!r}",
+                {"body": body},
+            )
 
         return _record(1, "Health Check", True, elapsed, detail={"status": srv_status})
     except Exception as exc:
@@ -258,10 +265,16 @@ async def scenario2_base_model_generation() -> dict:
             choices = resp.get("choices", [])
             if choices and choices[0].get("text") is not None:
                 text = choices[0]["text"]
-                return _record(2, "Base Model Generation", True, elapsed,
-                               detail={"endpoint": "/v1/completions", "text_preview": text[:100]})
-            return _record(2, "Base Model Generation", False, elapsed,
-                           "choices[0].text 없음", {"resp": resp})
+                return _record(
+                    2,
+                    "Base Model Generation",
+                    True,
+                    elapsed,
+                    detail={"endpoint": "/v1/completions", "text_preview": text[:100]},
+                )
+            return _record(
+                2, "Base Model Generation", False, elapsed, "choices[0].text 없음", {"resp": resp}
+            )
 
         # /v1/completions 미지원 시 /v1/generate 레거시로 fallback
         body_legacy = {
@@ -273,13 +286,22 @@ async def scenario2_base_model_generation() -> dict:
         status_code2, resp2 = await http_post("/v1/generate", body_legacy)
         elapsed2 = time.monotonic() - t0
         if status_code2 == 200 and resp2.get("text"):
-            return _record(2, "Base Model Generation", True, elapsed2,
-                           detail={"endpoint": "/v1/generate (fallback)",
-                                   "text_preview": resp2["text"][:100]})
+            return _record(
+                2,
+                "Base Model Generation",
+                True,
+                elapsed2,
+                detail={"endpoint": "/v1/generate (fallback)", "text_preview": resp2["text"][:100]},
+            )
 
-        return _record(2, "Base Model Generation", False, elapsed2,
-                       f"/v1/completions HTTP {status_code}, /v1/generate HTTP {status_code2}",
-                       {"completions_resp": resp, "generate_resp": resp2})
+        return _record(
+            2,
+            "Base Model Generation",
+            False,
+            elapsed2,
+            f"/v1/completions HTTP {status_code}, /v1/generate HTTP {status_code2}",
+            {"completions_resp": resp, "generate_resp": resp2},
+        )
     except Exception as exc:
         return _record(2, "Base Model Generation", False, time.monotonic() - t0, str(exc))
 
@@ -339,15 +361,29 @@ async def scenario3_civil_lora() -> dict:
         )
         elapsed = time.monotonic() - t0
         if not ok:
-            return _record(3, "Civil LoRA (draft_civil_response)", False, elapsed,
-                           err, {"text_preview": text[:200] if text else ""})
+            return _record(
+                3,
+                "Civil LoRA (draft_civil_response)",
+                False,
+                elapsed,
+                err,
+                {"text_preview": text[:200] if text else ""},
+            )
         if not text.strip():
-            return _record(3, "Civil LoRA (draft_civil_response)", False, elapsed,
-                           "응답 텍스트가 비어있음")
-        return _record(3, "Civil LoRA (draft_civil_response)", True, elapsed,
-                       detail={"text_preview": text[:200]})
+            return _record(
+                3, "Civil LoRA (draft_civil_response)", False, elapsed, "응답 텍스트가 비어있음"
+            )
+        return _record(
+            3,
+            "Civil LoRA (draft_civil_response)",
+            True,
+            elapsed,
+            detail={"text_preview": text[:200]},
+        )
     except Exception as exc:
-        return _record(3, "Civil LoRA (draft_civil_response)", False, time.monotonic() - t0, str(exc))
+        return _record(
+            3, "Civil LoRA (draft_civil_response)", False, time.monotonic() - t0, str(exc)
+        )
 
 
 async def scenario4_legal_lora() -> dict:
@@ -364,11 +400,18 @@ async def scenario4_legal_lora() -> dict:
         )
         elapsed = time.monotonic() - t0
         if not ok:
-            return _record(4, "Legal LoRA (append_evidence)", False, elapsed,
-                           err, {"text_preview": text[:200] if text else ""})
+            return _record(
+                4,
+                "Legal LoRA (append_evidence)",
+                False,
+                elapsed,
+                err,
+                {"text_preview": text[:200] if text else ""},
+            )
         if not text.strip():
-            return _record(4, "Legal LoRA (append_evidence)", False, elapsed,
-                           "응답 텍스트가 비어있음")
+            return _record(
+                4, "Legal LoRA (append_evidence)", False, elapsed, "응답 텍스트가 비어있음"
+            )
 
         has_legal = _contains_legal_keyword(text)
         detail = {
@@ -378,8 +421,14 @@ async def scenario4_legal_lora() -> dict:
         }
         if not has_legal:
             # 법령 키워드 없음은 warning 수준으로 처리 — 서버 상태에 따라 변할 수 있음
-            return _record(4, "Legal LoRA (append_evidence)", False, elapsed,
-                           f"법령 키워드 미발견 ({LEGAL_KEYWORDS[:5]}...)", detail)
+            return _record(
+                4,
+                "Legal LoRA (append_evidence)",
+                False,
+                elapsed,
+                f"법령 키워드 미발견 ({LEGAL_KEYWORDS[:5]}...)",
+                detail,
+            )
         return _record(4, "Legal LoRA (append_evidence)", True, elapsed, detail=detail)
     except Exception as exc:
         return _record(4, "Legal LoRA (append_evidence)", False, time.monotonic() - t0, str(exc))
@@ -416,10 +465,21 @@ async def scenario5_sequential_multi_lora_switching() -> dict:
 
     elapsed = time.monotonic() - t0
     if errors:
-        return _record(5, "Sequential Multi-LoRA Switching", False, elapsed,
-                       "; ".join(errors), {"iterations": iterations, "errors": errors})
-    return _record(5, "Sequential Multi-LoRA Switching", True, elapsed,
-                   detail={"iterations": iterations, "all_passed": True})
+        return _record(
+            5,
+            "Sequential Multi-LoRA Switching",
+            False,
+            elapsed,
+            "; ".join(errors),
+            {"iterations": iterations, "errors": errors},
+        )
+    return _record(
+        5,
+        "Sequential Multi-LoRA Switching",
+        True,
+        elapsed,
+        detail={"iterations": iterations, "all_passed": True},
+    )
 
 
 async def scenario6_lora_id_consistency() -> dict:
@@ -435,8 +495,9 @@ async def scenario6_lora_id_consistency() -> dict:
         elapsed = time.monotonic() - t0
 
         if status_code != 200:
-            return _record(6, "LoRA ID Consistency Check", False, elapsed,
-                           f"/health HTTP {status_code}")
+            return _record(
+                6, "LoRA ID Consistency Check", False, elapsed, f"/health HTTP {status_code}"
+            )
 
         detail: dict = {"health_status": health.get("status")}
 
@@ -460,8 +521,7 @@ async def scenario6_lora_id_consistency() -> dict:
 
         # 검증: /health가 정상 응답하면 일관성 체크 통과
         # (어댑터는 런타임 설정에 따라 로드 여부가 달라지므로 존재하지 않아도 PASS)
-        return _record(6, "LoRA ID Consistency Check", True,
-                       time.monotonic() - t0, detail=detail)
+        return _record(6, "LoRA ID Consistency Check", True, time.monotonic() - t0, detail=detail)
     except Exception as exc:
         return _record(6, "LoRA ID Consistency Check", False, time.monotonic() - t0, str(exc))
 
@@ -469,6 +529,7 @@ async def scenario6_lora_id_consistency() -> dict:
 # ---------------------------------------------------------------------------
 # 메인 러너
 # ---------------------------------------------------------------------------
+
 
 async def main() -> int:
     print(f"GovOn Legal LoRA 서빙 통합 검증")

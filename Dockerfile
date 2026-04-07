@@ -1,68 +1,59 @@
 # Dockerfile for GovOn Backend
+# 단일 Dockerfile로 로컬/HuggingFace Spaces/프로덕션 통합 관리
+# 환경별 설정은 docker-compose.yml 또는 HF Space 환경변수로 오버라이드
 
-# Use NVIDIA CUDA base image with Python 3.10
-FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
+FROM nvidia/cuda:12.6.3-runtime-ubuntu22.04
 
 LABEL org.opencontainers.image.source="https://github.com/GovOn-Org/GovOn"
 LABEL org.opencontainers.image.description="GovOn AI Civil Complaint Analysis System"
 
-# Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     DEBIAN_FRONTEND=noninteractive \
-    SERVING_PROFILE="container" \
-    MODEL_PATH="LGAI-EXAONE/EXAONE-4.0-32B-AWQ" \
-    DATA_PATH="/app/data/processed/v2_train.jsonl" \
-    INDEX_PATH="/app/models/faiss_index/complaints.index"
+    SERVING_PROFILE=container \
+    PORT=8000 \
+    HOST=0.0.0.0 \
+    HF_HOME=/app/.cache/huggingface \
+    HF_HUB_ENABLE_HF_TRANSFER=1
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    python3.10 \
-    curl \
-    git \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/* \
-    && curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.local/bin:${PATH}"
+COPY --from=ghcr.io/astral-sh/uv:0.7.12 /uv /bin/uv
 
-# Copy project files
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.10 python3.10-dev git gcc ninja-build \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 
-# 1) torch: requirements.txt를 단일 소스로 읽어 CUDA 12.1 wheel 설치
-# 2) autoawq: --no-build-isolation으로 시스템 torch를 빌드 백엔드에 노출
-# 3) remaining deps: extra-index-url로 CUDA wheels (vllm, bitsandbytes) 해석
-RUN set -eux; \
-    TORCH_SPEC="$(grep -E '^[[:space:]]*torch([[:space:]]*[<>=!~].*)?$' requirements.txt | head -n 1 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"; \
-    test -n "$TORCH_SPEC"; \
-    uv pip install --system --no-cache \
-        --extra-index-url https://download.pytorch.org/whl/cu121 \
-        "$TORCH_SPEC" && \
-    uv pip install --system --no-cache --no-build-isolation "autoawq>=0.2.8" && \
-    uv pip install --system --no-cache \
-        --extra-index-url https://download.pytorch.org/whl/cu121 \
-        -r requirements.txt
+ENV UV_INDEX_STRATEGY="unsafe-best-match"
+ENV UV_EXTRA_INDEX_URL="https://download.pytorch.org/whl/cu126"
 
-# Copy source code
+# 1) torch CUDA 12.6 wheel 설치
+RUN uv pip install --system --no-cache "torch>=2.8.0"
+# 2) autoawq: 빌드 시 torch 필요 → no-build-isolation
+RUN uv pip install --system --no-cache --no-build-isolation "autoawq>=0.2.8"
+# 3) 나머지 패키지 (torch/autoawq 이미 충족)
+RUN grep -vE "^(torch|autoawq|#|[[:space:]]*$)" requirements.txt \
+    | uv pip install --system --no-cache -r /dev/stdin
+# 4) hf_transfer: 병렬 모델 다운로드 (10x 속도 향상)
+RUN uv pip install --system --no-cache hf_transfer
+
+# uid 1000: HF Spaces 호환 + 보안
+RUN useradd -m -u 1000 user \
+    && mkdir -p models/faiss_index models/bm25_index data/processed .cache logs config
+
 COPY src/ ./src/
-COPY agents/ ./agents/
+COPY config/ ./config/
+COPY scripts/ ./scripts/
+COPY agents* ./agents/
 
-# Create directories for models and data
-RUN mkdir -p models/faiss_index data/processed
+RUN chown -R user:user /app
+USER user
 
-# Expose port
-EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
+    CMD python3.10 -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT}/health')"
 
-# Non-root user for security
-RUN groupadd -r govon && useradd -r -g govon -d /app govon
-RUN chown -R govon:govon /app
-USER govon
+EXPOSE ${PORT}
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
-    CMD python3.10 -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
-
-# Command to run the application
 CMD ["python3.10", "-m", "src.inference.api_server"]

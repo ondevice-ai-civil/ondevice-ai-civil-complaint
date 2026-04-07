@@ -155,6 +155,16 @@ def db_engine():
     engine.dispose()
 
 
+@pytest.fixture(autouse=True)
+def reset_renderer_narrow_warning_state():
+    """Ensure renderer module state does not leak between tests."""
+    from src.cli import renderer
+
+    renderer._reset_narrow_warning()
+    yield
+    renderer._reset_narrow_warning()
+
+
 @pytest.fixture
 def db_session(db_engine):
     """테스트용 세션. 각 테스트 후 롤백."""

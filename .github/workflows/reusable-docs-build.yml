@@ -1,0 +1,56 @@
+name: Reusable Docs Build
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        type: string
+        default: '3.10'
+      strict:
+        type: boolean
+        default: true
+      upload_pages_artifact:
+        type: boolean
+        default: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  docs-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: 'pip'
+          cache-dependency-path: 'site/requirements-docs.txt'
+
+      - name: Install MkDocs dependencies
+        run: pip install -r site/requirements-docs.txt
+
+      - name: Build docs (strict)
+        if: inputs.strict
+        run: cd site && mkdocs build --strict
+
+      - name: Build docs
+        if: ${{ !inputs.strict }}
+        run: cd site && mkdocs build
+
+      - name: Upload pages artifact
+        if: inputs.upload_pages_artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/site
+
+      - name: Upload regular artifact
+        if: ${{ !inputs.upload_pages_artifact }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-site-preview
+          path: site/site
+          retention-days: 7

@@ -17,6 +17,7 @@ from loguru import logger
 from src.inference.index_manager import IndexType
 
 from .base import CapabilityBase, CapabilityMetadata, EvidenceEnvelope, EvidenceItem, LookupResult
+from .defaults import get_timeout
 
 # ---------------------------------------------------------------------------
 # 상수
@@ -149,7 +150,7 @@ class RagSearchCapability(CapabilityBase):
             ),
             approval_summary="로컬 문서 DB에서 관련 법령/사례를 검색합니다.",
             provider="local_vectordb",
-            timeout_sec=15.0,
+            timeout_sec=get_timeout("rag_search"),
         )
 
     async def execute(

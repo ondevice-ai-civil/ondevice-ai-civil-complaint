@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GovOn DORA Metrics Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --text-muted: #8b949e;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #ffffff;
+      --surface: #f6f8fa;
+      --border: #d0d7de;
+      --text: #24292f;
+      --text-muted: #57606a;
+    }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  h1 { text-align: center; margin-bottom: 0.5rem; }
+  .badge {
+    display: inline-block;
+    padding: 0.4rem 1.2rem;
+    border-radius: 2rem;
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: #fff;
+    background: #28a745;
+    margin: 0.5rem auto 1.5rem;
+  }
+  .badge-wrap { text-align: center; }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 1.2rem;
+    text-align: center;
+  }
+  .card-label { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.3rem; }
+  .card-value { font-size: 1.8rem; font-weight: 700; }
+  .card-trend { font-size: 0.9rem; margin-top: 0.3rem; }
+  .chart-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+  }
+  .chart-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 1rem;
+  }
+  .chart-box h3 { font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--text-muted); }
+  canvas { max-height: 300px; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    overflow: hidden;
+  }
+  th, td {
+    padding: 0.6rem 1rem;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+  }
+  th { background: var(--border); font-size: 0.85rem; }
+  td { font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<h1>GovOn DORA Metrics</h1>
+<div class="badge-wrap"><span class="badge">Elite</span></div>
+
+<div class="cards">
+<div class="card">
+          <div class="card-label">배포 빈도</div>
+          <div class="card-value">주 30.0건</div>
+          <div class="card-trend"><span style="color:#6a737d">-</span> vs 이전</div>
+        </div><div class="card">
+          <div class="card-label">리드 타임</div>
+          <div class="card-value">0.4h</div>
+          <div class="card-trend"><span style="color:#6a737d">-</span> vs 이전</div>
+        </div><div class="card">
+          <div class="card-label">변경 실패율</div>
+          <div class="card-value">26.2%</div>
+          <div class="card-trend"><span style="color:#28a745">▼0.1</span> vs 이전</div>
+        </div><div class="card">
+          <div class="card-label">MTTR</div>
+          <div class="card-value">0.0h</div>
+          <div class="card-trend"><span style="color:#6a737d">-</span> vs 이전</div>
+        </div>
+</div>
+
+<div class="chart-row">
+  <div class="chart-box">
+    <h3>4 Metrics Trend</h3>
+    <canvas id="trendChart"></canvas>
+  </div>
+  <div class="chart-box">
+    <h3>Deployment Frequency</h3>
+    <canvas id="dfChart"></canvas>
+  </div>
+</div>
+<div class="chart-row">
+  <div class="chart-box">
+    <h3>Grade Radar</h3>
+    <canvas id="radarChart"></canvas>
+  </div>
+</div>
+
+<h3 style="margin:1rem 0 0.5rem;color:var(--text-muted)">등급 기준</h3>
+<table>
+  <tr><th>등급</th><th>배포 빈도</th><th>리드 타임</th><th>변경 실패율</th><th>MTTR</th></tr>
+  <tr><td>Elite</td><td>일 1회+</td><td>&lt; 1일</td><td>&lt; 15%</td><td>&lt; 1시간</td></tr>
+  <tr><td>High</td><td>주 1회+</td><td>&lt; 1주</td><td>15~30%</td><td>&lt; 24시간</td></tr>
+  <tr><td>Medium</td><td>월 1회+</td><td>&lt; 1개월</td><td>30~45%</td><td>&lt; 1주</td></tr>
+  <tr><td>Low</td><td>월 1회 미만</td><td>&gt; 1개월</td><td>&gt; 45%</td><td>&gt; 1주</td></tr>
+</table>
+
+<script>
+const labels = ["20260317", "20260318", "20260319", "20260320", "20260321", "20260322", "20260323", "20260324", "20260325", "20260406", "20260407"];
+const dfData = [24.0, 21.0, 24.0, 26.0, 27.0, 30.0, 29.0, 20.0, 21.0, 30.0, 30.0];
+const ltData = [0.5, 2.4, 2.9, 3.2, 4.0, 4.5, 4.5, 4.5, 4.1, 0.4, 0.4];
+const cfrData = [12.3, 11.6, 12.1, 13.1, 12.7, 12.1, 12.0, 10.5, 10.3, 26.3, 26.2];
+const mttrData = [6.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+const radarData = [100, 99.76190476190476, 41.77777777777778, 100];
+
+const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+const gridColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+const textColor = isDark ? '#c9d1d9' : '#24292f';
+Chart.defaults.color = textColor;
+
+new Chart(document.getElementById('trendChart'), {
+  type: 'line',
+  data: {
+    labels,
+    datasets: [
+      { label: 'DF (weekly)', data: dfData, borderColor: '#58a6ff', tension: 0.3 },
+      { label: 'Lead Time (h)', data: ltData, borderColor: '#d29922', tension: 0.3 },
+      { label: 'CFR (%)', data: cfrData, borderColor: '#f85149', tension: 0.3 },
+      { label: 'MTTR (h)', data: mttrData, borderColor: '#bc8cff', tension: 0.3 },
+    ]
+  },
+  options: { responsive: true, scales: { y: { grid: { color: gridColor } }, x: { grid: { color: gridColor } } } }
+});
+
+new Chart(document.getElementById('dfChart'), {
+  type: 'bar',
+  data: {
+    labels,
+    datasets: [{ label: 'Deployments / week', data: dfData, backgroundColor: '#58a6ff' }]
+  },
+  options: { responsive: true, scales: { y: { grid: { color: gridColor } }, x: { grid: { color: gridColor } } } }
+});
+
+new Chart(document.getElementById('radarChart'), {
+  type: 'radar',
+  data: {
+    labels: ['배포 빈도', '리드 타임', '변경 실패율', 'MTTR'],
+    datasets: [{
+      label: 'Current',
+      data: radarData,
+      backgroundColor: 'rgba(88,166,255,0.2)',
+      borderColor: '#58a6ff',
+      pointBackgroundColor: '#58a6ff'
+    }]
+  },
+  options: {
+    responsive: true,
+    scales: {
+      r: {
+        min: 0, max: 100,
+        grid: { color: gridColor },
+        angleLines: { color: gridColor },
+        pointLabels: { color: textColor }
+      }
+    }
+  }
+});
+</script>
+</body>
+</html>

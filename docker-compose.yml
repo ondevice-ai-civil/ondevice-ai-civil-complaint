@@ -21,7 +21,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       RELOAD: "false"
       API_KEY: ${API_KEY:-}
-      MODEL_PATH: ${MODEL_PATH:-umyunsang/GovOn-EXAONE-AWQ-v2}
+      MODEL_PATH: ${MODEL_PATH:-LGAI-EXAONE/EXAONE-4.0-32B-AWQ}
       TRUST_REMOTE_CODE: ${TRUST_REMOTE_CODE:-true}
       MODEL_DTYPE: ${MODEL_DTYPE:-half}
       ENFORCE_EAGER: ${ENFORCE_EAGER:-true}

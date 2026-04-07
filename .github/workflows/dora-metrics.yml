@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          ssh-key: ${{ secrets.DEPLOY_KEY }}
 
       - name: Collect DORA 4 Metrics
         id: dora
@@ -170,41 +170,54 @@ jobs:
           # -------------------------------------------------------
           mkdir -p metrics/dora
           FILENAME="metrics/dora/dora-$(date -u +%Y%m%d).json"
-          python3 -c "
-          import json, sys
+          LEAD_TIMES_COUNT=${#LEAD_TIMES[@]}
+          MTTR_TIMES_COUNT=${#MTTR_TIMES[@]}
+          DORA_NOW="$NOW" DORA_GRADE="$GRADE" DORA_FILENAME="$FILENAME" \
+          DORA_DEPLOYS_WEEK="$DEPLOYS_WEEK" DORA_DEPLOYS_MONTH="$DEPLOYS_MONTH" \
+          DORA_DEPLOYS_PER_WEEK="$DEPLOYS_PER_WEEK" \
+          DORA_AVG_LEAD_TIME="$AVG_LEAD_TIME" DORA_AVG_LEAD_HOURS="$AVG_LEAD_HOURS" \
+          DORA_LEAD_TIMES_COUNT="$LEAD_TIMES_COUNT" \
+          DORA_CFR="$CFR" DORA_FAILURE_COMMITS="$FAILURE_COMMITS" \
+          DORA_TOTAL_COMMITS="$TOTAL_COMMITS" \
+          DORA_AVG_MTTR="$AVG_MTTR" DORA_AVG_MTTR_HOURS="$AVG_MTTR_HOURS" \
+          DORA_MTTR_TIMES_COUNT="$MTTR_TIMES_COUNT" \
+          python3 - << 'PYEOF'
+          import json, os
+          e = os.environ
           data = {
-            'timestamp': '$NOW',
-            'period': 'last_30_days',
-            'grade': '$GRADE',
-            'primary_branch': 'main',
-            'main': {
-              'deployment_frequency': {
-                'weekly': $DEPLOYS_WEEK,
-                'monthly': $DEPLOYS_MONTH,
-                'avg_per_week': $DEPLOYS_PER_WEEK
+            "timestamp": e["DORA_NOW"],
+            "period": "last_30_days",
+            "grade": e["DORA_GRADE"],
+            "primary_branch": "main",
+            "main": {
+              "deployment_frequency": {
+                "weekly": int(e["DORA_DEPLOYS_WEEK"]),
+                "monthly": int(e["DORA_DEPLOYS_MONTH"]),
+                "avg_per_week": float(e["DORA_DEPLOYS_PER_WEEK"])
               },
-              'lead_time_for_changes': {
-                'method': 'first_commit_to_merge',
-                'avg_seconds': $AVG_LEAD_TIME,
-                'avg_hours': $AVG_LEAD_HOURS,
-                'sample_count': ${#LEAD_TIMES[@]}
+              "lead_time_for_changes": {
+                "method": "first_commit_to_merge",
+                "avg_seconds": int(e["DORA_AVG_LEAD_TIME"]),
+                "avg_hours": float(e["DORA_AVG_LEAD_HOURS"]),
+                "sample_count": int(e["DORA_LEAD_TIMES_COUNT"])
               },
-              'change_failure_rate': {
-                'rate_percent': $CFR,
-                'failure_commits': $FAILURE_COMMITS,
-                'total_commits': $TOTAL_COMMITS
+              "change_failure_rate": {
+                "rate_percent": float(e["DORA_CFR"]),
+                "failure_commits": int(e["DORA_FAILURE_COMMITS"]),
+                "total_commits": int(e["DORA_TOTAL_COMMITS"])
               },
-              'mean_time_to_recovery': {
-                'avg_seconds': $AVG_MTTR,
-                'avg_hours': $AVG_MTTR_HOURS,
-                'sample_count': ${#MTTR_TIMES[@]}
+              "mean_time_to_recovery": {
+                "avg_seconds": int(e["DORA_AVG_MTTR"]),
+                "avg_hours": float(e["DORA_AVG_MTTR_HOURS"]),
+                "sample_count": int(e["DORA_MTTR_TIMES_COUNT"])
               }
             }
           }
-          with open('$FILENAME', 'w') as f:
+          filename = e["DORA_FILENAME"]
+          with open(filename, "w") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-          print(f'JSON 저장: $FILENAME')
-          "
+          print(f"JSON 저장: {filename}")
+          PYEOF
 
           # GitHub Actions 출력
           {
@@ -228,7 +241,7 @@ jobs:
           MTTR: ${{ steps.dora.outputs.mttr_hours }}
           GRADE: ${{ steps.dora.outputs.grade }}
         run: |
-          cat >> $GITHUB_STEP_SUMMARY << EOF
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
           ## DORA Metrics Report
 
           ### main 브랜치
@@ -244,13 +257,71 @@ jobs:
           > 리드 타임 측정 방식: PR의 첫 커밋 시점 → 머지 시점 (실제 개발 시작 반영)
           EOF
 
-      - name: Commit metrics data to main
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install report dependencies
+        run: python3 -m pip install matplotlib
+
+      - name: Generate Weekly Report
+        run: python3 metrics/scripts/generate_report.py
+
+      - name: Update README DORA badges
+        env:
+          DEPLOYS_WEEK: ${{ steps.dora.outputs.deploys_week }}
+          LEAD_TIME: ${{ steps.dora.outputs.lead_time_hours }}
+          CFR: ${{ steps.dora.outputs.cfr }}
+          MTTR: ${{ steps.dora.outputs.mttr_hours }}
+          GRADE: ${{ steps.dora.outputs.grade }}
+        run: |
+          case "$GRADE" in
+            Elite)  COLOR="brightgreen" ;;
+            High)   COLOR="blue" ;;
+            Medium) COLOR="yellow" ;;
+            *)      COLOR="red" ;;
+          esac
+
+          LT_COLOR="brightgreen"
+          if [ "$(echo "$LEAD_TIME > 168" | bc)" -eq 1 ]; then LT_COLOR="red"
+          elif [ "$(echo "$LEAD_TIME > 24" | bc)" -eq 1 ]; then LT_COLOR="yellow"; fi
+
+          CFR_COLOR="brightgreen"
+          if [ "$(echo "$CFR > 45" | bc)" -eq 1 ]; then CFR_COLOR="red"
+          elif [ "$(echo "$CFR > 15" | bc)" -eq 1 ]; then CFR_COLOR="yellow"; fi
+
+          MTTR_COLOR="brightgreen"
+          if [ "$(echo "$MTTR > 24" | bc)" -eq 1 ]; then MTTR_COLOR="red"
+          elif [ "$(echo "$MTTR > 1" | bc)" -eq 1 ]; then MTTR_COLOR="yellow"; fi
+
+          encode() { python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$1"; }
+
+          BADGES="![DORA Grade](https://img.shields.io/badge/DORA-$(encode "$GRADE")-${COLOR})"
+          BADGES="${BADGES}\n![Deploy Freq](https://img.shields.io/badge/Deploy_Freq-$(encode "${DEPLOYS_WEEK}/week")-blue)"
+          BADGES="${BADGES}\n![Lead Time](https://img.shields.io/badge/Lead_Time-$(encode "${LEAD_TIME}h")-${LT_COLOR})"
+          BADGES="${BADGES}\n![CFR](https://img.shields.io/badge/CFR-$(encode "${CFR}%25")-${CFR_COLOR})"
+          BADGES="${BADGES}\n![MTTR](https://img.shields.io/badge/MTTR-$(encode "${MTTR}h")-${MTTR_COLOR})"
+
+          DORA_BADGES="$BADGES" python3 - << 'PYEOF'
+          import re, os
+          with open("README.md", "r") as f:
+              content = f.read()
+          badges = os.environ["DORA_BADGES"]
+          pattern = r"<!-- DORA-BADGES:START -->.*?<!-- DORA-BADGES:END -->"
+          replacement = f"<!-- DORA-BADGES:START -->\n{badges}\n<!-- DORA-BADGES:END -->"
+          content = re.sub(pattern, replacement, content, flags=re.DOTALL)
+          with open("README.md", "w") as f:
+              f.write(content)
+          print("README DORA badges updated")
+          PYEOF
+
+      - name: Commit metrics, reports and README to main
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          git add metrics/dora/
-          git diff --staged --quiet || git commit -m "chore: DORA 메트릭 수집 $(date -u +%Y-%m-%d)"
+          git add metrics/dora/ metrics/reports/ metrics/grafana-cloud/ README.md
+          git diff --staged --quiet || git commit -m "chore: DORA 메트릭 수집, 보고서 생성 및 배지 업데이트 $(date -u +%Y-%m-%d) [skip ci]"
           git push origin main || echo "No changes to push"
 
       - name: Push to Grafana Cloud
@@ -276,26 +347,36 @@ jobs:
           esac
 
           # Prometheus staleness 방지: 과거 7일간 5분 간격으로 동일 값 backfill
-          python3 << PYEOF
-          import subprocess, time, tempfile, os
+          GRAFANA_INFLUX_URL="$INFLUX_URL" \
+          GRAFANA_USER="$GRAFANA_CLOUD_USER" \
+          GRAFANA_TOKEN="$GRAFANA_CLOUD_API_KEY" \
+          DORA_DEPLOYS_WEEK="$DEPLOYS_WEEK" \
+          DORA_DEPLOYS_MONTH="$DEPLOYS_MONTH" \
+          DORA_LEAD_TIME="$LEAD_TIME" \
+          DORA_CFR="$CFR" \
+          DORA_MTTR="$MTTR" \
+          DORA_GRADE_NUM="$GRADE_NUM" \
+          python3 - << 'PYEOF'
+          import subprocess, time, os, base64
 
-          NOW = int(time.time())
-          INTERVAL = 300  # 5분
-          DURATION = 7 * 24 * 3600  # 7일
-          START = NOW - DURATION
-
+          e = os.environ
           METRICS = {
-              "dora_deployment_frequency,project=govon,branch=main,period=weekly": ${DEPLOYS_WEEK},
-              "dora_deployment_frequency,project=govon,branch=main,period=monthly": ${DEPLOYS_MONTH},
-              "dora_lead_time_hours,project=govon,branch=main": ${LEAD_TIME},
-              "dora_change_failure_rate,project=govon,branch=main": ${CFR},
-              "dora_mttr_hours,project=govon,branch=main": ${MTTR},
-              "dora_grade,project=govon,branch=main": ${GRADE_NUM},
+              "dora_deployment_frequency,project=govon,branch=main,period=weekly": float(e["DORA_DEPLOYS_WEEK"]),
+              "dora_deployment_frequency,project=govon,branch=main,period=monthly": float(e["DORA_DEPLOYS_MONTH"]),
+              "dora_lead_time_hours,project=govon,branch=main": float(e["DORA_LEAD_TIME"]),
+              "dora_change_failure_rate,project=govon,branch=main": float(e["DORA_CFR"]),
+              "dora_mttr_hours,project=govon,branch=main": float(e["DORA_MTTR"]),
+              "dora_grade,project=govon,branch=main": float(e["DORA_GRADE_NUM"]),
           }
 
-          URL = "${INFLUX_URL}"
-          AUTH = "${GRAFANA_CLOUD_USER}:${GRAFANA_CLOUD_API_KEY}"
+          URL = e["GRAFANA_INFLUX_URL"]
+          token = base64.b64encode(f"{e['GRAFANA_USER']}:{e['GRAFANA_TOKEN']}".encode()).decode()
+          auth_header = f"Basic {token}"
 
+          NOW = int(time.time())
+          INTERVAL = 300
+          DURATION = 7 * 24 * 3600
+          START = NOW - DURATION
           POINTS = DURATION // INTERVAL
           print(f"Pushing {POINTS} data points (7d backfill, 5min intervals) for main...")
 
@@ -314,7 +395,8 @@ jobs:
                       f.write("\n".join(lines))
                   subprocess.run(
                       ["curl", "-s", "-o", "/dev/null",
-                       "-X", "POST", URL, "-u", AUTH,
+                       "-X", "POST", URL,
+                       "-H", f"Authorization: {auth_header}",
                        "-H", "Content-Type: text/plain",
                        "--data-binary", f"@{tmp}"],
                       capture_output=True
@@ -328,7 +410,8 @@ jobs:
                   f.write("\n".join(lines))
               result = subprocess.run(
                   ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-                   "-X", "POST", URL, "-u", AUTH,
+                   "-X", "POST", URL,
+                   "-H", f"Authorization: {auth_header}",
                    "-H", "Content-Type: text/plain",
                    "--data-binary", f"@{tmp}"],
                   capture_output=True, text=True
@@ -345,5 +428,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: dora-metrics-${{ github.run_number }}
-          path: metrics/dora/
+          path: |
+            metrics/dora/
+            metrics/reports/
           retention-days: 90

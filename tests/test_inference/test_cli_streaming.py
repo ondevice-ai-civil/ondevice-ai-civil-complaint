@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import json
 import sys
-from typing import Any, Dict, Generator
-from unittest.mock import MagicMock, patch
+from typing import Any, AsyncGenerator
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -39,8 +39,10 @@ sys.modules.setdefault("transformers.utils.generic", MagicMock())
 if "torch" not in sys.modules:
     sys.modules["torch"] = MagicMock()
 
-# langchain_core / langgraph mocks (may not be installed in dev environment)
-if "langchain_core" not in sys.modules:
+# langchain_core / langgraph mocks (fallback only when the package is unavailable)
+try:
+    import langchain_core.messages  # noqa: F401
+except ImportError:
     _lc_mock = MagicMock()
 
     class _HumanMessage:
@@ -51,7 +53,9 @@ if "langchain_core" not in sys.modules:
     sys.modules["langchain_core"] = _lc_mock
     sys.modules["langchain_core.messages"] = _lc_mock.messages
 
-if "langgraph" not in sys.modules:
+try:
+    import langgraph  # noqa: F401
+except ImportError:
     _lg_mock = MagicMock()
     sys.modules["langgraph"] = _lg_mock
     sys.modules["langgraph.graph"] = _lg_mock
@@ -78,7 +82,7 @@ test_client = TestClient(app)
 
 
 def _make_graph_stream_events(include_approval: bool = False):
-    """graph.stream() 이 반환할 fake chunk 목록을 반환한다.
+    """graph.astream() 이 반환할 fake chunk 목록을 반환한다.
 
     각 chunk는 {node_name: state_delta} 형태이다.
     """
@@ -94,6 +98,18 @@ def _make_graph_stream_events(include_approval: bool = False):
         chunks.append({"synthesis": {"final_text": "테스트 답변"}})
         chunks.append({"persist": {}})
     return chunks
+
+
+async def _make_async_graph_stream(
+    include_approval: bool = False,
+    exc: Exception | None = None,
+) -> AsyncGenerator[dict[str, dict[str, Any]], None]:
+    """graph.astream()용 비동기 이벤트 스트림을 생성한다."""
+    if exc is not None:
+        raise exc
+
+    for chunk in _make_graph_stream_events(include_approval=include_approval):
+        yield chunk
 
 
 def _build_sse_response(events: list[dict]) -> bytes:
@@ -121,8 +137,8 @@ class TestV2AgentStreamEndpoint:
     def test_stream_yields_node_events_in_order(self):
         """graph가 초기화된 경우 노드별 이벤트가 SSE로 전송된다."""
         mock_graph = MagicMock()
-        mock_graph.stream.return_value = iter(_make_graph_stream_events(include_approval=False))
-        mock_graph.get_state.return_value = MagicMock(next=[], tasks=[], values={})
+        mock_graph.astream.return_value = _make_async_graph_stream(include_approval=False)
+        mock_graph.aget_state = AsyncMock(return_value=MagicMock(next=[], tasks=[], values={}))
         manager.graph = mock_graph
 
         response = test_client.post(
@@ -143,7 +159,7 @@ class TestV2AgentStreamEndpoint:
     def test_stream_stops_at_approval_wait(self):
         """approval_wait 노드 도달 시 awaiting_approval 이벤트를 반환하고 중단된다."""
         mock_graph = MagicMock()
-        mock_graph.stream.return_value = iter(_make_graph_stream_events(include_approval=True))
+        mock_graph.astream.return_value = _make_async_graph_stream(include_approval=True)
 
         # approval_wait interrupt 상태 모킹
         fake_interrupt = MagicMock()
@@ -157,7 +173,7 @@ class TestV2AgentStreamEndpoint:
         fake_state = MagicMock()
         fake_state.next = ["approval_wait"]
         fake_state.tasks = [fake_task]
-        mock_graph.get_state.return_value = fake_state
+        mock_graph.aget_state = AsyncMock(return_value=fake_state)
         manager.graph = mock_graph
 
         response = test_client.post(
@@ -190,9 +206,11 @@ class TestV2AgentStreamEndpoint:
         assert any(e.get("node") == "error" for e in events), f"error 이벤트 없음: {events}"
 
     def test_stream_handles_graph_exception(self):
-        """graph.stream() 예외 시 error 이벤트를 반환한다."""
+        """graph.astream() 예외 시 error 이벤트를 반환한다."""
         mock_graph = MagicMock()
-        mock_graph.stream.side_effect = RuntimeError("graph 오류 시뮬레이션")
+        mock_graph.astream.return_value = _make_async_graph_stream(
+            exc=RuntimeError("graph 오류 시뮬레이션")
+        )
         manager.graph = mock_graph
 
         response = test_client.post(
@@ -373,6 +391,38 @@ class TestStreamingStatusDisplay:
         out = capsys.readouterr().out
         assert "planner 처리 중" in out
         assert "synthesis 처리 중" in out
+
+    def test_streaming_status_display_falls_back_on_narrow_terminal(self, capsys):
+        """좁은 터미널에서는 rich가 있어도 plain mode로 전환된다."""
+        from src.cli import renderer
+
+        mock_console = MagicMock()
+        with patch.object(renderer, "_RICH_AVAILABLE", True):
+            with patch.object(renderer, "_console", mock_console):
+                with patch.object(renderer, "get_terminal_columns", return_value=30):
+                    with renderer.StreamingStatusDisplay("초기") as display:
+                        display.update("planner 처리 중")
+
+        out = capsys.readouterr().out
+        assert "plain mode" in out
+        assert "planner 처리 중" in out
+        mock_console.status.assert_not_called()
+
+    def test_narrow_terminal_warning_is_emitted_once_per_narrow_state(self, capsys):
+        """좁은 상태가 지속되는 동안 경고는 한 번만 출력되고, wide 후 다시 좁아지면 재출력된다."""
+        from src.cli import renderer
+
+        with patch.object(renderer, "_RICH_AVAILABLE", False):
+            with patch.object(renderer, "get_terminal_columns", side_effect=[30, 35, 80, 30]):
+                renderer.render_status("첫 상태")
+                renderer.render_status("둘째 상태")
+                renderer.render_status("셋째 상태")
+                renderer.render_status("넷째 상태")
+
+        out = capsys.readouterr().out
+        assert out.count("plain mode") == 2
+        assert "첫 상태" in out
+        assert "넷째 상태" in out
 
 
 # ---------------------------------------------------------------------------

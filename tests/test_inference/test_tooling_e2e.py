@@ -39,6 +39,8 @@ from src.inference.session_context import SessionStore
 
 os.environ.setdefault("SKIP_MODEL_LOAD", "true")
 
+pytestmark = pytest.mark.asyncio
+
 
 # ---------------------------------------------------------------------------
 # Helper: registry factory
@@ -161,7 +163,7 @@ def make_tooling_graph(session_store):
 # ---------------------------------------------------------------------------
 
 
-def _run_to_interrupt(graph, session_id: str, thread_id: str, query: str, request_id: str):
+async def _run_to_interrupt(graph, session_id: str, thread_id: str, query: str, request_id: str):
     """graph를 approval_wait interrupt까지 실행한다."""
     config = {"configurable": {"thread_id": thread_id}}
     initial = {
@@ -169,13 +171,13 @@ def _run_to_interrupt(graph, session_id: str, thread_id: str, query: str, reques
         "request_id": request_id,
         "messages": [HumanMessage(content=query)],
     }
-    graph.invoke(initial, config=config)
+    await graph.ainvoke(initial, config=config)
     return config
 
 
-def _approve(graph, config):
+async def _approve(graph, config):
     """승인 Command로 graph를 재개한다."""
-    return graph.invoke(Command(resume={"approved": True}), config=config)
+    return await graph.ainvoke(Command(resume={"approved": True}), config=config)
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +192,7 @@ class TestDraftResponsePipeline:
     인스턴스를 사용하여 capability->adapter->node 파이프라인을 검증한다.
     """
 
-    def test_draft_response_full_pipeline(self, make_tooling_graph):
+    async def test_draft_response_full_pipeline(self, make_tooling_graph):
         """rag+api+draft 3-tool 콤보: draft 텍스트가 final_text로 우선 선택된다.
 
         rag는 결과 반환, api_action=None(빈 결과), draft는 텍스트 반환.
@@ -209,14 +211,14 @@ class TestDraftResponsePipeline:
         )
         graph = make_tooling_graph(planner, draft_fn=draft_fn)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id="tooling-draft-full-sess-1",
             thread_id="tooling-draft-full-1",
             query="도로 파손 민원 답변 초안 작성해줘",
             request_id="tooling-draft-full-req-1",
         )
-        result = _approve(graph, config)
+        result = await _approve(graph, config)
 
         final_text = result.get("final_text", "")
         tool_results = result.get("tool_results", {})
@@ -230,7 +232,7 @@ class TestDraftResponsePipeline:
             "draft_civil_response" in tool_results
         ), "tool_results에 draft_civil_response가 있어야 합니다"
 
-    def test_draft_response_synthesis_prioritizes_draft_text(self, make_tooling_graph):
+    async def test_draft_response_synthesis_prioritizes_draft_text(self, make_tooling_graph):
         """draft_civil_response 텍스트가 rag 결과보다 우선 선택된다.
 
         synthesis_node의 _extract_final_text 우선순위 검증:
@@ -264,14 +266,14 @@ class TestDraftResponsePipeline:
         )
         graph = make_tooling_graph(planner, rag_fn=rag_fn, draft_fn=draft_fn)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id="tooling-draft-priority-sess-1",
             thread_id="tooling-draft-priority-1",
             query="답변 초안 작성해줘",
             request_id="tooling-draft-priority-req-1",
         )
-        result = _approve(graph, config)
+        result = await _approve(graph, config)
 
         final_text = result.get("final_text", "")
         assert (
@@ -282,7 +284,7 @@ class TestDraftResponsePipeline:
             "[로컬 문서 근거]" not in final_text
         ), "draft가 성공했을 때 rag 포맷 출력이 사용되면 안 됩니다"
 
-    def test_lookup_stats_api_only(self, make_tooling_graph):
+    async def test_lookup_stats_api_only(self, make_tooling_graph):
         """api_lookup 단독 실행: tool_results에 api_lookup만 존재한다.
 
         api_action=None이므로 ApiLookupCapability는 빈 결과를 반환한다.
@@ -297,14 +299,14 @@ class TestDraftResponsePipeline:
         # api_action=None -> ApiLookupCapability가 빈 결과 반환
         graph = make_tooling_graph(planner, api_action=None)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id="tooling-lookup-stats-sess-1",
             thread_id="tooling-lookup-stats-1",
             query="유사 민원 사례 조회해줘",
             request_id="tooling-lookup-stats-req-1",
         )
-        result = _approve(graph, config)
+        result = await _approve(graph, config)
 
         tool_results = result.get("tool_results", {})
         assert "api_lookup" in tool_results, "tool_results에 api_lookup이 있어야 합니다"
@@ -334,7 +336,7 @@ class TestEvidenceAugmentationPipeline:
     실제 capability 인스턴스를 사용하여 rag+api+append_evidence 체인을 검증한다.
     """
 
-    def test_append_evidence_merges_rag_and_api(self, make_tooling_graph):
+    async def test_append_evidence_merges_rag_and_api(self, make_tooling_graph):
         """3-tool 콤보: rag 결과와 api context가 append_evidence execute_fn에 전달된다.
 
         append_evidence의 execute_fn이 병합된 텍스트를 반환하고,
@@ -368,21 +370,21 @@ class TestEvidenceAugmentationPipeline:
         )
         graph = make_tooling_graph(planner, rag_fn=rag_fn, evidence_fn=evidence_fn)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id="tooling-evidence-merge-sess-1",
             thread_id="tooling-evidence-merge-1",
             query="근거를 보강해줘",
             request_id="tooling-evidence-merge-req-1",
         )
-        result = _approve(graph, config)
+        result = await _approve(graph, config)
 
         final_text = result.get("final_text", "")
         assert (
             evidence_text in final_text
         ), f"final_text에 append_evidence 텍스트가 포함되어야 합니다. 실제: {final_text!r}"
 
-    def test_evidence_context_chaining(self, make_tooling_graph):
+    async def test_evidence_context_chaining(self, make_tooling_graph):
         """append_evidence execute_fn 호출 시 context에 rag_search/api_lookup 결과가 포함된다.
 
         tool_execute_node는 도구를 순차 실행하며 누적 컨텍스트에 이전 결과를 반영한다.
@@ -418,14 +420,14 @@ class TestEvidenceAugmentationPipeline:
         )
         graph = make_tooling_graph(planner, rag_fn=rag_fn, evidence_fn=evidence_fn)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id="tooling-evidence-chain-sess-1",
             thread_id="tooling-evidence-chain-1",
             query="근거를 보강해줘",
             request_id="tooling-evidence-chain-req-1",
         )
-        _approve(graph, config)
+        await _approve(graph, config)
 
         # append_evidence execute_fn이 호출될 때 rag_search 결과가 누적 컨텍스트에 있어야 한다
         assert (
@@ -441,7 +443,7 @@ class TestEvidenceAugmentationPipeline:
             received_context["api_lookup"], dict
         ), "api_lookup 결과는 dict이어야 합니다"
 
-    def test_evidence_with_empty_rag(self, make_tooling_graph):
+    async def test_evidence_with_empty_rag(self, make_tooling_graph):
         """rag 결과가 없을 때도 append_evidence 파이프라인이 완료된다.
 
         rag가 빈 결과를 반환해도 api_lookup과 append_evidence는 실행되고
@@ -464,14 +466,14 @@ class TestEvidenceAugmentationPipeline:
         )
         graph = make_tooling_graph(planner, rag_fn=rag_fn_empty, evidence_fn=evidence_fn)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id="tooling-evidence-empty-rag-sess-1",
             thread_id="tooling-evidence-empty-rag-1",
             query="근거를 보강해줘",
             request_id="tooling-evidence-empty-rag-req-1",
         )
-        result = _approve(graph, config)
+        result = await _approve(graph, config)
 
         # 파이프라인이 정상 완료되어야 한다
         assert result.get("approval_status") == ApprovalStatus.APPROVED.value
@@ -495,7 +497,7 @@ class TestPartialFailureE2E:
     일부 tool이 실패해도 나머지 tool이 계속 실행되는 resilience를 검증한다.
     """
 
-    def test_rag_timeout_other_tools_continue(self, make_tooling_graph):
+    async def test_rag_timeout_other_tools_continue(self, make_tooling_graph):
         """rag execute_fn이 타임아웃되어도 draft가 실행되고 final_text가 생성된다.
 
         RagSearchCapability는 execute_fn에서 asyncio.TimeoutError가 발생하면
@@ -519,14 +521,14 @@ class TestPartialFailureE2E:
         )
         graph = make_tooling_graph(planner, rag_fn=rag_fn_timeout, draft_fn=draft_fn)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id="tooling-rag-timeout-sess-1",
             thread_id="tooling-rag-timeout-1",
             query="답변 초안 작성해줘",
             request_id="tooling-rag-timeout-req-1",
         )
-        result = _approve(graph, config)
+        result = await _approve(graph, config)
 
         tool_results = result.get("tool_results", {})
 
@@ -545,7 +547,7 @@ class TestPartialFailureE2E:
             "final_text", ""
         ), "draft 텍스트가 final_text에 포함되어야 합니다"
 
-    def test_api_failure_draft_still_runs(self, session_store):
+    async def test_api_failure_draft_still_runs(self, session_store):
         """api_lookup이 예외를 발생시켜도 draft_civil_response가 실행된다.
 
         RegistryExecutorAdapter의 예외 처리가 api 실패를 잡고
@@ -585,14 +587,14 @@ class TestPartialFailureE2E:
             checkpointer=MemorySaver(),
         )
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id="tooling-api-fail-sess-1",
             thread_id="tooling-api-fail-1",
             query="답변 초안 작성해줘",
             request_id="tooling-api-fail-req-1",
         )
-        result = _approve(graph, config)
+        result = await _approve(graph, config)
 
         tool_results = result.get("tool_results", {})
         assert "api_lookup" in tool_results, "api_lookup이 tool_results에 있어야 합니다"
@@ -606,7 +608,7 @@ class TestPartialFailureE2E:
             "final_text", ""
         ), "draft 텍스트가 final_text에 포함되어야 합니다"
 
-    def test_draft_exception_caught_by_adapter(self, make_tooling_graph):
+    async def test_draft_exception_caught_by_adapter(self, make_tooling_graph):
         """draft execute_fn이 RuntimeError를 발생시키면 어댑터가 잡고 success=False를 반환한다.
 
         DraftCivilResponseCapability는 execute() 내부 try/except 없이
@@ -626,14 +628,14 @@ class TestPartialFailureE2E:
         )
         graph = make_tooling_graph(planner, draft_fn=draft_fn_raises)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id="tooling-draft-except-sess-1",
             thread_id="tooling-draft-except-1",
             query="답변 초안 작성해줘",
             request_id="tooling-draft-except-req-1",
         )
-        result = _approve(graph, config)
+        result = await _approve(graph, config)
 
         tool_results = result.get("tool_results", {})
         assert (
@@ -645,7 +647,7 @@ class TestPartialFailureE2E:
         ), "draft 예외 시 tool_results['draft_civil_response']['success']==False여야 합니다"
         assert draft_result.get("error"), "draft 예외 시 error 필드가 있어야 합니다"
 
-    def test_all_tools_fail_synthesis_fallback(self, make_tooling_graph):
+    async def test_all_tools_fail_synthesis_fallback(self, make_tooling_graph):
         """모든 tool이 실패하면 final_text가 fallback 메시지가 된다.
 
         RagSearchCapability는 execute() 내부에 자체 try/except가 있어서
@@ -678,14 +680,14 @@ class TestPartialFailureE2E:
             planner, rag_fn=rag_fn_fail, api_action=None, draft_fn=draft_fn_fail
         )
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id="tooling-all-fail-sess-1",
             thread_id="tooling-all-fail-1",
             query="답변 초안 작성해줘",
             request_id="tooling-all-fail-req-1",
         )
-        result = _approve(graph, config)
+        result = await _approve(graph, config)
 
         # rag와 draft가 실패해야 한다
         tool_results = result.get("tool_results", {})
@@ -717,7 +719,7 @@ class TestEmptyResultScenarios:
     synthesis의 fallback 로직을 검증한다.
     """
 
-    def test_rag_no_match_empty_reason(self, make_tooling_graph):
+    async def test_rag_no_match_empty_reason(self, make_tooling_graph):
         """rag execute_fn이 빈 결과를 반환하면 LookupResult.empty_reason='no_match'가 된다.
 
         RagSearchCapability는 results가 없으면 success=True, empty_reason='no_match'를 반환한다.
@@ -735,14 +737,14 @@ class TestEmptyResultScenarios:
         )
         graph = make_tooling_graph(planner, rag_fn=rag_fn_empty)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id="tooling-rag-no-match-sess-1",
             thread_id="tooling-rag-no-match-1",
             query="법령 검색해줘",
             request_id="tooling-rag-no-match-req-1",
         )
-        result = _approve(graph, config)
+        result = await _approve(graph, config)
 
         tool_results = result.get("tool_results", {})
         assert "rag_search" in tool_results, "tool_results에 rag_search가 있어야 합니다"
@@ -755,7 +757,7 @@ class TestEmptyResultScenarios:
             rag_result.get("empty_reason") == "no_match"
         ), f"empty_reason이 'no_match'여야 합니다. 실제: {rag_result.get('empty_reason')!r}"
 
-    def test_rag_low_confidence_includes_results(self, make_tooling_graph):
+    async def test_rag_low_confidence_includes_results(self, make_tooling_graph):
         """모든 결과의 score가 0.3 미만이면 empty_reason='low_confidence'지만 results는 있다.
 
         RagSearchCapability는 low_confidence 케이스에서도 results를 반환한다.
@@ -779,14 +781,14 @@ class TestEmptyResultScenarios:
         )
         graph = make_tooling_graph(planner, rag_fn=rag_fn_low_conf)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id="tooling-rag-low-conf-sess-1",
             thread_id="tooling-rag-low-conf-1",
             query="법령 검색해줘",
             request_id="tooling-rag-low-conf-req-1",
         )
-        result = _approve(graph, config)
+        result = await _approve(graph, config)
 
         tool_results = result.get("tool_results", {})
         rag_result = tool_results.get("rag_search", {})
@@ -800,7 +802,7 @@ class TestEmptyResultScenarios:
             len(rag_result.get("results", [])) > 0
         ), "low_confidence일 때도 results가 반환되어야 합니다"
 
-    def test_synthesis_with_only_rag_results(self, make_tooling_graph):
+    async def test_synthesis_with_only_rag_results(self, make_tooling_graph):
         """rag만 성공하고 draft가 실패할 때 final_text가 rag 포맷 출력을 포함한다.
 
         _extract_final_text의 legacy fallback:
@@ -833,14 +835,14 @@ class TestEmptyResultScenarios:
         )
         graph = make_tooling_graph(planner, rag_fn=rag_fn, draft_fn=draft_fn_fail)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id="tooling-only-rag-sess-1",
             thread_id="tooling-only-rag-1",
             query="법령 찾아줘",
             request_id="tooling-only-rag-req-1",
         )
-        result = _approve(graph, config)
+        result = await _approve(graph, config)
 
         tool_results = result.get("tool_results", {})
         rag_result = tool_results.get("rag_search", {})
@@ -871,7 +873,7 @@ class TestPersistToolRunAccuracy:
     실제 capability 실행 결과가 SessionStore에 정확히 기록되는지 검증한다.
     """
 
-    def test_partial_failure_tool_runs_recorded(self, make_tooling_graph, session_store):
+    async def test_partial_failure_tool_runs_recorded(self, make_tooling_graph, session_store):
         """일부 tool 실패 시 실패/성공 상태가 tool_runs에 정확히 기록된다.
 
         실패 tool: success=False + error 존재
@@ -892,14 +894,14 @@ class TestPersistToolRunAccuracy:
         )
         graph = make_tooling_graph(planner, draft_fn=draft_fn_fail)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id=session_id,
             thread_id="tooling-persist-partial-1",
             query="답변 초안 작성해줘",
             request_id=request_id,
         )
-        _approve(graph, config)
+        await _approve(graph, config)
 
         session = session_store.get_or_create(session_id)
         tool_runs = session.recent_tool_runs
@@ -923,7 +925,7 @@ class TestPersistToolRunAccuracy:
         ), "draft_civil_response tool_run.success가 False여야 합니다"
         assert draft_run.error, "draft_civil_response tool_run.error가 있어야 합니다"
 
-    def test_total_latency_ms_accumulated(self, make_tooling_graph, session_store):
+    async def test_total_latency_ms_accumulated(self, make_tooling_graph, session_store):
         """전체 실행 후 graph_run.total_latency_ms가 0보다 커야 한다.
 
         persist_node는 tool_results의 latency_ms 합계를 total_latency_ms로 기록한다.
@@ -939,14 +941,14 @@ class TestPersistToolRunAccuracy:
         )
         graph = make_tooling_graph(planner)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id=session_id,
             thread_id="tooling-persist-latency-1",
             query="답변 초안 작성해줘",
             request_id=request_id,
         )
-        _approve(graph, config)
+        await _approve(graph, config)
 
         session = session_store.get_or_create(session_id)
         graph_runs = session.recent_graph_runs
@@ -965,7 +967,7 @@ class TestPersistToolRunAccuracy:
                 run.total_latency_ms > 0
             ), "tool이 실행되었으므로 total_latency_ms > 0이어야 합니다"
 
-    def test_executed_capabilities_matches_actual(self, make_tooling_graph, session_store):
+    async def test_executed_capabilities_matches_actual(self, make_tooling_graph, session_store):
         """graph_run.executed_capabilities에는 실제로 실행된 tool만 포함된다.
 
         planned_tools가 3개여도 그 중 일부가 실패하면
@@ -983,14 +985,14 @@ class TestPersistToolRunAccuracy:
         )
         graph = make_tooling_graph(planner)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id=session_id,
             thread_id="tooling-persist-caps-1",
             query="답변 초안 작성해줘",
             request_id=request_id,
         )
-        result = _approve(graph, config)
+        result = await _approve(graph, config)
 
         session = session_store.get_or_create(session_id)
         graph_runs = session.recent_graph_runs

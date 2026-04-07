@@ -126,8 +126,17 @@ class TestMvpCapabilityIds:
     """MVP capability stable identifier 검증."""
 
     def test_expected_ids(self):
-        """MVP capability 4개가 정확히 등록되어 있다."""
-        expected = {"rag_search", "api_lookup", "draft_civil_response", "append_evidence"}
+        """MVP capability 8개가 정확히 등록되어 있다."""
+        expected = {
+            "rag_search",
+            "api_lookup",
+            "draft_civil_response",
+            "append_evidence",
+            "issue_detector",
+            "stats_lookup",
+            "keyword_analyzer",
+            "demographics_lookup",
+        }
         assert MVP_CAPABILITY_IDS == expected
 
     def test_get_mvp_capability_ids_returns_same(self):
@@ -193,7 +202,7 @@ class TestGetAllMetadata:
     def test_returns_list_of_dicts(self, registry):
         result = get_all_metadata(registry)
         assert isinstance(result, list)
-        assert len(result) == 4
+        assert len(result) == 8
 
     def test_each_metadata_has_required_fields(self, registry):
         """각 metadata dict에 필수 필드가 포함되어 있다."""
@@ -251,7 +260,7 @@ class TestRegistryExecutorAdapterIntegration:
         """planner용 tool descriptions 메서드가 올바른 목록을 반환한다."""
         adapter = self._make_adapter(registry)
         descriptions = adapter.get_tool_descriptions_for_planner()
-        assert len(descriptions) == 4
+        assert len(descriptions) == 8
         names = {d["name"] for d in descriptions}
         assert names == MVP_CAPABILITY_IDS
 

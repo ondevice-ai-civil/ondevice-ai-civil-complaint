@@ -13,10 +13,8 @@ shell과 LangGraph runtime이 같은 의미로 동작하는지 검증한다.
 
 from __future__ import annotations
 
-import asyncio
 import os
 import tempfile
-import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -84,6 +82,8 @@ def mock_manager():
     """api_server.manager를 mock으로 교체하는 fixture."""
     mgr = MagicMock()
     mgr.graph = MagicMock()
+    mgr.graph.ainvoke = AsyncMock()
+    mgr.graph.aget_state = AsyncMock()
     mgr.session_store = MagicMock()
 
     session_mock = MagicMock()
@@ -117,7 +117,7 @@ async def test_approve_rejected_returns_rejected_status(patched_app):
     mock_graph = patched_app.graph
 
     # invoke 결과: 거절 후 완료
-    mock_graph.invoke.return_value = {
+    mock_graph.ainvoke.return_value = {
         "session_id": "sess-1",
         "request_id": "req-1",
         "final_text": "",
@@ -125,8 +125,7 @@ async def test_approve_rejected_returns_rejected_status(patched_app):
         "approval_status": "rejected",
     }
 
-    with patch("asyncio.to_thread", new=AsyncMock(side_effect=_fake_to_thread)):
-        resp = await v2_agent_approve(thread_id="t-1", approved=False, _=None)
+    resp = await v2_agent_approve(thread_id="t-1", approved=False, _=None)
 
     assert resp["status"] == "rejected"
     assert resp["thread_id"] == "t-1"
@@ -140,7 +139,7 @@ async def test_approve_approved_returns_completed_status(patched_app):
 
     mock_graph = patched_app.graph
 
-    mock_graph.invoke.return_value = {
+    mock_graph.ainvoke.return_value = {
         "session_id": "sess-1",
         "request_id": "req-1",
         "final_text": "결과 텍스트",
@@ -148,8 +147,7 @@ async def test_approve_approved_returns_completed_status(patched_app):
         "approval_status": "approved",
     }
 
-    with patch("asyncio.to_thread", new=AsyncMock(side_effect=_fake_to_thread)):
-        resp = await v2_agent_approve(thread_id="t-1", approved=True, _=None)
+    resp = await v2_agent_approve(thread_id="t-1", approved=True, _=None)
 
     assert resp["status"] == "completed"
     assert resp["thread_id"] == "t-1"
@@ -165,10 +163,10 @@ async def test_cancel_sets_interrupted_status(patched_app):
     mock_graph = patched_app.graph
 
     # get_state: interrupt 대기 중
-    mock_graph.get_state.return_value = _make_graph_state_interrupted("sess-1", "req-1")
+    mock_graph.aget_state.return_value = _make_graph_state_interrupted("sess-1", "req-1")
 
     # invoke(Command(resume=...)): cancel 후 완료
-    mock_graph.invoke.return_value = {
+    mock_graph.ainvoke.return_value = {
         "session_id": "sess-1",
         "request_id": "req-1",
         "final_text": "",
@@ -176,8 +174,7 @@ async def test_cancel_sets_interrupted_status(patched_app):
         "interrupt_reason": "user_cancel",
     }
 
-    with patch("asyncio.to_thread", new=AsyncMock(side_effect=_fake_to_thread)):
-        resp = await v2_agent_cancel(thread_id="t-1", _=None)
+    resp = await v2_agent_cancel(thread_id="t-1", _=None)
 
     assert resp["status"] == "cancelled"
     assert resp["thread_id"] == "t-1"
@@ -193,13 +190,12 @@ async def test_run_response_includes_session_id(patched_app):
     mock_graph = patched_app.graph
 
     # invoke: interrupt 대기 상태
-    mock_graph.invoke.return_value = None
-    mock_graph.get_state.return_value = _make_graph_state_interrupted("sess-run", "req-run")
+    mock_graph.ainvoke.return_value = None
+    mock_graph.aget_state.return_value = _make_graph_state_interrupted("sess-run", "req-run")
 
     request = AgentRunRequest(query="테스트 질의", session_id="sess-run")
 
-    with patch("asyncio.to_thread", new=AsyncMock(side_effect=_fake_to_thread)):
-        resp = await v2_agent_run(request=request, _=None)
+    resp = await v2_agent_run(request=request, _=None)
 
     assert resp["session_id"] == "sess-run"
     assert resp["status"] == "awaiting_approval"
@@ -213,7 +209,7 @@ async def test_approve_response_includes_session_id(patched_app):
 
     mock_graph = patched_app.graph
 
-    mock_graph.invoke.return_value = {
+    mock_graph.ainvoke.return_value = {
         "session_id": "sess-approve",
         "request_id": "req-approve",
         "final_text": "결과",
@@ -221,8 +217,7 @@ async def test_approve_response_includes_session_id(patched_app):
         "approval_status": "approved",
     }
 
-    with patch("asyncio.to_thread", new=AsyncMock(side_effect=_fake_to_thread)):
-        resp = await v2_agent_approve(thread_id="t-2", approved=True, _=None)
+    resp = await v2_agent_approve(thread_id="t-2", approved=True, _=None)
 
     assert resp["session_id"] == "sess-approve"
     assert resp["graph_run_id"] == "req-approve"
@@ -235,12 +230,11 @@ async def test_run_error_returns_error_status(patched_app):
     from src.inference.schemas import AgentRunRequest
 
     mock_graph = patched_app.graph
-    mock_graph.invoke.side_effect = RuntimeError("테스트 오류")
+    mock_graph.ainvoke.side_effect = RuntimeError("테스트 오류")
 
     request = AgentRunRequest(query="오류 질의", session_id="sess-err")
 
-    with patch("asyncio.to_thread", new=AsyncMock(side_effect=_fake_to_thread)):
-        resp = await v2_agent_run(request=request, _=None)
+    resp = await v2_agent_run(request=request, _=None)
 
     assert resp["status"] == "error"
     assert "테스트 오류" in resp["error"]
@@ -253,25 +247,12 @@ async def test_approve_error_returns_error_status(patched_app):
     from src.inference.api_server import v2_agent_approve
 
     mock_graph = patched_app.graph
-    mock_graph.invoke.side_effect = RuntimeError("approve 오류")
+    mock_graph.ainvoke.side_effect = RuntimeError("approve 오류")
 
     # get_state도 실패하지 않도록 설정
-    mock_graph.get_state.return_value = _make_graph_state_done()
+    mock_graph.aget_state.return_value = _make_graph_state_done()
 
-    with patch("asyncio.to_thread", new=AsyncMock(side_effect=_fake_to_thread)):
-        resp = await v2_agent_approve(thread_id="t-err", approved=True, _=None)
+    resp = await v2_agent_approve(thread_id="t-err", approved=True, _=None)
 
     assert resp["status"] == "error"
     assert "approve 오류" in resp["error"]
-
-
-# ---------------------------------------------------------------------------
-# 헬퍼: asyncio.to_thread mock
-# ---------------------------------------------------------------------------
-
-
-async def _fake_to_thread(func, *args, **kwargs):
-    """asyncio.to_thread를 동기 함수 직접 호출로 대체한다."""
-    if hasattr(func, "side_effect") and func.side_effect is not None:
-        raise func.side_effect
-    return func(*args, **kwargs)

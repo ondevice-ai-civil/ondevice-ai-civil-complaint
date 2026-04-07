@@ -1,55 +1,73 @@
 # Models Directory
 
-GovOn에서 사용하는 파인튜닝 모델 및 LoRA 어댑터 목록.
-모든 모델 가중치는 파일 크기 제한으로 [HuggingFace Hub](https://huggingface.co)에 호스팅됩니다.
+이 디렉토리는 GovOn 서비스에서 사용하는 모델 가중치 및 LoRA 어댑터 관련 정보를 담고 있습니다.
+
+모든 모델 가중치는 파일 크기 제한으로 인해 [Hugging Face Model Hub](https://huggingface.co/umyunsang)에 호스팅됩니다.
 
 ---
 
-## 현재 아키텍처 (EXAONE 4.0-32B Multi-LoRA)
+## 현재 아키텍처: Multi-LoRA 서빙
+
+GovOn은 **단일 베이스 모델 + 다중 LoRA 어댑터** 구조로 운영됩니다.
+vLLM의 Multi-LoRA 기능을 활용하여 하나의 베이스 모델 위에 여러 어댑터를 동적으로 로드합니다.
+
+### 베이스 모델
+
+| 항목 | 값 |
+|------|-----|
+| **모델** | [LGAI-EXAONE/EXAONE-4.0-32B-AWQ](https://huggingface.co/LGAI-EXAONE/EXAONE-4.0-32B-AWQ) |
+| **타입** | AWQ 4-bit 양자화 |
+| **VRAM 요구량** | ~20GB |
+| **상태** | ✅ 운영 중 |
+
+환경변수 설정:
+
+```bash
+MODEL_PATH=LGAI-EXAONE/EXAONE-4.0-32B-AWQ
+# 오프라인(에어갭) 환경에서는 컨테이너 내부 경로 사용
+# MODEL_PATH=/app/models/EXAONE-4.0-32B-AWQ
+```
+
+### LoRA 어댑터
+
+| 어댑터 | 용도 | 상태 |
+|--------|------|------|
+| `civil-adapter` | 민원 초안 생성 | ✅ 운영 중 |
+| [`legal-adapter`](https://huggingface.co/siwo/govon-legal-adapter) | 법률 근거 조회 | ✅ 운영 중 |
+
+어댑터 경로는 `ADAPTER_PATHS` 환경변수로 설정합니다:
+
+```bash
+# 콤마로 구분하여 여러 어댑터 지정
+ADAPTER_PATHS=/app/models/adapters/civil-adapter,/app/models/adapters/legal-adapter
+```
+
+---
+
+## 오프라인(에어갭) 환경 설정
+
+에어갭 환경에서는 베이스 모델과 어댑터를 컨테이너 내부에 미리 배치합니다:
 
 ```
-EXAONE 4.0-32B-AWQ (단일 베이스, ~20GB VRAM)
-  ├─ LoRA 없음      → planner (tool calling 네이티브)
-  ├─ LoRA #1 civil  → draft_civil_response
-  └─ LoRA #2 legal  → append_evidence
+/app/models/
+  EXAONE-4.0-32B-AWQ/      ← 베이스 모델 가중치
+  adapters/
+    civil-adapter/           ← 민원 LoRA 어댑터
+    legal-adapter/           ← 법률 LoRA 어댑터
 ```
 
-vLLM 서빙: `--enable-lora --enable-auto-tool-choice --tool-call-parser hermes`
+`.env.airgap.example`을 참고하여 환경변수를 구성하세요.
 
 ---
 
-## 현재 유효 어댑터
+## 폐기된 모델
 
-| 어댑터 | Repository | 용도 | 상태 |
-|--------|-----------|------|------|
-| civil-adapter | [umyunsang/GovOn-EXAONE-LoRA-v2](https://huggingface.co/umyunsang/GovOn-EXAONE-LoRA-v2) | `draft_civil_response` | ✅ 운영 중 |
-| legal-adapter | [siwo/govon-legal-adapter](https://huggingface.co/siwo/govon-legal-adapter) | `append_evidence` | ✅ 학습 완료 |
+아래 모델들은 더 이상 사용하지 않습니다. 코드베이스에서 참조를 제거하였으므로 사용하지 마세요.
 
-### civil-adapter
-
-- **Base**: LGAI-EXAONE/EXAONE-Deep-7.8B → EXAONE 4.0-32B-AWQ로 마이그레이션 예정
-- **학습 데이터**: `umyunsang/govon-civil-response-data` (74K건)
-- **방법**: QLoRA (4-bit NF4), rank=64, alpha=128
-
-### legal-adapter (신규)
-
-- **Repository**: [siwo/govon-legal-adapter](https://huggingface.co/siwo/govon-legal-adapter)
-- **Base**: `LGAI-EXAONE/EXAONE-4.0-32B` (Unsloth 4-bit QLoRA)
-- **학습 데이터**: `umyunsang/govon-legal-response-data` (100K건, 1차 / 총 270K)
-- **방법**: Unsloth QLoRA, rank=16, alpha=32, target: 7 projection modules
-- **학습 환경**: HuggingFace Spaces A100 80GB
-- **Final loss**: 0.889 (365 steps)
-- **학습 스크립트**: `training/legal_adapter/train_qlora.py`
-- **평가 결과**: `training/legal_adapter/experiment_results.md`
-
----
-
-## 폐기 모델 (v1 — 사용 금지)
-
-> **⚠ 폐기 안내 (2026-03-19)**: 아래 v1 모델은 **잘못 학습된 LoRA 어댑터**를 기반으로 생성되어 전량 폐기 대상입니다.
-
-| Model | Type | 폐기 사유 |
-|-------|------|-----------|
-| ~~[civil-complaint-exaone-lora](https://huggingface.co/umyunsang/civil-complaint-exaone-lora)~~ | LoRA v1 | 잘못된 학습 설정 (pad_token 오류) |
-| ~~[civil-complaint-exaone-merged](https://huggingface.co/umyunsang/civil-complaint-exaone-merged)~~ | Merged BF16 | 폐기된 LoRA v1 기반 |
-| ~~[civil-complaint-exaone-awq](https://huggingface.co/umyunsang/civil-complaint-exaone-awq)~~ | AWQ 4-bit | 폐기된 병합 모델 기반 |
+| 모델 | 폐기 사유 |
+|------|----------|
+| ~~[umyunsang/civil-complaint-exaone-lora](https://huggingface.co/umyunsang/civil-complaint-exaone-lora)~~ | 잘못된 학습 데이터/설정 (v1) |
+| ~~[umyunsang/civil-complaint-exaone-merged](https://huggingface.co/umyunsang/civil-complaint-exaone-merged)~~ | 폐기된 LoRA v1 기반 병합 |
+| ~~[umyunsang/civil-complaint-exaone-awq](https://huggingface.co/umyunsang/civil-complaint-exaone-awq)~~ | 폐기된 병합 모델 기반 양자화 |
+| ~~[umyunsang/GovOn-EXAONE-AWQ-v2](https://huggingface.co/umyunsang/GovOn-EXAONE-AWQ-v2)~~ | fine-tuned 풀 모델 방식 폐기 → Multi-LoRA 전환 |
+| ~~[umyunsang/GovOn-EXAONE-LoRA-v2](https://huggingface.co/umyunsang/GovOn-EXAONE-LoRA-v2)~~ | EXAONE-Deep-7.8B 기반 → EXAONE-4.0-32B 전환으로 대체 |

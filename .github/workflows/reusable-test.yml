@@ -18,6 +18,13 @@ on:
         required: false
         type: number
         default: 80
+      matrix-include:
+        description: |
+          JSON array for matrix include entries (overrides python-versions x os-list when provided).
+          Example: '[{"python-version":"3.10","os":"ubuntu-latest"},{"python-version":"3.11","os":"ubuntu-latest"}]'
+        required: false
+        type: string
+        default: ''
     secrets:
       CODECOV_TOKEN:
         required: false

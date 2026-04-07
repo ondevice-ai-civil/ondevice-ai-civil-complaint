@@ -18,7 +18,6 @@ import time
 
 import pytest
 from langchain_core.messages import HumanMessage
-from langgraph.checkpoint.memory import MemorySaver
 
 from src.inference.graph.builder import build_govon_graph
 from src.inference.graph.executor_adapter import ExecutorAdapter
@@ -27,6 +26,11 @@ from src.inference.graph.planner_adapter import (  # CI fallback: 실제 운영�
 )
 from src.inference.graph.state import ApprovalStatus
 from src.inference.session_context import SessionStore
+
+try:
+    from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+except ImportError:  # pragma: no cover - optional dependency
+    AsyncSqliteSaver = None
 
 os.environ.setdefault("SKIP_MODEL_LOAD", "true")
 
@@ -86,74 +90,62 @@ def _build_graph_with_sqlite(cp_db_path: str, session_store: SessionStore):
 class TestRestartSafeGraphCheckpoint:
     """SqliteSaver를 사용한 graph restart-safe 테스트."""
 
-    def test_interrupt_state_survives_new_saver_instance(self, tmp_path, session_store):
+    @pytest.mark.asyncio
+    async def test_interrupt_state_survives_new_saver_instance(self, tmp_path, session_store):
         """graph invoke → interrupt → 새 SqliteSaver 인스턴스 → get_state 복원 검증.
 
         SqliteSaver를 사용하면 프로세스 재시작(= 새 인스턴스) 후에도
         interrupt 상태를 DB에서 복원할 수 있어야 한다.
         """
-        try:
-            from langgraph.checkpoint.sqlite import SqliteSaver
-        except ImportError:
-            pytest.skip("langgraph-checkpoint-sqlite 미설치")
-
+        if AsyncSqliteSaver is None:
+            pytest.skip("langgraph-checkpoint-sqlite.aio 미설치 — AsyncSqliteSaver 테스트 건너뜀")
         cp_db = str(tmp_path / "langgraph_checkpoints.db")
         thread_id = "resume-test-thread-1"
         config = {"configurable": {"thread_id": thread_id}}
 
-        # --- 1단계: 첫 번째 SqliteSaver 인스턴스로 interrupt까지 실행 ---
-        conn1 = sqlite3.connect(cp_db, check_same_thread=False)
-        saver1 = SqliteSaver(conn1)
-        graph1 = build_govon_graph(
-            planner_adapter=RegexPlannerAdapter(),  # CI fallback: 실제 운영은 LLMPlannerAdapter
-            executor_adapter=StubExecutorAdapter(),
-            session_store=session_store,
-            checkpointer=saver1,
-        )
-        initial = {
-            "session_id": "resume-session",
-            "request_id": "resume-req-1",
-            "messages": [HumanMessage(content="답변 초안 작성해줘")],
-        }
-        graph1.invoke(initial, config=config)
-        state_before = graph1.get_state(config)
-        assert state_before.next, "interrupt 상태여야 합니다"
-        conn1.close()
+        # --- 1단계: 첫 번째 AsyncSqliteSaver 인스턴스로 interrupt까지 실행 ---
+        async with AsyncSqliteSaver.from_conn_string(cp_db) as saver1:
+            graph1 = build_govon_graph(
+                planner_adapter=RegexPlannerAdapter(),
+                executor_adapter=StubExecutorAdapter(),
+                session_store=session_store,
+                checkpointer=saver1,
+            )
+            initial = {
+                "session_id": "resume-session",
+                "request_id": "resume-req-1",
+                "messages": [HumanMessage(content="답변 초안 작성해줘")],
+            }
+            await graph1.ainvoke(initial, config=config)
+            state_before = await graph1.aget_state(config)
+            assert state_before.next, "interrupt 상태여야 합니다"
 
-        # --- 2단계: 새 SqliteSaver 인스턴스(같은 DB 파일)로 상태 복원 ---
-        conn2 = sqlite3.connect(cp_db, check_same_thread=False)
-        saver2 = SqliteSaver(conn2)
-        graph2 = build_govon_graph(
-            planner_adapter=RegexPlannerAdapter(),  # CI fallback: 실제 운영은 LLMPlannerAdapter
-            executor_adapter=StubExecutorAdapter(),
-            session_store=session_store,
-            checkpointer=saver2,
-        )
+        # --- 2단계: 새 AsyncSqliteSaver 인스턴스(같은 DB 파일)로 상태 복원 ---
+        async with AsyncSqliteSaver.from_conn_string(cp_db) as saver2:
+            graph2 = build_govon_graph(
+                planner_adapter=RegexPlannerAdapter(),
+                executor_adapter=StubExecutorAdapter(),
+                session_store=session_store,
+                checkpointer=saver2,
+            )
+            state_restored = await graph2.aget_state(config)
+            assert (
+                state_restored.next
+            ), "새 AsyncSqliteSaver 인스턴스(같은 DB)에서 interrupt 상태가 복원되어야 합니다"
+            from langgraph.types import Command
 
-        # 새 graph 인스턴스에서 이전 interrupt 상태가 복원되어야 한다
-        state_restored = graph2.get_state(config)
-        assert (
-            state_restored.next
-        ), "새 SqliteSaver 인스턴스(같은 DB)에서 interrupt 상태가 복원되어야 합니다"
+            result = await graph2.ainvoke(
+                Command(resume={"approved": True}),
+                config=config,
+            )
+            assert result.get("final_text"), "resume 후 final_text가 생성되어야 합니다"
+            assert result.get("approval_status") == ApprovalStatus.APPROVED.value
 
-        # --- 3단계: resume → 완료 검증 ---
-        from langgraph.types import Command
-
-        result = graph2.invoke(
-            Command(resume={"approved": True}),
-            config=config,
-        )
-        assert result.get("final_text"), "resume 후 final_text가 생성되어야 합니다"
-        assert result.get("approval_status") == ApprovalStatus.APPROVED.value
-
-        conn2.close()
-
-    def test_completed_graph_state_persists_across_instances(self, tmp_path, session_store):
+    @pytest.mark.asyncio
+    async def test_completed_graph_state_persists_across_instances(self, tmp_path, session_store):
         """완료된 graph의 최종 상태가 새 SqliteSaver 인스턴스에서도 조회된다."""
-        try:
-            from langgraph.checkpoint.sqlite import SqliteSaver
-        except ImportError:
-            pytest.skip("langgraph-checkpoint-sqlite 미설치")
+        if AsyncSqliteSaver is None:
+            pytest.skip("langgraph-checkpoint-sqlite.aio 미설치 — AsyncSqliteSaver 테스트 건너뜀")
 
         from langgraph.types import Command
 
@@ -162,35 +154,33 @@ class TestRestartSafeGraphCheckpoint:
         config = {"configurable": {"thread_id": thread_id}}
 
         # 완료까지 실행
-        conn1 = sqlite3.connect(cp_db, check_same_thread=False)
-        graph1 = build_govon_graph(
-            planner_adapter=RegexPlannerAdapter(),  # CI fallback: 실제 운영은 LLMPlannerAdapter
-            executor_adapter=StubExecutorAdapter(),
-            session_store=session_store,
-            checkpointer=SqliteSaver(conn1),
-        )
-        graph1.invoke(
-            {
-                "session_id": "s1",
-                "request_id": "r1",
-                "messages": [HumanMessage(content="답변 작성")],
-            },
-            config=config,
-        )
-        graph1.invoke(Command(resume={"approved": True}), config=config)
-        conn1.close()
+        async with AsyncSqliteSaver.from_conn_string(cp_db) as saver1:
+            graph1 = build_govon_graph(
+                planner_adapter=RegexPlannerAdapter(),
+                executor_adapter=StubExecutorAdapter(),
+                session_store=session_store,
+                checkpointer=saver1,
+            )
+            await graph1.ainvoke(
+                {
+                    "session_id": "s1",
+                    "request_id": "r1",
+                    "messages": [HumanMessage(content="답변 작성")],
+                },
+                config=config,
+            )
+            await graph1.ainvoke(Command(resume={"approved": True}), config=config)
 
         # 새 인스턴스에서 최종 상태 확인: next가 비어야 한다 (완료)
-        conn2 = sqlite3.connect(cp_db, check_same_thread=False)
-        graph2 = build_govon_graph(
-            planner_adapter=RegexPlannerAdapter(),  # CI fallback: 실제 운영은 LLMPlannerAdapter
-            executor_adapter=StubExecutorAdapter(),
-            session_store=session_store,
-            checkpointer=SqliteSaver(conn2),
-        )
-        state = graph2.get_state(config)
-        assert not state.next, "완료된 graph는 next가 비어야 합니다"
-        conn2.close()
+        async with AsyncSqliteSaver.from_conn_string(cp_db) as saver2:
+            graph2 = build_govon_graph(
+                planner_adapter=RegexPlannerAdapter(),
+                executor_adapter=StubExecutorAdapter(),
+                session_store=session_store,
+                checkpointer=saver2,
+            )
+            state = await graph2.aget_state(config)
+            assert not state.next, "완료된 graph는 next가 비어야 합니다"
 
 
 # ---------------------------------------------------------------------------

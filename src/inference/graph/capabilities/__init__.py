@@ -3,6 +3,7 @@
 from .api_lookup import ApiLookupCapability, ApiLookupParams
 from .append_evidence import AppendEvidenceCapability
 from .base import CapabilityBase, CapabilityMetadata, LookupResult
+from .defaults import get_all_defaults, get_max_retries, get_timeout
 from .draft_civil_response import DraftCivilResponseCapability
 from .rag_search import RagSearchCapability, RagSearchParams
 from .registry import (
@@ -28,4 +29,7 @@ __all__ = [
     "get_all_metadata",
     "get_mvp_capability_ids",
     "is_mvp_capability",
+    "get_timeout",
+    "get_max_retries",
+    "get_all_defaults",
 ]

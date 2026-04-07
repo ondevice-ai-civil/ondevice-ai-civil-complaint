@@ -40,15 +40,15 @@ jobs:
             logs \
             .cache
 
-          cat > /tmp/govon-offline.env <<'EOF'
-          API_KEY=offline-ci-key
-          BM25_INDEX_HMAC_KEY=offline-ci-hmac-key
-          CORS_ORIGINS=http://127.0.0.1:3000
-          EOF
+          printf '%s\n' \
+            'API_KEY=offline-ci-key' \
+            'BM25_INDEX_HMAC_KEY=offline-ci-hmac-key' \
+            'CORS_ORIGINS=http://127.0.0.1:3000' \
+            > /tmp/govon-offline.env
 
-          cat > /tmp/govon-prod.env <<'EOF'
-          API_KEY=prod-ci-key
-          EOF
+          printf '%s\n' \
+            'API_KEY=prod-ci-key' \
+            > /tmp/govon-prod.env
 
       - name: Compose 설정 검증
         run: |
@@ -76,7 +76,13 @@ jobs:
             logs \
             .cache
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Compose 런타임 스모크 실행
+        env:
+          DOCKER_BUILDKIT: 1
+          # COMPOSE_DOCKER_CLI_BUILD는 Compose V2에서 불필요 — 제거됨
         run: |
           set -euo pipefail
 
@@ -108,6 +114,7 @@ jobs:
 
   compose-gpu-smoke:
     needs: compose-config
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-22.04-gpu-t4
     timeout-minutes: 45
 
@@ -125,17 +132,17 @@ jobs:
             logs \
             .cache
 
-          cat > /tmp/govon-gpu.env <<'EOF'
-          API_KEY=gpu-smoke-key
-          BM25_INDEX_HMAC_KEY=gpu-smoke-hmac-key
-          CORS_ORIGINS=http://127.0.0.1:3000
-          HOST_PORT=18001
-          USE_RAG_PIPELINE=false
-          SKIP_MODEL_LOAD=false
-          GPU_UTILIZATION=0.5
-          MAX_MODEL_LEN=2048
-          MODEL_PATH=umyunsang/GovOn-EXAONE-AWQ-v2
-          EOF
+          printf '%s\n' \
+            'API_KEY=gpu-smoke-key' \
+            'BM25_INDEX_HMAC_KEY=gpu-smoke-hmac-key' \
+            'CORS_ORIGINS=http://127.0.0.1:3000' \
+            'HOST_PORT=18001' \
+            'USE_RAG_PIPELINE=false' \
+            'SKIP_MODEL_LOAD=false' \
+            'GPU_UTILIZATION=0.5' \
+            'MAX_MODEL_LEN=2048' \
+            'MODEL_PATH=LGAI-EXAONE/EXAONE-4.0-32B-AWQ' \
+            > /tmp/govon-gpu.env
 
       - name: 호스트 GPU 인식 확인
         run: nvidia-smi
@@ -143,7 +150,13 @@ jobs:
       - name: Docker GPU runtime 인식 확인
         run: docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu22.04 nvidia-smi
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: GPU Compose 런타임 스모크 실행
+        env:
+          DOCKER_BUILDKIT: 1
+          # COMPOSE_DOCKER_CLI_BUILD는 Compose V2에서 불필요 — 제거됨
         run: |
           set -euo pipefail
 

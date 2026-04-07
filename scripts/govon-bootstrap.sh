@@ -9,6 +9,8 @@
 
 set -euo pipefail
 
+PYTHON_CMD=""
+
 # ---------------------------------------------------------------------------
 # 설정
 # ---------------------------------------------------------------------------
@@ -142,9 +144,9 @@ cmd_start() {
         exit 1
     fi
 
-    # health check 대기 (최대 30초)
+    # health check 대기 (최대 120초)
     local elapsed=0
-    local max_wait=30
+    local max_wait=120
     _info "health check 대기 중..."
     while [ $elapsed -lt $max_wait ]; do
         if _health_check; then
@@ -155,7 +157,7 @@ cmd_start() {
         elapsed=$((elapsed + 1))
     done
 
-    _error "health check timeout (${max_wait}초). 로그를 확인하세요: $LOG_FILE"
+    _error "health check timeout (${max_wait}s). 로그를 확인하세요: $LOG_FILE"
     exit 1
 }
 

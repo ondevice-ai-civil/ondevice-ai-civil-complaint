@@ -1,13 +1,11 @@
 import asyncio
 import json
 import os
-import queue
 import re
-import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
@@ -27,7 +25,13 @@ except ImportError:
         AsyncLLM = None
         SamplingParams = None
 
-SKIP_MODEL_LOAD = os.getenv("SKIP_MODEL_LOAD", "false").lower() in ("true", "1", "yes")
+try:
+    from vllm.lora.request import LoRARequest
+except ImportError:
+    LoRARequest = None
+
+# Multi-LoRA adapter name → numeric ID 매핑 (vLLM LoRARequest에 전달)
+_LORA_ID_MAP: Dict[str, int] = {"civil": 1, "legal": 2}
 
 from .agent_loop import AgentLoop, AgentTrace
 from .agent_manager import AgentManager
@@ -53,6 +57,10 @@ from .schemas import (
 )
 from .session_context import SessionContext, SessionStore
 from .tool_router import ToolType, tool_name
+
+SessionLocal = None
+LocalDocumentIndexer = None
+SKIP_MODEL_LOAD = os.getenv("SKIP_MODEL_LOAD", "false").lower() in ("true", "1", "yes")
 
 
 async def _noop_tool(query: str, context: dict, session: Any) -> dict:
@@ -120,16 +128,41 @@ if not SKIP_MODEL_LOAD:
 def _extract_content_by_type(result: dict, index_type: IndexType) -> str:
     extras = result.get("extras", {})
     if index_type == IndexType.CASE:
-        text = (extras.get("complaint_text", "") + "\n" + extras.get("answer_text", "")).strip()
+        case_text = "\n".join(
+            part
+            for part in (extras.get("complaint_text", ""), extras.get("answer_text", ""))
+            if part
+        ).strip()
+        text = case_text or extras.get("content", "") or extras.get("chunk_text", "")
     elif index_type == IndexType.LAW:
-        text = extras.get("law_text", "") or extras.get("content", "")
+        text = (
+            extras.get("law_text", "") or extras.get("content", "") or extras.get("chunk_text", "")
+        )
     elif index_type == IndexType.MANUAL:
-        text = extras.get("manual_text", "") or extras.get("content", "")
+        text = (
+            extras.get("manual_text", "")
+            or extras.get("content", "")
+            or extras.get("chunk_text", "")
+        )
     elif index_type == IndexType.NOTICE:
-        text = extras.get("notice_text", "") or extras.get("content", "")
+        text = (
+            extras.get("notice_text", "")
+            or extras.get("content", "")
+            or extras.get("chunk_text", "")
+        )
     else:
         text = ""
     return text or result.get("title", "")
+
+
+def _extract_approval_request(graph_state: Any) -> Any:
+    """LangGraph interrupt state에서 approval payload를 추출한다."""
+    if not graph_state or not getattr(graph_state, "tasks", None):
+        return None
+    task = graph_state.tasks[0]
+    if not getattr(task, "interrupts", None):
+        return None
+    return task.interrupts[0].value
 
 
 class vLLMEngineManager:
@@ -147,6 +180,9 @@ class vLLMEngineManager:
         self.agent_manager = AgentManager(AGENTS_DIR)
         self.agent_loop: Optional[AgentLoop] = None
         self.graph = None  # LangGraph CompiledGraph (v2 엔드포인트용)
+        self.local_document_indexer: Optional[Any] = None
+        self.local_document_sync_status: Optional[Dict[str, Any]] = None
+        self._local_document_sync_task: Optional[asyncio.Task] = None
         self._checkpointer_ctx = None  # AsyncSqliteSaver 컨텍스트 매니저 (lifespan에서 관리)
         self._sync_checkpointer_conn = None  # SqliteSaver용 sqlite3 connection (leak 방지)
         self._init_agent_loop()
@@ -163,7 +199,7 @@ class vLLMEngineManager:
         # Multi-LoRA 서빙 시 --enable-lora --lora-modules 옵션 추가
         # HuggingFace Spaces L4 (24GB VRAM) 기준 ~20GB 점유
         try:
-            engine_args = AsyncEngineArgs(
+            engine_kwargs = dict(
                 model=MODEL_PATH,
                 trust_remote_code=TRUST_REMOTE_CODE,
                 gpu_memory_utilization=GPU_UTILIZATION,
@@ -171,6 +207,18 @@ class vLLMEngineManager:
                 dtype=runtime_config.model.dtype,
                 enforce_eager=runtime_config.model.enforce_eager,
             )
+            # Multi-LoRA 서빙: adapter_paths가 설정되어 있으면 활성화
+            lora_enabled = bool(runtime_config.model.adapter_paths)
+            if lora_enabled:
+                engine_kwargs.update(
+                    enable_lora=True,
+                    max_loras=4,
+                    max_lora_rank=64,
+                )
+                logger.info(
+                    f"Multi-LoRA 활성화: adapters={list(runtime_config.model.adapter_paths.keys())}"
+                )
+            engine_args = AsyncEngineArgs(**engine_kwargs)
             if hasattr(AsyncLLM, "from_engine_args"):
                 self.engine = AsyncLLM.from_engine_args(engine_args)
             else:
@@ -187,8 +235,9 @@ class vLLMEngineManager:
         if self.retriever.index is not None and not os.path.exists(INDEX_PATH):
             self.retriever.save_index(INDEX_PATH)
 
-        faiss_index_dir = os.getenv("FAISS_INDEX_DIR", "models/faiss_index")
-        if os.path.isdir(faiss_index_dir):
+        faiss_index_dir = runtime_config.paths.faiss_index_dir
+        local_docs_root = runtime_config.paths.local_docs_root
+        if os.path.isdir(faiss_index_dir) or local_docs_root:
             self.index_manager = MultiIndexManager(base_dir=faiss_index_dir)
             logger.info(f"MultiIndexManager 초기화 완료: {faiss_index_dir}")
         else:
@@ -218,8 +267,98 @@ class vLLMEngineManager:
                 embed_model=self.embed_model,
             )
             logger.info("HybridSearchEngine 초기화 완료")
+            self._schedule_local_document_sync()
         else:
             logger.warning("HybridSearchEngine 미초기화: index_manager 또는 embed_model 없음")
+
+    def _schedule_local_document_sync(self) -> None:
+        indexer = self._build_local_document_indexer()
+        if indexer is None:
+            return
+        if self._local_document_sync_task and not self._local_document_sync_task.done():
+            return
+
+        self.local_document_sync_status = {
+            "status": "syncing",
+            "root_dir": str(indexer.root_dir),
+            "source_name": indexer.source_name,
+        }
+        self._local_document_sync_task = asyncio.create_task(self._sync_local_documents_async())
+
+    async def _sync_local_documents_async(self) -> Optional[Dict[str, Any]]:
+        try:
+            return await asyncio.to_thread(self.sync_local_documents)
+        except Exception as exc:
+            logger.error(f"백그라운드 로컬 문서 인덱싱 실패: {exc}", exc_info=True)
+            if self.local_document_indexer is None:
+                return None
+            self.local_document_sync_status = {
+                "status": "error",
+                "root_dir": str(self.local_document_indexer.root_dir),
+                "source_name": self.local_document_indexer.source_name,
+                "error": str(exc),
+            }
+            return self.local_document_sync_status
+
+    def _build_local_document_indexer(self) -> Optional[Any]:
+        global SessionLocal, LocalDocumentIndexer
+
+        root_dir = runtime_config.paths.local_docs_root
+        if not root_dir:
+            return None
+        if self.index_manager is None or self.embed_model is None:
+            logger.warning(
+                "LOCAL_DOCS_ROOT가 설정됐지만 index_manager 또는 embed_model이 없습니다."
+            )
+            return None
+        if self.local_document_indexer is None:
+            if SessionLocal is None:
+                from .db.database import SessionLocal as _SessionLocal
+
+                SessionLocal = _SessionLocal
+            if LocalDocumentIndexer is None:
+                from .local_document_indexer import LocalDocumentIndexer as _LocalDocumentIndexer
+
+                LocalDocumentIndexer = _LocalDocumentIndexer
+
+            self.local_document_indexer = LocalDocumentIndexer(
+                root_dir=root_dir,
+                index_manager=self.index_manager,
+                embed_model=self.embed_model,
+                session_factory=SessionLocal,
+            )
+        return self.local_document_indexer
+
+    def sync_local_documents(self) -> Optional[Dict[str, Any]]:
+        indexer = self._build_local_document_indexer()
+        if indexer is None:
+            return None
+
+        try:
+            summary = indexer.sync()
+        except Exception as exc:
+            logger.error(f"로컬 문서 인덱싱 실패: {exc}", exc_info=True)
+            self.local_document_sync_status = {
+                "status": "error",
+                "root_dir": str(indexer.root_dir),
+                "source_name": indexer.source_name,
+                "error": str(exc),
+            }
+            return self.local_document_sync_status
+
+        self.local_document_sync_status = {
+            "status": "ok",
+            "root_dir": str(indexer.root_dir),
+            "source_name": indexer.source_name,
+            **asdict(summary),
+        }
+        logger.info(
+            "로컬 문서 인덱싱 완료: "
+            f"root={indexer.root_dir}, scanned={summary.scanned_files}, "
+            f"indexed={summary.indexed_files}, unchanged={summary.unchanged_files}, "
+            f"removed={summary.removed_files}"
+        )
+        return self.local_document_sync_status
 
     def _escape_special_tokens(self, text: str) -> str:
         tokens = [
@@ -656,11 +795,19 @@ class vLLMEngineManager:
             search_results=search_results,
         )
 
-    async def _run_engine(self, prompt: str, sampling_params: SamplingParams, request_id: str):
+    async def _run_engine(
+        self,
+        prompt: str,
+        sampling_params: SamplingParams,
+        request_id: str,
+        lora_request=None,
+    ):
         if self.engine is None:
             return None
 
-        result = self.engine.generate(prompt, sampling_params, request_id)
+        result = self.engine.generate(
+            prompt, sampling_params, request_id, lora_request=lora_request
+        )
         if hasattr(result, "__aiter__"):
             final_output = None
             async for output in result:
@@ -683,9 +830,12 @@ class vLLMEngineManager:
         request_id: str,
         flags: Optional[FeatureFlags] = None,
         external_cases: Optional[List[dict]] = None,
+        lora_request=None,
     ) -> tuple[Any, List[dict], List[SearchResult]]:
         prepared = await self._prepare_civil_response_generation(request, flags, external_cases)
-        output = await self._run_engine(prepared.prompt, prepared.sampling_params, request_id)
+        output = await self._run_engine(
+            prepared.prompt, prepared.sampling_params, request_id, lora_request=lora_request
+        )
         return output, prepared.retrieved_cases, prepared.search_results
 
     async def generate_stream(
@@ -767,6 +917,12 @@ class vLLMEngineManager:
                         }
                     )
 
+            # Multi-LoRA: civil 어댑터가 설정되어 있으면 LoRARequest 생성
+            civil_adapter_path = runtime_config.model.adapter_paths.get("civil")
+            lora_req = None
+            if civil_adapter_path and LoRARequest is not None:
+                lora_req = LoRARequest("civil", _LORA_ID_MAP["civil"], civil_adapter_path)
+
             gen_request = GenerateCivilResponseRequest(
                 prompt=working_query,
                 max_tokens=512,
@@ -779,6 +935,7 @@ class vLLMEngineManager:
                     gen_request,
                     request_id,
                     external_cases=external_cases,
+                    lora_request=lora_req,
                 )
             )
             if final_output is None:
@@ -806,8 +963,66 @@ class vLLMEngineManager:
         ) -> dict:
             rag_data = context.get(ToolType.RAG_SEARCH.value, {})
             api_data = context.get(ToolType.API_LOOKUP.value, {})
+
+            # 기존 evidence 텍스트 (fallback용)
+            fallback_text = engine_ref._build_evidence_section(session, query, rag_data, api_data)
+
+            # LLM으로 evidence 보강 시도
+            enhanced_text = fallback_text
+            if engine_ref.engine is not None:
+                try:
+                    _, previous_answer = engine_ref._latest_prior_turns(session, query)
+                    existing_response = engine_ref._escape_special_tokens(previous_answer or "")
+                    rag_context = engine_ref._escape_special_tokens(
+                        rag_data.get("context_text", "")
+                    )
+                    api_context = ""
+                    for item in api_data.get("results", [])[:3]:
+                        title = item.get("title", "")
+                        content = item.get("content", "") or item.get("qnaContent", "")
+                        if title or content:
+                            api_context += (
+                                f"- {engine_ref._escape_special_tokens(title)}"
+                                f": {engine_ref._escape_special_tokens(content[:200])}\n"
+                            )
+
+                    evidence_prompt = (
+                        "[|system|]당신은 대한민국 공무원 민원 답변 보강 전문가입니다. "
+                        "법적 근거와 관련 규정을 정확하게 인용하여 evidence 섹션을 작성하세요."
+                        "[|endofturn|]\n"
+                        "[|user|]다음 민원 답변에 대해 법적 근거와 관련 규정을 보강하여 "
+                        "evidence 섹션을 작성하세요.\n\n"
+                        f"[기존 답변]\n{existing_response[:800]}\n\n"
+                        f"[검색 결과]\n{rag_context[:800]}\n\n"
+                        f"[API 조회 결과]\n{api_context[:800]}"
+                        "[|endofturn|]\n[|assistant|]"
+                    )
+
+                    # legal 어댑터 LoRA 설정
+                    legal_adapter_path = runtime_config.model.adapter_paths.get("legal")
+                    lora_req = None
+                    if legal_adapter_path and LoRARequest is not None:
+                        lora_req = LoRARequest("legal", _LORA_ID_MAP["legal"], legal_adapter_path)
+
+                    if SamplingParams is not None:
+                        sp = SamplingParams(
+                            max_tokens=512,
+                            temperature=0.5,
+                            top_p=0.9,
+                            stop=["[|endofturn|]"],
+                        )
+                        request_id = str(uuid.uuid4())
+                        output = await engine_ref._run_engine(
+                            evidence_prompt, sp, request_id, lora_request=lora_req
+                        )
+                        if output is not None and output.outputs:
+                            enhanced_text = engine_ref._strip_thought_blocks(output.outputs[0].text)
+                except Exception as exc:
+                    logger.warning(f"Evidence LLM 보강 실패, fallback 사용: {exc}")
+                    enhanced_text = fallback_text
+
             return {
-                "text": engine_ref._build_evidence_section(session, query, rag_data, api_data),
+                "text": enhanced_text,
                 "rag_results": rag_data.get("results", []),
                 "api_citations": api_data.get("citations", []),
             }
@@ -1075,6 +1290,11 @@ async def health():
         "indexes": index_summary,
         "bm25_indexes": bm25_summary,
         "hybrid_search_enabled": manager.hybrid_engine is not None,
+        "local_documents": {
+            "enabled": bool(runtime_config.paths.local_docs_root),
+            "root_dir": runtime_config.paths.local_docs_root or None,
+            "last_sync": manager.local_document_sync_status,
+        },
         "feature_flags": {
             "use_rag_pipeline": manager.feature_flags.use_rag_pipeline,
             "model_version": manager.feature_flags.model_version,
@@ -1352,7 +1572,7 @@ async def v2_agent_stream(
 ):
     """LangGraph 기반 agent SSE 스트리밍 실행.
 
-    graph.stream()을 asyncio.to_thread()로 감싸 노드별 완료 이벤트를 SSE로 전송한다.
+    graph.astream()을 사용해 노드별 완료 이벤트를 SSE로 전송한다.
 
     이벤트 형식 (각 줄: ``data: <JSON>\\n\\n``):
       - 노드 진행: ``{"node": "<name>", "status": "completed", ...}``
@@ -1385,88 +1605,55 @@ async def v2_agent_stream(
     }
 
     async def _generate() -> AsyncGenerator[str, None]:
-        event_queue: "queue.Queue[dict | None]" = queue.Queue()
-
-        def _stream_in_thread():
-            """graph.stream()을 별도 스레드에서 실행하고 결과를 queue에 넣는다."""
-            try:
-                for chunk in manager.graph.stream(initial_state, config, stream_mode="updates"):
-                    # chunk: {node_name: state_delta}
-                    for node_name, state_delta in chunk.items():
-                        event: dict = {
-                            "node": node_name,
-                            "status": "completed",
-                        }
-                        # synthesis 완료 시 evidence_items와 task_type을 이벤트에 포함.
-                        # 전제: stream_mode="updates"에서 state_delta는 노드의 raw return dict다.
-                        # LangGraph 버전 업그레이드 시 이 구조가 변경될 수 있으므로 주의.
-                        # evidence_items 스키마: EvidenceItem.to_dict() 필드를 따른다.
-                        #   source_type: "rag" | "api" | "llm_generated"
-                        #   title, excerpt, link_or_path, page, score, provider_meta
-                        #   (웹 프론트엔드에서 직접 렌더링 시 XSS 방지를 위해 이스케이프 필요)
-                        if node_name == "synthesis" and isinstance(state_delta, dict):
-                            if state_delta.get("final_text"):
-                                event["final_text"] = state_delta["final_text"]
-                            if state_delta.get("evidence_items"):
-                                event["evidence_items"] = state_delta["evidence_items"]
-                            if state_delta.get("task_type"):
-                                event["task_type"] = state_delta["task_type"]
-                        # approval_wait가 interrupt()를 호출하면 stream이 끝나기 전에
-                        # 이 이벤트가 마지막으로 전송된다.
-                        if node_name == "approval_wait":
-                            # interrupt 상태 확인
-                            try:
-                                graph_state = manager.graph.get_state(config)
-                                if graph_state.next:
-                                    approval_value = None
-                                    if graph_state.tasks and graph_state.tasks[0].interrupts:
-                                        approval_value = graph_state.tasks[0].interrupts[0].value
-                                    event = {
-                                        "node": "approval_wait",
-                                        "status": "awaiting_approval",
-                                        "approval_request": approval_value,
-                                        "thread_id": thread_id,
-                                        "session_id": session_id,
-                                    }
-                            except Exception as exc:
-                                logger.warning(f"[v2/agent/stream] get_state 실패: {exc}")
-                                # get_state 실패해도 approval_wait 이벤트는 전송
-                                event["status"] = "awaiting_approval"
-                                event["approval_request"] = {
-                                    "prompt": "승인 정보를 불러올 수 없습니다. /v2/agent/approve로 진행하세요."
+        try:
+            async for chunk in manager.graph.astream(initial_state, config, stream_mode="updates"):
+                # chunk: {node_name: state_delta}
+                for node_name, state_delta in chunk.items():
+                    event: dict = {
+                        "node": node_name,
+                        "status": "completed",
+                    }
+                    # synthesis 완료 시 evidence_items와 task_type을 이벤트에 포함.
+                    # 전제: stream_mode="updates"에서 state_delta는 노드의 raw return dict다.
+                    # LangGraph 버전 업그레이드 시 이 구조가 변경될 수 있으므로 주의.
+                    # evidence_items 스키마: EvidenceItem.to_dict() 필드를 따른다.
+                    #   source_type: "rag" | "api" | "llm_generated"
+                    #   title, excerpt, link_or_path, page, score, provider_meta
+                    #   (웹 프론트엔드에서 직접 렌더링 시 XSS 방지를 위해 이스케이프 필요)
+                    if node_name == "synthesis" and isinstance(state_delta, dict):
+                        if state_delta.get("final_text"):
+                            event["final_text"] = state_delta["final_text"]
+                        if state_delta.get("evidence_items"):
+                            event["evidence_items"] = state_delta["evidence_items"]
+                        if state_delta.get("task_type"):
+                            event["task_type"] = state_delta["task_type"]
+                    if node_name == "approval_wait":
+                        try:
+                            graph_state = await manager.graph.aget_state(config)
+                            if graph_state.next:
+                                event = {
+                                    "node": "approval_wait",
+                                    "status": "awaiting_approval",
+                                    "approval_request": _extract_approval_request(graph_state),
+                                    "thread_id": thread_id,
+                                    "session_id": session_id,
                                 }
-                        event_queue.put(event)
-            except Exception as exc:
-                logger.error(f"[v2/agent/stream] 스레드 예외: {exc}")
-                event_queue.put({"node": "error", "status": "error", "error": str(exc)})
-            finally:
-                event_queue.put(None)  # sentinel
+                        except Exception as exc:
+                            logger.warning(f"[v2/agent/stream] aget_state 실패: {exc}")
+                            event["status"] = "awaiting_approval"
+                            event["approval_request"] = {
+                                "prompt": "승인 정보를 불러올 수 없습니다. /v2/agent/approve로 진행하세요."
+                            }
 
-        thread = threading.Thread(target=_stream_in_thread, daemon=True)
-        thread.start()
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
-        while True:
-            try:
-                event = await asyncio.to_thread(event_queue.get, True, 0.5)
-            except queue.Empty:
-                # timeout — check if thread is still alive
-                if not thread.is_alive() and event_queue.empty():
-                    break
-                continue
-
-            if event is None:
-                # sentinel: stream complete
-                break
-
-            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-
-            # Stop streaming after awaiting_approval (client must call /v2/agent/approve)
-            if event.get("status") == "awaiting_approval" or event.get("node") == "error":
-                break
-
-        thread.join(timeout=1.0)
-        if thread.is_alive():
-            logger.warning("[v2/agent/stream] 스트리밍 스레드가 1초 내에 종료되지 않았습니다.")
+                    # Stop streaming after awaiting_approval (client must call /v2/agent/approve)
+                    if event.get("status") == "awaiting_approval":
+                        return
+        except Exception as exc:
+            logger.error(f"[v2/agent/stream] 스트림 예외: {exc}")
+            error_event = {"node": "error", "status": "error", "error": str(exc)}
+            yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(_generate(), media_type="text/event-stream")
 
@@ -1519,22 +1706,18 @@ async def v2_agent_run(
     }
 
     try:
-        # interrupt()는 sync invoke 경로에서 가장 안정적으로 동작한다.
-        await asyncio.to_thread(manager.graph.invoke, initial_state, config)
+        await manager.graph.ainvoke(initial_state, config)
 
         # interrupt 상태 확인
-        graph_state = await asyncio.to_thread(manager.graph.get_state, config)
+        graph_state = await manager.graph.aget_state(config)
         if graph_state.next:
             # interrupt 대기 중: approval_request 정보를 클라이언트에 반환
-            approval_value = None
-            if graph_state.tasks and graph_state.tasks[0].interrupts:
-                approval_value = graph_state.tasks[0].interrupts[0].value
             return {
                 "status": "awaiting_approval",
                 "thread_id": thread_id,
                 "session_id": session_id,
                 "graph_run_id": request_id,
-                "approval_request": approval_value,
+                "approval_request": _extract_approval_request(graph_state),
             }
 
         # interrupt 없이 완료된 경우 (rejected 또는 오류)
@@ -1596,9 +1779,7 @@ async def v2_agent_approve(
     config = {"configurable": {"thread_id": thread_id}}
 
     try:
-        # resume도 동일한 sync invoke 경로로 처리한다.
-        result = await asyncio.to_thread(
-            manager.graph.invoke,
+        result = await manager.graph.ainvoke(
             Command(resume={"approved": approved}),
             config,
         )
@@ -1628,7 +1809,7 @@ async def v2_agent_approve(
         request_id = ""
         try:
             if manager.session_store:
-                graph_state = await asyncio.to_thread(manager.graph.get_state, config)
+                graph_state = await manager.graph.aget_state(config)
                 state_values = graph_state.values if graph_state else {}
                 session_id = state_values.get("session_id", "")
                 request_id = state_values.get("request_id", "")
@@ -1678,7 +1859,7 @@ async def v2_agent_cancel(
 
     try:
         # interrupt 상태 확인
-        graph_state = await asyncio.to_thread(manager.graph.get_state, config)
+        graph_state = await manager.graph.aget_state(config)
         if not graph_state or not graph_state.next:
             raise HTTPException(
                 status_code=409,
@@ -1688,8 +1869,7 @@ async def v2_agent_cancel(
         session_id = graph_state.values.get("session_id", "")
 
         # 강제 거절 + interrupt_reason 전달로 resume
-        result = await asyncio.to_thread(
-            manager.graph.invoke,
+        result = await manager.graph.ainvoke(
             Command(resume={"approved": False, "cancel": True}),
             config,
         )

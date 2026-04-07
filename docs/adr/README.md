@@ -9,6 +9,7 @@ GovOn의 핵심 기술 결정을 기록하는 인덱스입니다. 현재 ADR은 
 
 | ADR | 위치 | 상태 | 설명 |
 |-----|------|------|------|
+| TEMPLATE | [docs/adr/TEMPLATE.md](TEMPLATE.md) | - | ADR 작성 템플릿 |
 | ADR-003 | [docs/adr/ADR-003-vllm-serving.md](ADR-003-vllm-serving.md) | Accepted | `govon` CLI가 붙는 로컬 FastAPI daemon의 추론 엔진으로 vLLM 유지 |
 | ADR-004 | [docs/adr/ADR-004-faiss-vector-search.md](ADR-004-faiss-vector-search.md) | Accepted | 로컬 RAG 검색 계층으로 FAISS + BM25 유지 |
 | ADR-006 | [docs/architecture/ADR-006-agentic-architecture.md](../architecture/ADR-006-agentic-architecture.md) | Accepted | GovOn Shell MVP의 전체 아키텍처를 CLI + daemon + LangGraph approval loop로 확정 |
@@ -25,6 +26,14 @@ GovOn의 현재 제품 기준은 다음과 같습니다.
 - 근거/출처는 기본 표시가 아니라 후속 증강 작업으로 다룬다.
 
 이 기준은 [GovOn Shell MVP 아키텍처 문서](../architecture/GovOn-shell-mvp-architecture.md)와 [ADR-006](../architecture/ADR-006-agentic-architecture.md)을 우선한다.
+
+## 번호 체계
+
+- ADR 번호는 3자리 순번을 사용한다 (ADR-001, ADR-002, ...).
+- 결번은 허용한다.
+- 기반 기술 선택: `docs/adr/ADR-NNN-slug.md`
+- 상위 아키텍처 결정: `docs/architecture/ADR-NNN-slug.md`
+- 한 결정이 다른 결정으로 대체되면 원본에 `Superseded by ADR-NNN`을 명시한다.
 
 ## 작성 원칙
 

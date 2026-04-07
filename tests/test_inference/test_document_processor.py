@@ -339,10 +339,20 @@ class TestDocumentProcessor:
         results = processor.process(str(tmp_txt), IndexType.CASE, extras={"custom": "value"})
         extras = results[0].extras
         assert "chunk_text" in extras
+        assert "chunk_id" in extras
         assert "content" not in extras  # ORM 혼동 방지
         assert extras["file_extension"] == ".txt"
         assert extras["custom"] == "value"
         assert "file_path" in extras
+
+    def test_document_id_override_is_used_for_all_chunks(self, tmp_path: Path):
+        p = tmp_path / "long.txt"
+        p.write_text("가나다라마바사아자차카타파하 " * 100, encoding="utf-8")
+        proc = DocumentProcessor(chunk_size=20, chunk_overlap=4)
+        results = proc.process(str(p), IndexType.CASE, document_id="custom-doc-id")
+        assert len(results) > 1
+        assert {meta.doc_id for meta in results} == {"custom-doc-id"}
+        assert results[0].extras["chunk_id"] == "custom-doc-id:0"
 
     def test_default_overlap_is_128(self):
         """ADR-004 기준 기본 오버랩이 128인지 확인."""
@@ -359,15 +369,35 @@ class TestParsePdf:
     def test_process_pdf_with_mock(self, processor: DocumentProcessor, tmp_pdf: Path):
         import src.inference.document_processor as dp
 
-        with patch.dict(
-            dp._PARSERS,
-            {".pdf": lambda fp: "법령 제1조 내용입니다.\n\n법령 제2조 내용입니다."},
+        with (
+            patch.dict(
+                dp._PARSERS,
+                {".pdf": lambda fp: "법령 제1조 내용입니다.\n\n법령 제2조 내용입니다."},
+            ),
+            patch.dict(dp._PAGE_PARSERS, {".pdf": None}, clear=False),
         ):
             results = processor.process(str(tmp_pdf), IndexType.LAW, source="법제처")
 
         assert len(results) >= 1
         assert results[0].doc_type == "law"
         assert results[0].source == "법제처"
+
+    def test_process_pdf_preserves_page_metadata(self, processor: DocumentProcessor, tmp_pdf: Path):
+        import src.inference.document_processor as dp
+
+        with patch.dict(
+            dp._PAGE_PARSERS,
+            {
+                ".pdf": lambda fp: [
+                    (1, "제1조 도로 점검 기준"),
+                    (2, "제2조 도로 보수 절차"),
+                ]
+            },
+            clear=False,
+        ):
+            results = processor.process(str(tmp_pdf), IndexType.LAW, source="법제처")
+
+        assert [meta.extras.get("page") for meta in results] == [1, 2]
 
 
 # ---------------------------------------------------------------------------

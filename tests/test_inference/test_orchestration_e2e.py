@@ -29,6 +29,8 @@ from src.inference.session_context import SessionStore
 
 os.environ.setdefault("SKIP_MODEL_LOAD", "true")
 
+pytestmark = pytest.mark.asyncio
+
 
 # ---------------------------------------------------------------------------
 # Stub adapters
@@ -132,7 +134,7 @@ def make_graph(session_store):
 # ---------------------------------------------------------------------------
 
 
-def _run_to_interrupt(graph, session_id: str, thread_id: str, query: str, request_id: str):
+async def _run_to_interrupt(graph, session_id: str, thread_id: str, query: str, request_id: str):
     """graph를 approval_wait interrupt까지 실행한다."""
     config = {"configurable": {"thread_id": thread_id}}
     initial = {
@@ -140,18 +142,18 @@ def _run_to_interrupt(graph, session_id: str, thread_id: str, query: str, reques
         "request_id": request_id,
         "messages": [HumanMessage(content=query)],
     }
-    graph.invoke(initial, config=config)
+    await graph.ainvoke(initial, config=config)
     return config
 
 
-def _approve(graph, config):
+async def _approve(graph, config):
     """승인 Command로 graph를 재개한다."""
-    return graph.invoke(Command(resume={"approved": True}), config=config)
+    return await graph.ainvoke(Command(resume={"approved": True}), config=config)
 
 
-def _reject(graph, config):
+async def _reject(graph, config):
     """거절 Command로 graph를 재개한다."""
-    return graph.invoke(Command(resume={"approved": False}), config=config)
+    return await graph.ainvoke(Command(resume={"approved": False}), config=config)
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +164,7 @@ def _reject(graph, config):
 class TestApprovalExecuteE2E:
     """승인 경로 E2E 테스트."""
 
-    def test_approve_full_path_produces_final_text(self, make_graph):
+    async def test_approve_full_path_produces_final_text(self, make_graph):
         """승인 후 graph가 끝까지 실행되고 final_text가 생성된다."""
         planner = ConfigurableStubPlanner(
             task_type=TaskType.DRAFT_RESPONSE,
@@ -181,19 +183,19 @@ class TestApprovalExecuteE2E:
         )
         graph = make_graph(planner, executor)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id="e2e-approve-full-sess-1",
             thread_id="e2e-approve-full-1",
             query="민원 답변 초안 작성해줘",
             request_id="e2e-approve-full-req-1",
         )
-        result = _approve(graph, config)
+        result = await _approve(graph, config)
 
         assert result.get("final_text"), "승인 후 final_text가 생성되어야 합니다"
         assert result.get("approval_status") == ApprovalStatus.APPROVED.value
 
-    def test_approve_executes_all_planned_tools(self, make_graph):
+    async def test_approve_executes_all_planned_tools(self, make_graph):
         """승인 후 planned_tools 목록의 모든 tool이 실행된다."""
         planned = ["rag_search", "draft_civil_response"]
         planner = ConfigurableStubPlanner(
@@ -205,14 +207,14 @@ class TestApprovalExecuteE2E:
         executor = TrackingStubExecutor()
         graph = make_graph(planner, executor)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id="e2e-approve-tools-sess-1",
             thread_id="e2e-approve-tools-1",
             query="민원 답변 초안 작성해줘",
             request_id="e2e-approve-tools-req-1",
         )
-        result = _approve(graph, config)
+        result = await _approve(graph, config)
 
         tool_results = result.get("tool_results", {})
         for tool_name in planned:
@@ -222,7 +224,7 @@ class TestApprovalExecuteE2E:
         for tool_name in planned:
             assert tool_name in executed_names, f"executor.calls에 {tool_name}이 없습니다"
 
-    def test_approve_accumulated_context_has_tool_outputs(self, make_graph):
+    async def test_approve_accumulated_context_has_tool_outputs(self, make_graph):
         """승인 후 accumulated_context에 각 tool의 결과가 포함된다."""
         planned = ["rag_search", "draft_civil_response"]
         planner = ConfigurableStubPlanner(
@@ -234,14 +236,14 @@ class TestApprovalExecuteE2E:
         executor = TrackingStubExecutor()
         graph = make_graph(planner, executor)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id="e2e-approve-ctx-sess-1",
             thread_id="e2e-approve-ctx-1",
             query="민원 답변 초안 작성해줘",
             request_id="e2e-approve-ctx-req-1",
         )
-        result = _approve(graph, config)
+        result = await _approve(graph, config)
 
         accumulated = result.get("accumulated_context", {})
         for tool_name in planned:
@@ -258,7 +260,7 @@ class TestApprovalExecuteE2E:
 class TestRejectIdleE2E:
     """거절 경로 E2E 테스트."""
 
-    def test_reject_skips_tool_execute(self, make_graph):
+    async def test_reject_skips_tool_execute(self, make_graph):
         """거절 시 tool_execute가 실행되지 않는다."""
         planner = ConfigurableStubPlanner(
             task_type=TaskType.DRAFT_RESPONSE,
@@ -269,19 +271,19 @@ class TestRejectIdleE2E:
         executor = TrackingStubExecutor()
         graph = make_graph(planner, executor)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id="e2e-reject-skip-sess-1",
             thread_id="e2e-reject-skip-1",
             query="민원 답변 초안 작성해줘",
             request_id="e2e-reject-skip-req-1",
         )
-        result = _reject(graph, config)
+        result = await _reject(graph, config)
 
         assert not result.get("tool_results"), "거절 후 tool_results가 비어있어야 합니다"
         assert len(executor.calls) == 0, "거절 후 executor.calls가 비어있어야 합니다"
 
-    def test_reject_graph_reaches_idle(self, make_graph):
+    async def test_reject_graph_reaches_idle(self, make_graph):
         """거절 후 graph가 idle 상태(pending 노드 없음)로 복귀한다."""
         planner = ConfigurableStubPlanner(
             task_type=TaskType.DRAFT_RESPONSE,
@@ -292,19 +294,19 @@ class TestRejectIdleE2E:
         executor = TrackingStubExecutor()
         graph = make_graph(planner, executor)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id="e2e-reject-idle-sess-1",
             thread_id="e2e-reject-idle-1",
             query="민원 답변 초안 작성해줘",
             request_id="e2e-reject-idle-req-1",
         )
-        _reject(graph, config)
+        await _reject(graph, config)
 
-        state = graph.get_state(config)
+        state = await graph.aget_state(config)
         assert not state.next, "거절 후 graph가 idle 상태여야 합니다 (next가 비어야 함)"
 
-    def test_reject_then_new_run_on_same_session(self, make_graph, session_store):
+    async def test_reject_then_new_run_on_same_session(self, make_graph, session_store):
         """거절 후 같은 session에서 새 thread로 실행하면 두 번째 실행이 성공한다."""
         planner = ConfigurableStubPlanner(
             task_type=TaskType.DRAFT_RESPONSE,
@@ -318,14 +320,14 @@ class TestRejectIdleE2E:
         session_id = "e2e-reject-rerun-sess-1"
 
         # 첫 번째 실행: 거절
-        config1 = _run_to_interrupt(
+        config1 = await _run_to_interrupt(
             graph1,
             session_id=session_id,
             thread_id="e2e-reject-rerun-thread-1",
             query="민원 답변 초안 작성해줘",
             request_id="e2e-reject-rerun-req-1",
         )
-        _reject(graph1, config1)
+        await _reject(graph1, config1)
 
         # 두 번째 실행: 새 thread_id, 동일 session_id, 승인
         planner2 = ConfigurableStubPlanner(
@@ -345,14 +347,14 @@ class TestRejectIdleE2E:
         )
         graph2 = make_graph(planner2, executor2)
 
-        config2 = _run_to_interrupt(
+        config2 = await _run_to_interrupt(
             graph2,
             session_id=session_id,
             thread_id="e2e-reject-rerun-thread-2",
             query="민원 답변 초안 작성해줘",
             request_id="e2e-reject-rerun-req-2",
         )
-        result2 = _approve(graph2, config2)
+        result2 = await _approve(graph2, config2)
 
         assert result2.get("final_text"), "두 번째 실행에서 final_text가 생성되어야 합니다"
         assert result2.get("approval_status") == ApprovalStatus.APPROVED.value
@@ -372,7 +374,7 @@ class TestRejectIdleE2E:
 class TestEvidenceAugmentationE2E:
     """근거 보강(APPEND_EVIDENCE) 경로 E2E 테스트."""
 
-    def test_append_evidence_executes_all_evidence_tools(self, make_graph):
+    async def test_append_evidence_executes_all_evidence_tools(self, make_graph):
         """APPEND_EVIDENCE 작업에서 3개 tool이 모두 실행된다."""
         planner = ConfigurableStubPlanner(
             task_type=TaskType.APPEND_EVIDENCE,
@@ -403,14 +405,14 @@ class TestEvidenceAugmentationE2E:
         )
         graph = make_graph(planner, executor)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id="e2e-evidence-all-sess-1",
             thread_id="e2e-evidence-all-1",
             query="근거를 보강해줘",
             request_id="e2e-evidence-all-req-1",
         )
-        result = _approve(graph, config)
+        result = await _approve(graph, config)
 
         executed_names = [call[0] for call in executor.calls]
         for tool_name in ["rag_search", "api_lookup", "append_evidence"]:
@@ -421,7 +423,7 @@ class TestEvidenceAugmentationE2E:
             "보강된 근거 텍스트" in final_text
         ), f"final_text에 append_evidence 결과가 포함되어야 합니다. 실제: {final_text!r}"
 
-    def test_evidence_accumulated_context_chains(self, make_graph):
+    async def test_evidence_accumulated_context_chains(self, make_graph):
         """append_evidence 실행 시 accumulated_context에 이전 tool 결과가 포함된다."""
         planner = ConfigurableStubPlanner(
             task_type=TaskType.APPEND_EVIDENCE,
@@ -452,14 +454,14 @@ class TestEvidenceAugmentationE2E:
         )
         graph = make_graph(planner, executor)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id="e2e-evidence-chain-sess-1",
             thread_id="e2e-evidence-chain-1",
             query="근거를 보강해줘",
             request_id="e2e-evidence-chain-req-1",
         )
-        result = _approve(graph, config)
+        result = await _approve(graph, config)
 
         # executor.calls 순서 검증: rag_search -> api_lookup -> append_evidence
         executed_names = [call[0] for call in executor.calls]
@@ -478,7 +480,7 @@ class TestEvidenceAugmentationE2E:
             "append_evidence" in accumulated
         ), "accumulated_context에 append_evidence 결과가 있어야 합니다"
 
-    def test_draft_then_evidence_follow_up(self, make_graph, session_store):
+    async def test_draft_then_evidence_follow_up(self, make_graph, session_store):
         """두 번의 연속 graph run: 첫 번째 DRAFT_RESPONSE, 두 번째 APPEND_EVIDENCE."""
         session_id = "e2e-draft-evidence-sess-1"
 
@@ -500,14 +502,14 @@ class TestEvidenceAugmentationE2E:
         )
         graph1 = make_graph(planner1, executor1)
 
-        config1 = _run_to_interrupt(
+        config1 = await _run_to_interrupt(
             graph1,
             session_id=session_id,
             thread_id="e2e-draft-evidence-thread-1",
             query="민원 답변 초안 작성해줘",
             request_id="e2e-draft-evidence-req-1",
         )
-        result1 = _approve(graph1, config1)
+        result1 = await _approve(graph1, config1)
         assert result1.get("final_text"), "첫 번째 실행에서 final_text가 생성되어야 합니다"
 
         # 두 번째 실행: APPEND_EVIDENCE
@@ -539,14 +541,14 @@ class TestEvidenceAugmentationE2E:
         )
         graph2 = make_graph(planner2, executor2)
 
-        config2 = _run_to_interrupt(
+        config2 = await _run_to_interrupt(
             graph2,
             session_id=session_id,
             thread_id="e2e-draft-evidence-thread-2",
             query="근거를 보강해줘",
             request_id="e2e-draft-evidence-req-2",
         )
-        result2 = _approve(graph2, config2)
+        result2 = await _approve(graph2, config2)
         assert result2.get("final_text"), "두 번째 실행에서 final_text가 생성되어야 합니다"
 
         # 세션에 두 run이 모두 기록되어야 한다
@@ -567,7 +569,7 @@ class TestEvidenceAugmentationE2E:
 class TestSessionTraceConsistency:
     """세션 추적 일관성 E2E 테스트."""
 
-    def test_graph_run_and_tool_runs_share_request_id(self, make_graph, session_store):
+    async def test_graph_run_and_tool_runs_share_request_id(self, make_graph, session_store):
         """graph_run의 request_id와 모든 tool_run의 graph_run_request_id가 일치한다."""
         session_id = "e2e-trace-req-sess-1"
         request_id = "e2e-trace-req-1"
@@ -581,14 +583,14 @@ class TestSessionTraceConsistency:
         executor = TrackingStubExecutor()
         graph = make_graph(planner, executor)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id=session_id,
             thread_id="e2e-trace-req-thread-1",
             query="민원 답변 초안 작성해줘",
             request_id=request_id,
         )
-        _approve(graph, config)
+        await _approve(graph, config)
 
         session = session_store.get_or_create(session_id)
         graph_runs = session.recent_graph_runs
@@ -605,7 +607,7 @@ class TestSessionTraceConsistency:
                 f"실제: {tr.graph_run_request_id}"
             )
 
-    def test_multi_turn_accumulates_graph_runs(self, make_graph, session_store):
+    async def test_multi_turn_accumulates_graph_runs(self, make_graph, session_store):
         """같은 세션에서 두 번의 graph run이 모두 기록된다."""
         session_id = "e2e-multi-turn-sess-1"
 
@@ -618,14 +620,14 @@ class TestSessionTraceConsistency:
 
         # 첫 번째 실행
         graph1 = make_graph(planner, TrackingStubExecutor())
-        config1 = _run_to_interrupt(
+        config1 = await _run_to_interrupt(
             graph1,
             session_id=session_id,
             thread_id="e2e-multi-turn-thread-1",
             query="첫 번째 질문",
             request_id="e2e-multi-turn-req-1",
         )
-        _approve(graph1, config1)
+        await _approve(graph1, config1)
 
         # 두 번째 실행
         planner2 = ConfigurableStubPlanner(
@@ -635,21 +637,21 @@ class TestSessionTraceConsistency:
             tools=["rag_search", "draft_civil_response"],
         )
         graph2 = make_graph(planner2, TrackingStubExecutor())
-        config2 = _run_to_interrupt(
+        config2 = await _run_to_interrupt(
             graph2,
             session_id=session_id,
             thread_id="e2e-multi-turn-thread-2",
             query="두 번째 질문",
             request_id="e2e-multi-turn-req-2",
         )
-        _approve(graph2, config2)
+        await _approve(graph2, config2)
 
         session = session_store.get_or_create(session_id)
         assert (
             len(session.recent_graph_runs) >= 2
         ), f"세션에 2개 이상의 graph_run이 기록되어야 합니다. 실제: {len(session.recent_graph_runs)}"
 
-    def test_reject_graph_run_has_zero_executed_capabilities(self, make_graph, session_store):
+    async def test_reject_graph_run_has_zero_executed_capabilities(self, make_graph, session_store):
         """거절 시 graph_run.executed_capabilities가 빈 리스트이고 status가 'rejected'이다."""
         session_id = "e2e-reject-cap-sess-1"
         request_id = "e2e-reject-cap-req-1"
@@ -663,14 +665,14 @@ class TestSessionTraceConsistency:
         executor = TrackingStubExecutor()
         graph = make_graph(planner, executor)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id=session_id,
             thread_id="e2e-reject-cap-thread-1",
             query="민원 답변 초안 작성해줘",
             request_id=request_id,
         )
-        _reject(graph, config)
+        await _reject(graph, config)
 
         session = session_store.get_or_create(session_id)
         graph_runs = session.recent_graph_runs
@@ -684,7 +686,7 @@ class TestSessionTraceConsistency:
             run.status == "rejected"
         ), f"거절 시 status가 'rejected'여야 합니다. 실제: {run.status}"
 
-    def test_session_messages_reflect_graph_io(self, make_graph, session_store):
+    async def test_session_messages_reflect_graph_io(self, make_graph, session_store):
         """승인 후 세션에 사용자 메시지와 어시스턴트 메시지가 모두 기록된다."""
         session_id = "e2e-messages-sess-1"
         user_query = "이 민원에 대한 답변 초안 작성해줘"
@@ -706,14 +708,14 @@ class TestSessionTraceConsistency:
         )
         graph = make_graph(planner, executor)
 
-        config = _run_to_interrupt(
+        config = await _run_to_interrupt(
             graph,
             session_id=session_id,
             thread_id="e2e-messages-thread-1",
             query=user_query,
             request_id="e2e-messages-req-1",
         )
-        _approve(graph, config)
+        await _approve(graph, config)
 
         session = session_store.get_or_create(session_id)
         messages = session.recent_history

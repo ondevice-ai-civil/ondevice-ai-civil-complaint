@@ -89,6 +89,7 @@ _CONTAINER_PLATFORM_ENV_MARKERS = (
     "K_REVISION",
     "K_CONFIGURATION",
     "KUBERNETES_SERVICE_HOST",
+    "SPACE_ID",  # HuggingFace Spaces
 )
 
 
@@ -163,33 +164,60 @@ class ModelConfig:
       학습 데이터: umyunsang/govon-civil-response-data (74K건), QLoRA on AWQ base
       HF Hub: umyunsang/GovOn-EXAONE-LoRA-v2
     - legal-adapter (LoRA #2): append_evidence 용도
-      학습 데이터: umyunsang/govon-legal-response-data (100K건 1차, 총 270K), Unsloth QLoRA r16
-      HF Hub: siwo/govon-legal-adapter
+      학습 데이터: umyunsang/govon-legal-response-data (243K건), QLoRA on AWQ base
+      HuggingFace: siwo/govon-legal-adapter
     - 나머지 capability (rag_search, api_lookup, synthesis 등)는 LoRA 없이 base model 사용
 
-    adapter_paths: vLLM --lora-modules 형식으로 전달할 어댑터 경로 목록.
-      예: ["civil-adapter=/path/to/civil", "legal-adapter=siwo/govon-legal-adapter"]
-      환경변수 ADAPTER_PATHS에 콤마 구분으로 설정.
+    adapter_paths: Dict[str, str] 형식의 어댑터 이름-경로 매핑.
+      환경변수 ADAPTER_PATHS="civil=/path/to/civil,legal=/path/to/legal" 형식으로 설정.
+      예: {"civil": "/path/to/civil", "legal": "/path/to/legal"}
     """
 
     model_path: str = "LGAI-EXAONE/EXAONE-4.0-32B-AWQ"
     trust_remote_code: bool = True
     dtype: str = "half"
     enforce_eager: bool = True
-    # Multi-LoRA: vLLM --lora-modules 형식으로 전달할 어댑터 경로 목록
-    # 예: ["civil-adapter=/path/to/civil", "legal-adapter=siwo/govon-legal-adapter"]
-    adapter_paths: List[str] = field(default_factory=list)
+    # Multi-LoRA 어댑터 경로: {"civil": "/path/to/civil", "legal": "/path/to/legal"}
+    # 환경변수 ADAPTER_PATHS="civil=/path/to/civil,legal=/path/to/legal" 형식으로 설정
+    adapter_paths: Dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def from_env(cls) -> "ModelConfig":
+        adapter_paths = cls._parse_adapter_paths(os.getenv("ADAPTER_PATHS", ""))
         return cls(
             model_path=os.getenv("MODEL_PATH", "LGAI-EXAONE/EXAONE-4.0-32B-AWQ"),
             trust_remote_code=os.getenv("TRUST_REMOTE_CODE", "true").lower()
             in ("true", "1", "yes"),
             dtype=os.getenv("MODEL_DTYPE", "half"),
             enforce_eager=os.getenv("ENFORCE_EAGER", "true").lower() in ("true", "1", "yes"),
-            adapter_paths=_parse_adapter_paths(os.getenv("ADAPTER_PATHS", "")),
+            adapter_paths=adapter_paths,
         )
+
+    @staticmethod
+    def _parse_adapter_paths(raw: str) -> Dict[str, str]:
+        """ADAPTER_PATHS 환경변수를 파싱한다.
+
+        형식: "civil=/path/to/civil,legal=/path/to/legal"
+        반환: {"civil": "/path/to/civil", "legal": "/path/to/legal"}
+        잘못된 항목은 경고 후 무시한다.
+        """
+        if not raw or not raw.strip():
+            return {}
+        result: Dict[str, str] = {}
+        for entry in raw.split(","):
+            entry = entry.strip()
+            if not entry:
+                continue
+            if "=" not in entry:
+                logger.warning(f"ADAPTER_PATHS 항목 형식 오류 (name=path 필요): {entry!r}")
+                continue
+            name, path = entry.split("=", 1)
+            name, path = name.strip(), path.strip()
+            if not name or not path:
+                logger.warning(f"ADAPTER_PATHS 항목에 빈 이름 또는 경로: {entry!r}")
+                continue
+            result[name] = path
+        return result
 
 
 # ---------------------------------------------------------------------------
@@ -205,6 +233,7 @@ class PathConfig:
     index_path: str = ""
     faiss_index_dir: str = ""
     bm25_index_dir: str = ""
+    local_docs_root: str = ""
     agents_dir: str = ""
     log_dir: str = ""
     cache_dir: str = ""
@@ -217,6 +246,7 @@ class PathConfig:
             index_path=os.getenv("INDEX_PATH", "models/faiss_index/complaints.index"),
             faiss_index_dir=os.getenv("FAISS_INDEX_DIR", "models/faiss_index"),
             bm25_index_dir=os.getenv("BM25_INDEX_DIR", "models/bm25_index"),
+            local_docs_root=os.getenv("LOCAL_DOCS_ROOT", ""),
             agents_dir=os.getenv("AGENTS_DIR", os.path.join(project_root, "agents")),
             log_dir=os.getenv("LOG_DIR", os.path.join(project_root, "logs")),
             cache_dir=os.getenv("CACHE_DIR", os.path.join(project_root, ".cache")),
@@ -348,6 +378,7 @@ class RuntimeConfig:
         logger.info(f"  GPU Util      : {self.gpu_utilization}")
         logger.info(f"  Max Model Len : {self.max_model_len}")
         logger.info(f"  Model Path    : {self.model.model_path}")
+        logger.info(f"  Adapter Paths : {self.model.adapter_paths or '(none)'}")
         logger.info(f"  Skip Model    : {self.skip_model_load}")
         logger.info(f"  Request Timeout: {self.request_timeout_sec}s")
         logger.info(f"  Rate Limit    : {self.rate_limit_enabled}")
@@ -355,6 +386,7 @@ class RuntimeConfig:
         logger.info(f"  Healthcheck   : {self.healthcheck.endpoint}")
         logger.info(f"  Data Path     : {self.paths.data_path}")
         logger.info(f"  Index Path    : {self.paths.index_path}")
+        logger.info(f"  Local Docs    : {self.paths.local_docs_root or '(disabled)'}")
         logger.info(f"  Log Dir       : {self.paths.log_dir}")
         logger.info("=" * 60)
 

@@ -8,6 +8,7 @@ Issue: #154
 """
 
 import asyncio
+from collections import OrderedDict
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
@@ -85,6 +86,7 @@ class HybridSearchEngine:
             raise ValueError(f"rrf_k는 1 이상이어야 합니다. (입력값: {rrf_k})")
         self.rrf_k = rrf_k
         self.rrf_weights = rrf_weights or DEFAULT_RRF_WEIGHTS
+        self._embed_cache: OrderedDict[str, np.ndarray] = OrderedDict()
 
     async def search(
         self,
@@ -307,13 +309,23 @@ class HybridSearchEngine:
         return results
 
     def _embed_query(self, query: str) -> np.ndarray:
-        """쿼리를 임베딩 벡터로 변환한다.
+        """쿼리를 임베딩 벡터로 변환한다 (동일 쿼리는 캐시 재사용).
 
         multilingual-e5-large 모델 규칙에 따라 'query:' 접두사를 추가하고
-        L2 정규화된 벡터를 반환한다.
+        L2 정규화된 벡터를 반환한다. 캐시는 LRU(최근 64개) 방식으로 동작한다.
         """
+        cached = self._embed_cache.get(query)
+        if cached is not None:
+            # 캐시 히트: 접근 순서를 최신으로 갱신 (LRU)
+            self._embed_cache.move_to_end(query)
+            return cached
         embedding = self.embed_model.encode([f"query: {query}"], normalize_embeddings=True)
-        return embedding[0]
+        vector = embedding[0]
+        # 캐시 크기 제한 (LRU: 가장 오래 사용되지 않은 항목 제거)
+        if len(self._embed_cache) >= 64:
+            self._embed_cache.popitem(last=False)
+        self._embed_cache[query] = vector
+        return vector
 
     def is_ready(self, index_type: IndexType) -> bool:
         """지정된 인덱스 타입이 검색 가능한 상태인지 확인한다.

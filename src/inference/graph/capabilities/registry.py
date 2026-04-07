@@ -12,24 +12,24 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, List
 
+from src.inference.tool_router import ToolType
+
 from .api_lookup import ApiLookupCapability
 from .append_evidence import AppendEvidenceCapability
 from .base import CapabilityBase, CapabilityMetadata
+from .demographics_lookup import DemographicsLookupCapability
 from .draft_civil_response import DraftCivilResponseCapability
+from .issue_detector import IssueDetectorCapability
+from .keyword_analyzer import KeywordAnalyzerCapability
 from .rag_search import RagSearchCapability
+from .stats_lookup import StatsLookupCapability
 
 # ---------------------------------------------------------------------------
 # MVP capability stable identifiers (session log, approval prompt에서 사용)
+# ToolType enum에서 파생하여 단일 소스를 유지한다.
 # ---------------------------------------------------------------------------
 
-MVP_CAPABILITY_IDS: frozenset[str] = frozenset(
-    [
-        "rag_search",
-        "api_lookup",
-        "draft_civil_response",
-        "append_evidence",
-    ]
-)
+MVP_CAPABILITY_IDS: frozenset[str] = frozenset(t.value for t in ToolType)
 
 
 def get_mvp_capability_ids() -> frozenset[str]:
@@ -81,6 +81,10 @@ def build_mvp_registry(
             execute_fn=draft_civil_response_fn,
         ),
         "append_evidence": AppendEvidenceCapability(execute_fn=append_evidence_fn),
+        "issue_detector": IssueDetectorCapability(action=api_lookup_action),
+        "stats_lookup": StatsLookupCapability(action=api_lookup_action),
+        "keyword_analyzer": KeywordAnalyzerCapability(action=api_lookup_action),
+        "demographics_lookup": DemographicsLookupCapability(action=api_lookup_action),
     }
 
 

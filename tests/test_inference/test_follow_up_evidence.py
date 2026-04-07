@@ -15,7 +15,7 @@ import io
 import os
 import sys
 import tempfile
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from langchain_core.messages import HumanMessage
@@ -248,7 +248,8 @@ def evidence_graph():
         yield graph, store
 
 
-def test_graph_follow_up_evidence_preserves_draft(evidence_graph):
+@pytest.mark.asyncio
+async def test_graph_follow_up_evidence_preserves_draft(evidence_graph):
     """2턴 그래프: 초안 후 근거 요청 시 Turn 1 초안이 Turn 2 final_text에 포함된다.
 
     검증:
@@ -272,11 +273,11 @@ def test_graph_follow_up_evidence_preserves_draft(evidence_graph):
         "request_id": "req-1",
         "messages": [HumanMessage(content="도로 파손 민원 답변 작성해줘")],
     }
-    graph.invoke(initial_state, config)
+    await graph.ainvoke(initial_state, config)
     # approval interrupt 후 승인
-    graph.invoke(Command(resume={"approved": True}), config)
+    await graph.ainvoke(Command(resume={"approved": True}), config)
 
-    turn1_state = graph.get_state(config).values
+    turn1_state = (await graph.aget_state(config)).values
     assert (
         turn1_state.get("final_text") == TURN1_DRAFT
     ), "Turn 1 final_text가 stub 응답과 일치해야 한다"
@@ -288,10 +289,10 @@ def test_graph_follow_up_evidence_preserves_draft(evidence_graph):
         "request_id": "req-2",
         "messages": [HumanMessage(content="근거를 보여줘")],
     }
-    graph.invoke(initial_state2, config2)
-    graph.invoke(Command(resume={"approved": True}), config2)
+    await graph.ainvoke(initial_state2, config2)
+    await graph.ainvoke(Command(resume={"approved": True}), config2)
 
-    turn2_state = graph.get_state(config2).values
+    turn2_state = (await graph.aget_state(config2)).values
     evidence_items = turn2_state.get("evidence_items", [])
     assert isinstance(evidence_items, list), "evidence_items는 리스트여야 한다"
     assert len(evidence_items) > 0, "Turn 2에서 근거 보강 후 evidence_items가 비어있으면 안 된다"
@@ -378,6 +379,65 @@ def test_render_result_no_evidence_no_citations(capsys):
     captured = capsys.readouterr()
     assert "단순 답변" in captured.out
     assert "[로컬 문서]" not in captured.out
+
+
+def test_render_result_rich_panel_uses_explicit_terminal_width():
+    """Rich Panel 렌더링은 현재 터미널 폭을 기준으로 width를 명시한다."""
+    from src.cli import renderer
+
+    mock_console = MagicMock()
+    with patch.object(renderer, "_RICH_AVAILABLE", True):
+        with patch.object(renderer, "_console", mock_console):
+            with patch.object(renderer, "get_terminal_columns", return_value=80):
+                renderer.render_result({"text": "답변 텍스트"})
+
+    panel = mock_console.print.call_args.args[0]
+    assert panel.width == 78
+
+
+def test_render_result_rich_panel_scales_at_120_columns():
+    """120열 터미널에서는 Rich Panel width가 현재 폭에 맞춰 확장된다."""
+    from src.cli import renderer
+
+    mock_console = MagicMock()
+    with patch.object(renderer, "_RICH_AVAILABLE", True):
+        with patch.object(renderer, "_console", mock_console):
+            with patch.object(renderer, "get_terminal_columns", return_value=120):
+                renderer.render_result({"text": "넓은 터미널 응답"})
+
+    panel = mock_console.print.call_args.args[0]
+    assert panel.width == 118
+
+
+def test_render_result_rich_panel_scales_at_40_columns():
+    """40열 터미널에서도 Rich Panel이 현재 폭 안에서 렌더링된다."""
+    from src.cli import renderer
+
+    mock_console = MagicMock()
+    with patch.object(renderer, "_RICH_AVAILABLE", True):
+        with patch.object(renderer, "_console", mock_console):
+            with patch.object(renderer, "get_terminal_columns", return_value=40):
+                renderer.render_result({"text": "40열 응답"})
+
+    panel = mock_console.print.call_args.args[0]
+    assert panel.width == 38
+
+
+def test_render_result_falls_back_to_plain_on_narrow_terminal(capsys):
+    """40열 미만에서는 경고 후 plain mode로 결과를 출력한다."""
+    from src.cli import renderer
+
+    mock_console = MagicMock()
+    with patch.object(renderer, "_RICH_AVAILABLE", True):
+        with patch.object(renderer, "_console", mock_console):
+            with patch.object(renderer, "get_terminal_columns", return_value=30):
+                renderer.render_result({"text": "좁은 터미널 응답"})
+
+    captured = capsys.readouterr()
+    assert "plain mode" in captured.out
+    assert "좁은 터미널 응답" in captured.out
+    mock_console.print.assert_not_called()
+
 
 
 # ---------------------------------------------------------------------------

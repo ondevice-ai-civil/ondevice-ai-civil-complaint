@@ -79,7 +79,7 @@ fi
 if [ -z "${MODEL_PATH:-}" ] && [ ! -f "$ENV_FILE" ]; then
     echo "[INFO] MODEL_PATH가 설정되지 않았습니다."
     echo "  오프라인 환경에서는 컨테이너 내부 경로를 지정하세요:"
-    echo "  export MODEL_PATH=/app/models/GovOn-EXAONE-AWQ-v2"
+    echo "  export MODEL_PATH=/app/models/EXAONE-4.0-32B-AWQ"
 fi
 
 if [ ! -f "$ENV_FILE" ]; then

@@ -36,6 +36,11 @@ def mock_manager():
             "generator_civil_response",
         ]
         mock.index_manager = MagicMock()
+        mock.local_document_sync_status = {
+            "status": "ok",
+            "root_dir": "/tmp/local-docs",
+            "scanned_files": 2,
+        }
         mock.hybrid_engine.search = AsyncMock(
             return_value=(
                 [
@@ -54,10 +59,16 @@ def mock_manager():
 
 
 def test_health_endpoint(mock_manager):
-    response = client.get("/health")
+    with patch("src.inference.api_server.runtime_config.paths.local_docs_root", "/tmp/local-docs"):
+        response = client.get("/health")
+
     assert response.status_code == 200
-    assert response.json()["status"] == "healthy"
-    assert "generator_civil_response" in response.json()["agents_loaded"]
+    data = response.json()
+    assert data["status"] == "healthy"
+    assert "generator_civil_response" in data["agents_loaded"]
+    assert data["local_documents"]["enabled"] is True
+    assert data["local_documents"]["root_dir"] == "/tmp/local-docs"
+    assert data["local_documents"]["last_sync"]["status"] == "ok"
 
 
 def test_search_logic_mock(mock_manager):

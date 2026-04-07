@@ -41,7 +41,10 @@ BASE_URL = os.environ.get("GOVON_RUNTIME_URL", "http://localhost:7860").rstrip("
 API_KEY = os.environ.get("API_KEY")
 TIMEOUT = 300  # 시나리오당 최대 대기 시간 (초)
 BASE_MODEL = "LGAI-EXAONE/EXAONE-4.0-32B-AWQ"
-RESULTS_PATH = "verify_results.json"
+RESULTS_PATH = os.environ.get(
+    "VERIFY_RESULTS_PATH",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "verify_results.json"),
+)
 
 logger = logging.getLogger(__name__)
 
@@ -222,8 +225,12 @@ def _extract_text_from_events(events: list[dict]) -> str:
     for ev in reversed(events):
         if ev.get("finished") and ev.get("text"):
             return ev["text"]
-    # 전체 이벤트에서 non-empty text를 이어붙인다 (fallback)
-    chunks = [ev.get("text", "") or ev.get("final_text", "") for ev in events]
+    # 전체 이벤트에서 non-empty text를 이어붙인다 (fallback) — error/awaiting_approval 제외
+    chunks = [
+        ev.get("text", "") or ev.get("final_text", "")
+        for ev in events
+        if ev.get("status") not in ("error", "awaiting_approval")
+    ]
     return "".join(c for c in chunks if c)
 
 
@@ -359,26 +366,28 @@ async def _call_agent(
     try:
         status_code, resp = await http_post("/v2/agent/run", body)
         if status_code == 200:
+            status = resp.get("status", "")
+            # error 체크를 text 추출보다 먼저 — error 응답에 text가 함께 있을 경우 오판 방지
+            if status == "error":
+                return False, "", resp.get("error", "agent run error")
             text = resp.get("text", "") or resp.get("final_text", "")
-            if resp.get("status") == "error":
-                return False, text, resp.get("error", "agent run error")
             if text:
                 return True, text, None
             # awaiting_approval 상태 — 실제 텍스트 생성 없음으로 failure 처리
-            if resp.get("status") == "awaiting_approval":
+            if status == "awaiting_approval":
                 return (
                     False,
                     "",
                     f"awaiting_approval: 텍스트 미생성 (thread_id={resp.get('thread_id')})",
                 )
-            return False, "", f"text 없음, status={resp.get('status')}"
+            return False, "", f"text 없음, status={status}"
         return False, "", f"HTTP {status_code}: {resp}"
     except Exception as exc:
         return False, "", str(exc)
 
 
-# Scenario 3/4 공유 세션 ID (동일 run에서 같은 세션 사용)
-_RUN_SESSION_ID = str(uuid4())
+# Scenario 3/4 공유 세션 ID — main() 진입 시 초기화됨
+_RUN_SESSION_ID: str = ""
 
 
 async def scenario3_civil_lora() -> dict:
@@ -575,6 +584,10 @@ async def scenario6_lora_id_consistency() -> dict:
 
 
 async def main() -> int:
+    global _results, _RUN_SESSION_ID
+    _results = []
+    _RUN_SESSION_ID = str(uuid4())
+
     print("GovOn Legal LoRA 서빙 통합 검증")
     print(f"  대상 서버: {BASE_URL}")
     print(f"  인증: {'API_KEY 설정됨' if API_KEY else '미설정 (비인증)'}")

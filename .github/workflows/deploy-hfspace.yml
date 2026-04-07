@@ -1,0 +1,138 @@
+# HF Space 배포 및 환경 설정 워크플로
+#
+# 팀원 자체 Space에서 테스트하는 방법:
+#   1. huggingface.co 에서 Docker Space 생성 (hardware: a100-large)
+#   2. GitHub repo Settings > Secrets and variables > Actions 에서 HF_TOKEN 등록
+#   3. Space 이름을 아래 SPACE_ID 에 맞게 변경 후 workflow_dispatch 실행
+#
+# Space 필수 환경변수 (HF Space Settings > Variables):
+#   ADAPTER_PATHS = civil=umyunsang/GovOn-EXAONE-LoRA-v2,legal=siwo/govon-legal-adapter
+#   SERVING_PROFILE = container
+#   GPU_UTILIZATION = 0.90       (기본값, Dockerfile.hfspace 에 설정됨)
+#   MAX_MODEL_LEN = 8192         (기본값, Dockerfile.hfspace 에 설정됨)
+#
+# Multi-LoRA 서빙 검증:
+#   GOVON_RUNTIME_URL=https://<space-subdomain>.hf.space \
+#     python3 scripts/verify_lora_serving.py
+
+name: Deploy HF Space
+
+on:
+  workflow_dispatch:
+    inputs:
+      hardware:
+        description: 'HF Space hardware flavor'
+        required: false
+        default: 'a100-large'
+        type: choice
+        options:
+          - a10g-small
+          - a10g-large
+          - a100-large
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile.hfspace'
+      - 'src/**'
+      - 'requirements.txt'
+
+concurrency:
+  group: deploy-hfspace
+  cancel-in-progress: true
+
+env:
+  SPACE_ID: umyunsang/govon-runtime
+  HF_API: https://huggingface.co/api
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Change hardware to ${{ inputs.hardware || 'a100-large' }}
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          FLAVOR="${{ inputs.hardware || 'a100-large' }}"
+          RESPONSE=$(curl -s -o /tmp/hw_response.json -w "%{http_code}" \
+            -X PATCH "${{ env.HF_API }}/spaces/${{ env.SPACE_ID }}/hardware" \
+            -H "Authorization: Bearer $HF_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"flavor\": \"$FLAVOR\"}")
+          echo "HTTP $RESPONSE"
+          cat /tmp/hw_response.json
+          if [ "$RESPONSE" != "200" ]; then
+            echo "Hardware change failed (HTTP $RESPONSE)"
+            exit 1
+          fi
+          echo "Hardware changed to $FLAVOR"
+
+      - name: Set Space variables (ADAPTER_PATHS, SERVING_PROFILE)
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set_var() {
+            curl -s -X POST "${{ env.HF_API }}/spaces/${{ env.SPACE_ID }}/variables" \
+              -H "Authorization: Bearer $HF_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"key\": \"$1\", \"value\": \"$2\"}" | python3 -c "import sys,json; d=json.load(sys.stdin); print('$1 =', list(d.values())[0].get('value') if d else 'error')"
+          }
+          set_var "ADAPTER_PATHS" "civil=umyunsang/GovOn-EXAONE-LoRA-v2,legal=siwo/govon-legal-adapter"
+          set_var "SERVING_PROFILE" "container"
+
+      - name: Push to HF Space repo
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          git config user.email "github-actions@github.com"
+          git config user.name "github-actions"
+
+          # HF Space repo clone (sparse: Dockerfile + src only)
+          git clone --depth=1 \
+            "https://user:$HF_TOKEN@huggingface.co/spaces/${{ env.SPACE_ID }}" \
+            /tmp/hfspace
+
+          # Dockerfile.hfspace → Space의 Dockerfile로 복사
+          cp Dockerfile.hfspace /tmp/hfspace/Dockerfile
+          cp requirements.txt /tmp/hfspace/requirements.txt
+          rsync -a --delete src/ /tmp/hfspace/src/
+
+          cd /tmp/hfspace
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to push"
+          else
+            git commit -m "sync: $(git -C $GITHUB_WORKSPACE rev-parse --short HEAD)"
+            git push
+          fi
+
+      - name: Wait for Space to restart
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          echo "Waiting for Space to come online..."
+          for i in $(seq 1 20); do
+            STATUS=$(curl -s \
+              -H "Authorization: Bearer $HF_TOKEN" \
+              "${{ env.HF_API }}/spaces/${{ env.SPACE_ID }}" \
+              | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('runtime',{}).get('stage','unknown'))" 2>/dev/null)
+            echo "[$i/20] Stage: $STATUS"
+            if [ "$STATUS" = "RUNNING" ]; then
+              echo "Space is running"
+              break
+            fi
+            sleep 30
+          done
+
+      - name: Summary
+        run: |
+          echo "### HF Space Deploy" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Item | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Space | [${{ env.SPACE_ID }}](https://huggingface.co/spaces/${{ env.SPACE_ID }}) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Hardware | ${{ inputs.hardware || 'a100-large' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Commit | ${{ github.sha }} |" >> "$GITHUB_STEP_SUMMARY"

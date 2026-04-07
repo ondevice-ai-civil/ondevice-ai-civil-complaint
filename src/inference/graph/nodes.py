@@ -108,9 +108,18 @@ async def planner_node(
     messages = state.get("messages", [])
     context = state.get("accumulated_context", {})
 
-    plan = await planner_adapter.plan(messages=messages, context=context)
-
     validator = ToolPlanValidator()
+    try:
+        plan = await planner_adapter.plan(messages=messages, context=context)
+    except PlanValidationError as e:
+        _latency_ms = round((time.monotonic() - _start) * 1000, 2)
+        logger.warning(f"[planner] plan 생성 실패, fallback 적용: {e} latency_ms={_latency_ms}")
+        return {
+            **validator.make_fallback_plan(e),
+            "task_type": "",
+            "node_latencies": {"planner": _latency_ms},
+        }
+
     try:
         validator.validate(plan)
     except PlanValidationError as e:

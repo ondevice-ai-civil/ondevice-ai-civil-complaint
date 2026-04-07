@@ -2,13 +2,7 @@ $schema: "https://coderabbit.ai/integrations/schema.v2.json"
 
 language: "ko"
 
-tone_instructions: |
-  PR 리뷰는 다음 두 레벨만 보고하세요:
-  - [MUST]: 반드시 수정 (보안 취약점, 버그, 데이터 손실, 런타임 오류, 개인정보 노출)
-  - [SHOULD]: 수정 강권 (코드 품질, 유지보수성, 성능, 테스트 누락, 잠재적 회귀)
-  [NITS](스타일, 네이밍, 주석 표현, 사소한 포맷)는 절대 보고하지 마세요.
-  [MUST] 또는 [SHOULD] 이슈가 없으면 PR을 승인(Approve)하세요.
-  GovOn은 한국 공공행정 AI 서비스입니다. 개인정보, 민원 데이터 처리 로직에 특히 엄격하게 검토해주세요.
+tone_instructions: "[MUST]=보안·버그·데이터손실·개인정보노출, [SHOULD]=품질·성능·테스트누락. NITS 보고 금지. MUST/SHOULD 없으면 Approve. 개인정보·민원 처리 로직 엄격 검토."
 
 early_access: true
 
@@ -125,12 +119,14 @@ knowledge_base:
     scope: "auto"
   pull_requests:
     scope: "auto"
-  code_guidelines: true
-  web_search: true
+  code_guidelines:
+    enabled: true
+  web_search:
+    enabled: true
 
 code_generation:
   docstrings:
-    language: "python"
+    language: "ko-KR"
   unit_tests:
     path_instructions:
       - path: "tests/**/*.py"

@@ -573,6 +573,49 @@ def test_render_result_plain_fallback_renders_structured_tool_table(capsys):
     assert "경기도\t92,887" in captured.out
 
 
+def test_structured_table_columns_adapt_between_80_and_120():
+    """80열/120열에서 구조화 테이블 컬럼 수를 다르게 선택한다."""
+    from src.cli import renderer
+
+    rows = [
+        {
+            "label": "경기도",
+            "hits": 92887,
+            "ratio": "0.01357",
+            "population": 6844493,
+            "prebRatio": "37.1",
+        }
+    ]
+
+    assert renderer._select_table_columns(rows, 80) == [
+        "label",
+        "hits",
+        "ratio",
+        "prebRatio",
+    ]
+    assert renderer._select_table_columns(rows, 120) == [
+        "label",
+        "hits",
+        "ratio",
+        "prebRatio",
+        "population",
+    ]
+
+
+def test_evidence_table_columns_adapt_between_80_and_120():
+    """80열/120열에서 evidence 비교 테이블 컬럼을 다르게 선택한다."""
+    from src.cli import renderer
+
+    assert renderer._select_evidence_columns(80) == ["source_type", "title", "score"]
+    assert renderer._select_evidence_columns(120) == [
+        "source_type",
+        "title",
+        "page",
+        "score",
+        "link_or_path",
+    ]
+
+
 def test_render_result_plain_fallback_keeps_raw_markdown_text(capsys):
     """plain fallback에서는 마크다운 원문을 그대로 출력한다."""
     result = {"text": "**굵게**\n- 목록\n`코드`"}
@@ -598,6 +641,71 @@ def test_render_result_rich_panel_scales_at_120_columns():
 
     panel = mock_console.print.call_args.args[0]
     assert panel.width == 118
+
+
+def test_render_result_rich_panel_uses_wider_evidence_columns_at_120():
+    """120열에서는 evidence 테이블이 link/path 컬럼까지 포함한다."""
+    from src.cli import renderer
+
+    class FakeMarkdown:
+        def __init__(self, markup, code_theme=None):
+            self.markup = markup
+            self.code_theme = code_theme
+
+    class FakeText:
+        def __init__(self, text="", style=None):
+            self.plain = text
+            self.style = style
+
+        def append(self, text, style=None):
+            self.plain += text
+
+    class FakeTable:
+        def __init__(self, *args, **kwargs):
+            self.rows = []
+            self.columns = []
+
+        def add_column(self, header, **kwargs):
+            self.columns.append((header, kwargs))
+
+        def add_row(self, *cells):
+            self.rows.append(cells)
+
+    class FakeGroup:
+        def __init__(self, *renderables):
+            self.renderables = renderables
+
+    mock_console = MagicMock()
+    result = {
+        "text": "넓은 터미널 응답",
+        "evidence_items": [_SAMPLE_RAG_EVIDENCE],
+    }
+
+    with patch.object(renderer, "_RICH_AVAILABLE", True):
+        with patch.object(renderer, "_console", mock_console):
+            with patch.object(renderer, "Markdown", FakeMarkdown, create=True):
+                with patch.object(renderer, "Text", FakeText, create=True):
+                    with patch.object(renderer, "Table", FakeTable, create=True):
+                        with patch.object(renderer, "Group", FakeGroup, create=True):
+                            with patch.object(renderer, "get_terminal_columns", return_value=120):
+                                renderer.render_result(result)
+
+    panel = mock_console.print.call_args.args[0]
+    evidence_table = panel.renderable.renderables[3]
+    assert [column[0] for column in evidence_table.columns] == [
+        "출처",
+        "제목",
+        "페이지",
+        "점수",
+        "경로/링크",
+    ]
+    assert evidence_table.rows[0] == (
+        "로컬 문서",
+        "민원처리법.pdf",
+        "p.23",
+        "0.92",
+        "/data/docs/민원처리법.pdf",
+    )
 
 
 def test_render_result_rich_panel_scales_at_40_columns():

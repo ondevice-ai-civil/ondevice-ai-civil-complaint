@@ -44,7 +44,9 @@ BASE_URL = os.environ.get("GOVON_RUNTIME_URL", "http://localhost:7860").rstrip("
 API_KEY = os.environ.get("API_KEY")
 TIMEOUT = 300  # 시나리오당 최대 대기 시간 (초)
 BASE_MODEL = "LGAI-EXAONE/EXAONE-4.0-32B-AWQ"
-RESULTS_PATH = "verify_e2e_tool_calling_results.json"
+_TIMESTAMP = time.strftime("%Y%m%d_%H%M%S")
+RESULTS_PATH = f"verify_e2e_tool_calling_{_TIMESTAMP}.json"
+LOG_PATH = f"verify_e2e_tool_calling_{_TIMESTAMP}.log"
 
 VALID_TOOLS = frozenset(
     {
@@ -72,9 +74,49 @@ LEGAL_PATTERNS = [
     r"규정",
 ]
 
+# ---------------------------------------------------------------------------
+# 로깅 설정: 터미널 + 파일 동시 기록
+# ---------------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler(LOG_PATH, encoding="utf-8"),
+    ],
+)
 logger = logging.getLogger(__name__)
+logger.info(f"로그 파일: {LOG_PATH}")
+logger.info(f"결과 파일: {RESULTS_PATH}")
 
 _results: list[dict] = []
+
+
+def _save_intermediate_results() -> None:
+    """시나리오 완료 시마다 중간 결과를 JSON 파일에 저장한다."""
+    output = {
+        "meta": {
+            "run_id": _run_id if "_run_id" in dir() else "",
+            "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "target_url": BASE_URL,
+            "log_file": LOG_PATH,
+            "status": "in_progress",
+        },
+        "summary": {
+            "total": len(_results),
+            "passed": sum(1 for r in _results if r["status"] == "passed"),
+            "failed": sum(1 for r in _results if r["status"] == "failed"),
+            "skipped": sum(1 for r in _results if r["status"] == "skipped"),
+        },
+        "scenarios": _results,
+    }
+    try:
+        with open(RESULTS_PATH, "w", encoding="utf-8") as f:
+            json.dump(output, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
 _observed_tools: set[str] = set()
 _run_id = uuid4().hex
 
@@ -235,15 +277,18 @@ def _record(
     tag = {"passed": "[PASS]", "failed": "[FAIL]", "skipped": "[SKIP]"}.get(status, "[????]")
     suffix = f"({elapsed:.2f}s)"
     if status == "passed":
-        print(f"{tag} Scenario {scenario_num}: {name} {suffix}")
+        msg = f"{tag} Scenario {scenario_num}: {name} {suffix}"
+        logger.info(msg)
     elif status == "skipped":
-        print(f"{tag} Scenario {scenario_num}: {name} — {error or 'skipped'} {suffix}")
+        msg = f"{tag} Scenario {scenario_num}: {name} — {error or 'skipped'} {suffix}"
+        logger.warning(msg)
     else:
-        print(f"{tag} Scenario {scenario_num}: {name} — {error} {suffix}")
+        msg = f"{tag} Scenario {scenario_num}: {name} — {error} {suffix}"
+        logger.error(msg)
 
     if warnings:
         for w in warnings:
-            print(f"  [WARN] {w}")
+            logger.warning(f"  [WARN] {w}")
 
     entry = {
         "id": scenario_num,
@@ -258,6 +303,7 @@ def _record(
         "detail": detail,
     }
     _results.append(entry)
+    _save_intermediate_results()
     return entry
 
 
@@ -306,11 +352,20 @@ async def _call_agent_with_approval(
         "tool_args": {},
     }
 
+    logger.info(f"[Agent] 요청: session={session_id}, query={query[:60]}...")
+
     # --- SSE 스트리밍 시도 ---
     try:
         status_code, events = await http_post_sse("/v2/agent/stream", body, timeout=timeout)
+        logger.info(f"[Agent] SSE 응답: HTTP {status_code}, events={len(events)}")
         if status_code != 200:
             raise RuntimeError(f"SSE HTTP {status_code}")
+
+        # 노드별 흐름 로깅
+        for ev in events:
+            node = ev.get("node", "?")
+            st = ev.get("status", "?")
+            logger.info(f"  [SSE] node={node}, status={st}")
 
         # awaiting_approval 또는 __interrupt__ 이벤트 탐색
         awaiting = None
@@ -340,6 +395,13 @@ async def _call_agent_with_approval(
                 meta["tool_args"] = awaiting["tool_args"]
 
             thread_id = awaiting.get("thread_id") or session_id
+            logger.info(f"  [Approval] planned_tools={meta['planned_tools']}")
+            logger.info(
+                f"  [Approval] adapter_mode={meta['adapter_mode']}, tool_args={meta['tool_args']}"
+            )
+            logger.info(
+                f"  [Approval] {'승인' if approve else '거절'} 요청 → thread_id={thread_id}"
+            )
 
             # approve/reject
             approve_code, approve_resp = await http_post(
@@ -351,6 +413,7 @@ async def _call_agent_with_approval(
                 return False, "", meta, f"approve HTTP {approve_code}: {approve_resp}"
 
             # approve 응답에서 최종 텍스트 및 도구 결과 추출
+            logger.info(f"  [Approve] HTTP {approve_code}, status={approve_resp.get('status')}")
             final_text = approve_resp.get("text", "") or approve_resp.get("final_text", "") or ""
             if approve_resp.get("tool_results"):
                 meta["tool_results"] = approve_resp["tool_results"]
@@ -1481,16 +1544,16 @@ async def _wait_cold_start() -> float:
         try:
             code, body = await http_get("/health", timeout=10)
             if code == 200 and body.get("status") in ("ok", "healthy"):
-                print(f"  서버 준비 완료 (대기 {total_wait:.0f}s)")
+                logger.info(f"  서버 준비 완료 (대기 {total_wait:.0f}s)")
                 return total_wait
         except Exception:
             pass
         if i < 9:
-            print(f"  서버 대기 중... ({i + 1}/10, 30s 후 재시도)")
+            logger.info(f"  서버 대기 중... ({i + 1}/10, 30s 후 재시도)")
             await asyncio.sleep(30)
             total_wait += 30
 
-    print("  [WARN] 서버 준비 확인 실패 — 계속 진행")
+    logger.info("  [WARN] 서버 준비 확인 실패 — 계속 진행")
     return total_wait
 
 
@@ -1500,23 +1563,23 @@ async def _wait_cold_start() -> float:
 
 
 async def main() -> int:
-    print("=" * 60)
-    print("GovOn E2E Tool Calling + AdapterRegistry 검증")
-    print("=" * 60)
-    print(f"  대상 서버: {BASE_URL}")
-    print(f"  인증: {'API_KEY 설정됨' if API_KEY else '미설정 (비인증)'}")
-    print(f"  HTTP 백엔드: {_HTTP_BACKEND}")
-    print(f"  타임아웃: {TIMEOUT}s / 시나리오")
-    print(f"  run_id: {_run_id}")
-    print("-" * 60)
+    logger.info("=" * 60)
+    logger.info("GovOn E2E Tool Calling + AdapterRegistry 검증")
+    logger.info("=" * 60)
+    logger.info(f"  대상 서버: {BASE_URL}")
+    logger.info(f"  인증: {'API_KEY 설정됨' if API_KEY else '미설정 (비인증)'}")
+    logger.info(f"  HTTP 백엔드: {_HTTP_BACKEND}")
+    logger.info(f"  타임아웃: {TIMEOUT}s / 시나리오")
+    logger.info(f"  run_id: {_run_id}")
+    logger.info("-" * 60)
 
     # Cold start 대기
-    print("[Cold Start] 서버 준비 확인 중...")
+    logger.info("[Cold Start] 서버 준비 확인 중...")
     cold_start_wait = await _wait_cold_start()
 
     # ===== Phase 1: Infrastructure (hard gate) =====
-    print("\n[Phase 1] Infrastructure (hard gate)")
-    print("-" * 40)
+    logger.info("\n[Phase 1] Infrastructure (hard gate)")
+    logger.info("-" * 40)
 
     phase1_scenarios = [
         scenario1_health_profile,
@@ -1531,15 +1594,15 @@ async def main() -> int:
             phase1_failed = True
 
     if phase1_failed:
-        print("\n" + "!" * 60)
-        print("ABORT: Infrastructure not ready — Phase 1 failed")
-        print("!" * 60)
+        logger.info("\n" + "!" * 60)
+        logger.info("ABORT: Infrastructure not ready — Phase 1 failed")
+        logger.info("!" * 60)
         _write_output(cold_start_wait)
         return 1
 
     # ===== Phase 2: Agent Pipeline Core =====
-    print("\n[Phase 2] Agent Pipeline Core")
-    print("-" * 40)
+    logger.info("\n[Phase 2] Agent Pipeline Core")
+    logger.info("-" * 40)
 
     phase2_scenarios = [
         scenario4_planner_valid_plan,
@@ -1552,28 +1615,28 @@ async def main() -> int:
         await fn()
 
     # ===== Phase 3: data.go.kr API Tools (soft gate) =====
-    print("\n[Phase 3] data.go.kr API Tools (soft gate)")
-    print("-" * 40)
+    logger.info("\n[Phase 3] data.go.kr API Tools (soft gate)")
+    logger.info("-" * 40)
 
-    print("  data.go.kr 연결 확인...")
+    logger.info("  data.go.kr 연결 확인...")
     datago_ok = await _check_datago_connectivity()
     if datago_ok:
-        print("  data.go.kr 연결 가능")
+        logger.info("  data.go.kr 연결 가능")
     else:
-        print("  data.go.kr 연결 불가 — Phase 3 스킵")
+        logger.info("  data.go.kr 연결 불가 — Phase 3 스킵")
 
     await scenario8_external_api_tools()
 
     # ===== Phase 4: Adapter Dynamics =====
-    print("\n[Phase 4] Adapter Dynamics")
-    print("-" * 40)
+    logger.info("\n[Phase 4] Adapter Dynamics")
+    logger.info("-" * 40)
 
     await scenario9_sequential_adapter_switching()
     await scenario10_lora_id_consistency()
 
     # ===== Phase 5: Robustness =====
-    print("\n[Phase 5] Robustness")
-    print("-" * 40)
+    logger.info("\n[Phase 5] Robustness")
+    logger.info("-" * 40)
 
     phase5_scenarios = [
         scenario11_empty_query,
@@ -1585,18 +1648,18 @@ async def main() -> int:
         await fn()
 
     # ===== 요약 =====
-    print("\n" + "=" * 60)
+    logger.info("\n" + "=" * 60)
     passed = sum(1 for r in _results if r["status"] == "passed")
     failed = sum(1 for r in _results if r["status"] == "failed")
     skipped = sum(1 for r in _results if r["status"] == "skipped")
     total = len(_results)
 
-    print(f"결과: {passed}/{total} 통과, {failed} 실패, {skipped} 스킵")
+    logger.info(f"결과: {passed}/{total} 통과, {failed} 실패, {skipped} 스킵")
 
     tool_ratio = len(_observed_tools) / len(VALID_TOOLS) if VALID_TOOLS else 0
-    print(f"도구 커버리지: {len(_observed_tools)}/{len(VALID_TOOLS)} ({tool_ratio:.0%})")
+    logger.info(f"도구 커버리지: {len(_observed_tools)}/{len(VALID_TOOLS)} ({tool_ratio:.0%})")
     if _observed_tools:
-        print(f"  관측된 도구: {sorted(_observed_tools)}")
+        logger.info(f"  관측된 도구: {sorted(_observed_tools)}")
 
     _write_output(cold_start_wait)
 
@@ -1637,7 +1700,7 @@ def _write_output(cold_start_wait: float) -> None:
 
     with open(RESULTS_PATH, "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
-    print(f"\n결과 저장: {RESULTS_PATH}")
+    logger.info(f"\n결과 저장: {RESULTS_PATH}")
 
 
 if __name__ == "__main__":

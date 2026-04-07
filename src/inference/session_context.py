@@ -750,9 +750,7 @@ class SessionStore:
                     expired_ids,
                 )
 
-            deleted = conn.execute(
-                "DELETE FROM sessions WHERE updated_at < ?", (cutoff,)
-            ).rowcount
+            deleted = conn.execute("DELETE FROM sessions WHERE updated_at < ?", (cutoff,)).rowcount
         if deleted:
             logger.info(f"SessionStore: {deleted}개 세션 정리 (max_age_days={max_age_days})")
         return deleted

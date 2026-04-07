@@ -16,7 +16,8 @@ from loguru import logger
 
 def _mask_api_key(msg: str) -> str:
     """로그/에러 메시지에서 serviceKey 값을 마스킹."""
-    return re.sub(r'(serviceKey=)[^&\s]+', r'\1***MASKED***', str(msg))
+    return re.sub(r"(serviceKey=)[^&\s]+", r"\1***MASKED***", str(msg))
+
 
 from ..session_context import SessionContext
 from .base import ActionResult, BaseAction, Citation
@@ -410,7 +411,9 @@ class MinwonAnalysisAction(BaseAction):
                 response.raise_for_status()
                 body = response.json()
         except httpx.TimeoutException as exc:
-            logger.warning(f"[minwon_analysis] API 타임아웃 ({endpoint}): {_mask_api_key(str(exc))}")
+            logger.warning(
+                f"[minwon_analysis] API 타임아웃 ({endpoint}): {_mask_api_key(str(exc))}"
+            )
             return None
         except httpx.HTTPStatusError as exc:
             logger.warning(

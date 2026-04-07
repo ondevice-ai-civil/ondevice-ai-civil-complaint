@@ -1882,13 +1882,16 @@ async def v2_agent_run(
                 )
         except Exception as persist_exc:
             logger.warning(f"[v2/agent/run] error persist 실패: {persist_exc}")
-        return JSONResponse(status_code=500, content={
-            "status": "error",
-            "thread_id": thread_id,
-            "session_id": session_id,
-            "graph_run_id": request_id,
-            "error": str(exc),
-        })
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "thread_id": thread_id,
+                "session_id": session_id,
+                "graph_run_id": request_id,
+                "error": str(exc),
+            },
+        )
 
 
 @app.post("/v2/agent/approve")
@@ -1961,13 +1964,16 @@ async def v2_agent_approve(
                     )
         except Exception as persist_exc:
             logger.warning(f"[v2/agent/approve] error persist 실패: {persist_exc}")
-        return JSONResponse(status_code=500, content={
-            "status": "error",
-            "thread_id": thread_id,
-            "session_id": session_id,
-            "graph_run_id": request_id,
-            "error": str(exc),
-        })
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "thread_id": thread_id,
+                "session_id": session_id,
+                "graph_run_id": request_id,
+                "error": str(exc),
+            },
+        )
 
 
 @app.post("/v2/agent/cancel")
@@ -2023,11 +2029,14 @@ async def v2_agent_cancel(
         raise
     except Exception as exc:
         logger.error(f"[v2/agent/cancel] 예외 발생: {exc}")
-        return JSONResponse(status_code=500, content={
-            "status": "error",
-            "thread_id": thread_id,
-            "error": str(exc),
-        })
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "thread_id": thread_id,
+                "error": str(exc),
+            },
+        )
 
 
 if __name__ == "__main__":

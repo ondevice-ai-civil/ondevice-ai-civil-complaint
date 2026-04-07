@@ -121,7 +121,6 @@ def _plain_rule(columns: int) -> str:
     return "─" * max(columns - 2, 12)
 
 
-
 def render_evidence_section(evidence_items: list) -> str:
     """EvidenceItem dict 리스트를 출처 섹션 텍스트로 변환한다.
 

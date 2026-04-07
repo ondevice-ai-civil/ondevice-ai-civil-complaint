@@ -35,14 +35,14 @@ SYSTEM_PROMPT = (
 
 # 법령 조항 인용 패턴
 CITATION_PATTERNS = [
-    r"제\s*\d+조",           # 제1조, 제 1 조
-    r"법률\s*제\s*\d+호",    # 법률 제1234호
-    r"제\s*\d+항",           # 제1항
-    r"제\s*\d+호",           # 제1호
-    r"\d{4}\s*년\s*법",      # 2024년 법
-    r"판례\s*\d+",           # 판례 번호
-    r"\d+가합\d+",           # 판결문 번호 형식
-    r"\d+다\d+",             # 대법원 판결 번호
+    r"제\s*\d+조",  # 제1조, 제 1 조
+    r"법률\s*제\s*\d+호",  # 법률 제1234호
+    r"제\s*\d+항",  # 제1항
+    r"제\s*\d+호",  # 제1호
+    r"\d{4}\s*년\s*법",  # 2024년 법
+    r"판례\s*\d+",  # 판례 번호
+    r"\d+가합\d+",  # 판결문 번호 형식
+    r"\d+다\d+",  # 대법원 판결 번호
 ]
 CITATION_REGEX = re.compile("|".join(CITATION_PATTERNS))
 
@@ -76,7 +76,9 @@ def evaluate(
 
     logger.info("Loading dataset: %s", DATASET_REPO)
     ds = load_dataset(DATASET_REPO)
-    val_ds = ds["validation"].shuffle(seed=42).select(range(min(sample_size, len(ds["validation"]))))
+    val_ds = (
+        ds["validation"].shuffle(seed=42).select(range(min(sample_size, len(ds["validation"]))))
+    )
     logger.info("Evaluation samples: %d", len(val_ds))
 
     client = OpenAI(base_url=api_base, api_key=api_key)
@@ -110,11 +112,13 @@ def evaluate(
 
     logger.info("Computing BERTScore...")
     from bert_score import score as bert_score
+
     _, _, base_bert_f1 = bert_score(base_outputs, references, lang="ko", verbose=False)
     _, _, adapter_bert_f1 = bert_score(adapter_outputs, references, lang="ko", verbose=False)
 
     logger.info("Computing ROUGE-L...")
     from rouge_score import rouge_scorer
+
     scorer = rouge_scorer.RougeScorer(["rougeL"], use_stemmer=False)
 
     base_rouge, adapter_rouge = [], []
@@ -148,7 +152,9 @@ def main():
     parser.add_argument("--sample-size", type=int, default=100)
     parser.add_argument("--base-model", default="LGAI-EXAONE/EXAONE-4.0-32B-AWQ")
     parser.add_argument("--adapter-model", default="legal-adapter")
-    parser.add_argument("--api-base", default=os.getenv("OPENAI_API_BASE", "http://localhost:8000/v1"))
+    parser.add_argument(
+        "--api-base", default=os.getenv("OPENAI_API_BASE", "http://localhost:8000/v1")
+    )
     parser.add_argument("--output", default="eval_results.json")
     args = parser.parse_args()
 

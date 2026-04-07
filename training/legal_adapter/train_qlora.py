@@ -44,8 +44,13 @@ TRAIN_SAMPLE_SIZE = None if _sample_env.lower() == "none" else int(_sample_env)
 LORA_RANK = 16
 LORA_ALPHA = 32
 LORA_TARGET_MODULES = [
-    "q_proj", "v_proj", "k_proj", "o_proj",
-    "gate_proj", "up_proj", "down_proj",
+    "q_proj",
+    "v_proj",
+    "k_proj",
+    "o_proj",
+    "gate_proj",
+    "up_proj",
+    "down_proj",
 ]
 
 LEARNING_RATE = 2e-4
@@ -130,7 +135,9 @@ def main():
         ]
         try:
             text = tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=False,
+                messages,
+                tokenize=False,
+                add_generation_prompt=False,
             )
         except Exception:
             text = (
@@ -193,7 +200,9 @@ def main():
     # 5. Push to Hub
     logger.info("Pushing to %s", OUTPUT_REPO)
     model.push_to_hub(
-        OUTPUT_REPO, token=hf_token, private=True,
+        OUTPUT_REPO,
+        token=hf_token,
+        private=True,
         commit_message=f"feat: EXAONE 4.0-32B Unsloth QLoRA legal adapter (r{LORA_RANK})",
     )
     tokenizer.push_to_hub(OUTPUT_REPO, token=hf_token, private=True)

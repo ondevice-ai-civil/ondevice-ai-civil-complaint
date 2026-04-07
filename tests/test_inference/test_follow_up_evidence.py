@@ -439,7 +439,6 @@ def test_render_result_falls_back_to_plain_on_narrow_terminal(capsys):
     mock_console.print.assert_not_called()
 
 
-
 # ---------------------------------------------------------------------------
 # Test 6: LLMPlannerAdapter._build_user_prompt() — [이전 답변] 주입
 # ---------------------------------------------------------------------------

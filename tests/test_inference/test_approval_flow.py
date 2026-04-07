@@ -236,9 +236,16 @@ async def test_run_error_returns_error_status(patched_app):
 
     resp = await v2_agent_run(request=request, _=None)
 
-    assert resp["status"] == "error"
-    assert "테스트 오류" in resp["error"]
-    assert resp["session_id"] == "sess-err"
+    # v2 에러 응답은 JSONResponse(status_code=500)로 반환됨
+    import json
+
+    if hasattr(resp, "body"):
+        body = json.loads(resp.body)
+    else:
+        body = resp
+    assert body["status"] == "error"
+    assert "테스트 오류" in body["error"]
+    assert body["session_id"] == "sess-err"
 
 
 @pytest.mark.asyncio
@@ -254,5 +261,12 @@ async def test_approve_error_returns_error_status(patched_app):
 
     resp = await v2_agent_approve(thread_id="t-err", approved=True, _=None)
 
-    assert resp["status"] == "error"
-    assert "approve 오류" in resp["error"]
+    # v2 에러 응답은 JSONResponse(status_code=500)로 반환됨
+    import json
+
+    if hasattr(resp, "body"):
+        body = json.loads(resp.body)
+    else:
+        body = resp
+    assert body["status"] == "error"
+    assert "approve 오류" in body["error"]

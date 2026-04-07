@@ -113,14 +113,26 @@ async def planner_node(
         plan = await planner_adapter.plan(messages=messages, context=context)
     except PlanValidationError as exc:
         _latency_ms = round((time.monotonic() - _start) * 1000, 2)
-        logger.warning(f"[planner] plan 생성 실패, fallback 적용: {exc} latency_ms={_latency_ms}")
-        return {
-            **validator.make_fallback_plan(exc),
-            "goal": f"⚠ 계획 수립 실패: {str(exc)[:100]}",
-            "reason": "시스템이 요청을 분석하지 못했습니다. 거절 후 다시 시도해주세요.",
-            "task_type": "",
-            "node_latencies": {"planner": _latency_ms},
-        }
+        logger.warning(f"[planner] LLM plan 실패, RegexPlannerAdapter fallback 시도: {exc}")
+        try:
+            from .planner_adapter import RegexPlannerAdapter
+
+            regex_fallback = RegexPlannerAdapter(
+                registry=getattr(planner_adapter, "_registry", None)
+            )
+            plan = await regex_fallback.plan(messages=messages, context=context)
+            logger.info(f"[planner] Regex fallback 성공: tools={plan.tools}")
+        except Exception as fallback_exc:
+            logger.warning(
+                f"[planner] Regex fallback도 실패: {fallback_exc} latency_ms={_latency_ms}"
+            )
+            return {
+                **validator.make_fallback_plan(exc),
+                "goal": f"⚠ 계획 수립 실패: {str(exc)[:100]}",
+                "reason": "시스템이 요청을 분석하지 못했습니다. 거절 후 다시 시도해주세요.",
+                "task_type": "",
+                "node_latencies": {"planner": _latency_ms},
+            }
 
     try:
         validator.validate(plan)

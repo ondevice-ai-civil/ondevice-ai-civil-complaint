@@ -341,12 +341,14 @@ async def _call_agent_with_approval(
     """에이전트 SSE 스트리밍으로 호출 → awaiting_approval까지 파싱 → approve/reject.
 
     Returns: (success, text, metadata_dict, error)
-    metadata_dict keys: planned_tools, task_type, tool_results, adapter_mode, tool_args
+    metadata_dict keys: planned_tools, task_type, goal, reason, tool_results, adapter_mode, tool_args
     """
     body = {"query": query, "session_id": session_id, "use_rag": False}
     meta: dict[str, Any] = {
         "planned_tools": [],
         "task_type": None,
+        "goal": None,
+        "reason": None,
         "tool_results": {},
         "adapter_mode": None,
         "tool_args": {},
@@ -373,22 +375,64 @@ async def _call_agent_with_approval(
             if ev.get("status") == "awaiting_approval" or ev.get("node") == "__interrupt__":
                 awaiting = ev
                 break
-            # 플래너 노드에서 planned_tools 추출
-            if ev.get("planned_tools"):
+            # 플래너 노드에서 planned_tools 추출 (nested approval_request 우선)
+            ev_approval = ev.get("approval_request", {})
+            if not isinstance(ev_approval, dict):
+                ev_approval = {}
+
+            if ev_approval.get("planned_tools"):
+                meta["planned_tools"] = ev_approval["planned_tools"]
+            elif ev.get("planned_tools"):
                 meta["planned_tools"] = ev["planned_tools"]
-            if ev.get("task_type"):
+
+            if ev_approval.get("task_type"):
+                meta["task_type"] = ev_approval["task_type"]
+            elif ev.get("task_type"):
                 meta["task_type"] = ev["task_type"]
+
+            if ev_approval.get("goal"):
+                meta["goal"] = ev_approval["goal"]
+            elif ev.get("goal"):
+                meta["goal"] = ev["goal"]
+
+            if ev_approval.get("reason"):
+                meta["reason"] = ev_approval["reason"]
+            elif ev.get("reason"):
+                meta["reason"] = ev["reason"]
+
+            # adapter_mode, tool_args are always top-level
             if ev.get("adapter_mode"):
                 meta["adapter_mode"] = ev["adapter_mode"]
             if ev.get("tool_args"):
                 meta["tool_args"] = ev["tool_args"]
 
         if awaiting:
-            # awaiting 이벤트에서 메타데이터 추출
-            if awaiting.get("planned_tools"):
+            # awaiting 이벤트에서 메타데이터 추출 (nested approval_request 우선)
+            approval_req = awaiting.get("approval_request", {})
+            if not isinstance(approval_req, dict):
+                approval_req = {}
+
+            if approval_req.get("planned_tools"):
+                meta["planned_tools"] = approval_req["planned_tools"]
+            elif awaiting.get("planned_tools"):
                 meta["planned_tools"] = awaiting["planned_tools"]
-            if awaiting.get("task_type"):
+
+            if approval_req.get("task_type"):
+                meta["task_type"] = approval_req["task_type"]
+            elif awaiting.get("task_type"):
                 meta["task_type"] = awaiting["task_type"]
+
+            if approval_req.get("goal"):
+                meta["goal"] = approval_req["goal"]
+            elif awaiting.get("goal"):
+                meta["goal"] = awaiting["goal"]
+
+            if approval_req.get("reason"):
+                meta["reason"] = approval_req["reason"]
+            elif awaiting.get("reason"):
+                meta["reason"] = awaiting["reason"]
+
+            # adapter_mode, tool_args are always top-level
             if awaiting.get("adapter_mode"):
                 meta["adapter_mode"] = awaiting["adapter_mode"]
             if awaiting.get("tool_args"):
@@ -428,14 +472,39 @@ async def _call_agent_with_approval(
 
         # awaiting 이벤트 없이 최종 텍스트가 있는 경우 (auto-approve 모드)
         text = _extract_text_from_events(events)
-        # 이벤트에서 추가 메타데이터 수집
+        # 이벤트에서 추가 메타데이터 수집 (nested approval_request 우선)
         for ev in events:
-            if ev.get("planned_tools") and not meta["planned_tools"]:
-                meta["planned_tools"] = ev["planned_tools"]
-            if ev.get("task_type") and not meta["task_type"]:
-                meta["task_type"] = ev["task_type"]
+            fallback_req = ev.get("approval_request", {})
+            if not isinstance(fallback_req, dict):
+                fallback_req = {}
+
+            if not meta["planned_tools"]:
+                if fallback_req.get("planned_tools"):
+                    meta["planned_tools"] = fallback_req["planned_tools"]
+                elif ev.get("planned_tools"):
+                    meta["planned_tools"] = ev["planned_tools"]
+
+            if not meta.get("task_type"):
+                if fallback_req.get("task_type"):
+                    meta["task_type"] = fallback_req["task_type"]
+                elif ev.get("task_type"):
+                    meta["task_type"] = ev["task_type"]
+
+            if not meta.get("goal"):
+                if fallback_req.get("goal"):
+                    meta["goal"] = fallback_req["goal"]
+                elif ev.get("goal"):
+                    meta["goal"] = ev["goal"]
+
+            if not meta.get("reason"):
+                if fallback_req.get("reason"):
+                    meta["reason"] = fallback_req["reason"]
+                elif ev.get("reason"):
+                    meta["reason"] = ev["reason"]
+
             if ev.get("tool_results") and not meta["tool_results"]:
                 meta["tool_results"] = ev["tool_results"]
+            # adapter_mode, tool_args are always top-level
             if ev.get("adapter_mode") and not meta["adapter_mode"]:
                 meta["adapter_mode"] = ev["adapter_mode"]
             if ev.get("tool_args") and not meta["tool_args"]:

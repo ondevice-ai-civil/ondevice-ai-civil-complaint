@@ -298,14 +298,38 @@ class DirectEnginePlannerAdapter(PlannerAdapter):
         system_prompt = LLMPlannerAdapter._build_system_prompt()
         user_prompt = LLMPlannerAdapter._build_user_prompt(messages, context)
 
-        # Hermes tool calling format
-        tools_json = json.dumps(tool_definitions, ensure_ascii=False)
-        prompt = (
-            f"<tools>\n{tools_json}\n</tools>\n\n"
-            f"[|system|]{system_prompt}[|endofturn|]\n"
-            f"[|user|]{user_prompt}[|endofturn|]\n"
-            "[|assistant|]"
-        )
+        # OpenAI function calling 형식의 tools (EXAONE chat template 호환)
+        tools_for_template = tool_definitions
+
+        # EXAONE chat template으로 프롬프트 생성
+        chat_messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
+        try:
+            # vLLM engine에서 토크나이저 획득
+            if self._engine_manager.engine is not None:
+                tokenizer = self._engine_manager.engine.get_tokenizer()
+            else:
+                raise RuntimeError("engine is None (SKIP_MODEL_LOAD=true?)")
+            prompt = tokenizer.apply_chat_template(
+                chat_messages,
+                tools=tools_for_template,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+            logger.info("[DirectEnginePlanner] EXAONE chat template으로 프롬프트 생성 완료")
+        except Exception as exc:
+            logger.warning(
+                f"[DirectEnginePlanner] tokenizer chat template 실패, 텍스트 JSON fallback: {exc}"
+            )
+            # fallback: 기존 텍스트 JSON 방식
+            prompt = (
+                f"[|system|]{system_prompt}[|endofturn|]\n"
+                f"[|user|]{user_prompt}[|endofturn|]\n"
+                "[|assistant|]"
+            )
 
         try:
             from vllm import SamplingParams as _SamplingParams
@@ -329,7 +353,13 @@ class DirectEnginePlannerAdapter(PlannerAdapter):
         if output is None or not output.outputs:
             raise PlanValidationError("Engine 출력이 비어 있음")
 
-        content = self._engine_manager._strip_thought_blocks(output.outputs[0].text)
+        # raw output 로깅 (디버깅용)
+        raw_text = output.outputs[0].text
+        logger.info(f"[DirectEnginePlanner] raw output ({len(raw_text)} chars): {raw_text[:300]}")
+        content = self._engine_manager._strip_thought_blocks(raw_text)
+        logger.info(
+            f"[DirectEnginePlanner] stripped content ({len(content)} chars): {content[:300]}"
+        )
 
         # 1차: <tool_call> 태그 파싱
         tool_calls = self._parse_hermes_tool_calls(content)

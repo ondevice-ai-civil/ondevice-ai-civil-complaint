@@ -2,7 +2,7 @@ $schema: "https://coderabbit.ai/integrations/schema.v2.json"
 
 language: "ko"
 
-tone_instructions: "[MUST]=보안·버그·데이터손실·개인정보노출, [SHOULD]=품질·성능·테스트누락. NITS 보고 금지. MUST/SHOULD 없으면 Approve. 개인정보·민원 처리 로직 엄격 검토."
+tone_instructions: "[MUST]=보안·버그·데이터손실·개인정보노출, [SHOULD]=품질·성능·테스트누락. NITS 보고 금지. 이전 CHANGES_REQUESTED의 모든 MUST/SHOULD 항목이 해결되었는지 확인한 후에만 Approve. 미해결 항목이 남아 있으면 CHANGES_REQUESTED 유지. 개인정보·민원 처리 로직 엄격 검토."
 
 early_access: true
 

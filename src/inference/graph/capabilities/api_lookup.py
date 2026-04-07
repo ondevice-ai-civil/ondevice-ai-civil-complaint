@@ -103,17 +103,20 @@ class ApiLookupCapability(CapabilityBase):
             parameters={
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "민원 검색 키워드"},
+                    "query": {
+                        "type": "string",
+                        "description": "유사 민원 검색 질의문 (최대 1000자). 민원 내용이나 키워드를 입력합니다.",
+                    },
                     "ret_count": {
                         "type": "integer",
-                        "description": "반환할 유사 민원 수",
+                        "description": "반환할 유사 민원 수 (1~20, 기본값 5)",
                         "default": 5,
                         "minimum": 1,
                         "maximum": 20,
                     },
                     "min_score": {
                         "type": "integer",
-                        "description": "최소 유사도 점수",
+                        "description": "최소 유사도 점수 (0~10, 기본값 2). 높을수록 더 유사한 결과만 반환",
                         "default": 2,
                         "minimum": 0,
                         "maximum": 10,

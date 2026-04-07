@@ -49,13 +49,29 @@ class DemographicsLookupCapability(CapabilityBase):
             parameters={
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "인구통계 분석 대상 질의문"},
-                    "searchword": {"type": "string", "description": "분석 대상 민원 키워드"},
-                    "date_from": {"type": "string", "description": "분석 시작일 (예: 20260101)"},
-                    "date_to": {"type": "string", "description": "분석 종료일 (예: 20260407)"},
-                    "top_n": {"type": "integer", "description": "상위 N개 결과", "default": 5},
+                    "query": {
+                        "type": "string",
+                        "description": "인구통계 분석 대상 질의문",
+                    },
+                    "searchword": {
+                        "type": "string",
+                        "description": "분석 대상 민원 키워드. 성별/연령 분석에 필수",
+                    },
+                    "date_from": {
+                        "type": "string",
+                        "description": "분석 시작일 (YYYYMMDD 형식, 8자리 필수). 예: '20260101'",
+                    },
+                    "date_to": {
+                        "type": "string",
+                        "description": "분석 종료일 (YYYYMMDD 형식, 8자리 필수). 예: '20260408'",
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "인구대비 민원 순위 상위 N개 결과 (기본값 5)",
+                        "default": 5,
+                    },
                 },
-                "required": ["query", "searchword"],
+                "required": ["query", "searchword", "date_from", "date_to"],
             },
         )
 

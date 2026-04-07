@@ -48,19 +48,35 @@ class StatsLookupCapability(CapabilityBase):
             parameters={
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "통계 조회 대상 키워드"},
-                    "date_from": {"type": "string", "description": "조회 시작일 (예: 20260101)"},
-                    "date_to": {"type": "string", "description": "조회 종료일 (예: 20260407)"},
-                    "searchword": {"type": "string", "description": "세부 검색어"},
+                    "query": {
+                        "type": "string",
+                        "description": "통계 조회 대상 키워드",
+                    },
+                    "date_from": {
+                        "type": "string",
+                        "description": "조회 시작일 (YYYYMMDD 형식, 8자리 필수). 예: '20260101'",
+                    },
+                    "date_to": {
+                        "type": "string",
+                        "description": "조회 종료일 (YYYYMMDD 형식, 8자리 필수). 예: '20260408'",
+                    },
+                    "searchword": {
+                        "type": "string",
+                        "description": "세부 검색 키워드. 트렌드 조회 및 민원 건수 조회 시 필요",
+                    },
                     "period": {
                         "type": "string",
                         "description": "집계 기간 단위",
                         "default": "DAILY",
-                        "enum": ["DAILY", "MONTHLY", "YEARLY"],
+                        "enum": ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"],
                     },
-                    "top_n": {"type": "integer", "description": "상위 N개 결과", "default": 5},
+                    "top_n": {
+                        "type": "integer",
+                        "description": "기관/지역 순위 상위 N개 결과 (기본값 5)",
+                        "default": 5,
+                    },
                 },
-                "required": ["query"],
+                "required": ["query", "date_from", "date_to"],
             },
         )
 

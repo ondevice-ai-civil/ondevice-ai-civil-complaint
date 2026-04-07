@@ -14,7 +14,8 @@ echo "Space: $SPACE_REPO"
 python3 -c "
 import os
 from huggingface_hub import create_repo
-create_repo(os.environ['SPACE_REPO'], repo_type='space', space_sdk='docker', exist_ok=True, token=os.environ['HF_TOKEN'], private=False)
+is_private = os.environ.get('SPACE_PRIVATE', 'false').lower() in ('true', '1', 'yes')
+create_repo(os.environ['SPACE_REPO'], repo_type='space', space_sdk='docker', exist_ok=True, token=os.environ['HF_TOKEN'], private=is_private)
 print('Space repo ready')
 "
 

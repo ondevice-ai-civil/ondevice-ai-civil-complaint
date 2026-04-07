@@ -26,12 +26,16 @@ AgentRunRequest 필드:
     use_rag: bool       — RAG 사용 여부 (기본값 True)
 """
 
+# stdlib
 import asyncio
 import json
+import logging
 import os
+import re
 import sys
 import time
 from typing import Any, Optional
+from uuid import uuid4
 
 BASE_URL = os.environ.get("GOVON_RUNTIME_URL", "http://localhost:7860").rstrip("/")
 API_KEY = os.environ.get("API_KEY")
@@ -39,8 +43,18 @@ TIMEOUT = 300  # 시나리오당 최대 대기 시간 (초)
 BASE_MODEL = "LGAI-EXAONE/EXAONE-4.0-32B-AWQ"
 RESULTS_PATH = "verify_results.json"
 
-# 법령 관련 키워드 (Scenario 4 검증용)
-LEGAL_KEYWORDS = ["법", "조항", "시행령", "규정", "조례", "항", "호", "제", "법률", "근거"]
+logger = logging.getLogger(__name__)
+
+# 법령 관련 패턴 (Scenario 4 검증용) — regex 기반, 단일 문자 제외
+LEGAL_PATTERNS = [
+    r"제\s*\d+\s*조",
+    r"제\s*\d+\s*항",
+    r"법률",
+    r"시행령",
+    r"조례",
+    r"판례",
+    r"대법원",
+]
 
 _results: list[dict] = []
 
@@ -48,6 +62,7 @@ _results: list[dict] = []
 # ---------------------------------------------------------------------------
 # HTTP 클라이언트 레이어 (httpx 우선, urllib fallback)
 # ---------------------------------------------------------------------------
+
 
 try:
     import httpx
@@ -96,8 +111,8 @@ try:
         return status_code, events
 
 except ImportError:
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     _HTTP_BACKEND = "urllib"
 
@@ -207,7 +222,7 @@ def _extract_text_from_events(events: list[dict]) -> str:
 
 
 def _contains_legal_keyword(text: str) -> bool:
-    return any(kw in text for kw in LEGAL_KEYWORDS)
+    return any(re.search(pattern, text) for pattern in LEGAL_PATTERNS)
 
 
 # ---------------------------------------------------------------------------
@@ -314,8 +329,9 @@ async def _call_agent(
     """에이전트 엔드포인트를 호출하고 (성공여부, 응답텍스트, 에러) 를 반환한다.
 
     v2/agent/stream (SSE) → v2/agent/run (REST) 순으로 시도한다.
+    use_rag=False를 기본으로 전달하여 LoRA 경로를 강제한다.
     """
-    body = {"query": message, "session_id": session_id}
+    body = {"query": message, "session_id": session_id, "use_rag": False}
 
     # v2/agent/stream 시도 (SSE)
     if use_stream:
@@ -331,7 +347,7 @@ async def _call_agent(
                         return False, "", ev.get("error", "unknown error")
                 return False, "", f"SSE 이벤트 수신했으나 text 없음 (events={len(events)})"
         except Exception as exc:
-            pass  # fallback to /v2/agent/run
+            logger.warning("Stream error: %s", exc)  # fallback to /v2/agent/run
 
     # v2/agent/run 시도 (REST)
     try:
@@ -342,13 +358,21 @@ async def _call_agent(
                 return False, text, resp.get("error", "agent run error")
             if text:
                 return True, text, None
-            # awaiting_approval 상태 — interrupt 도달로 간주하여 부분 성공 처리
+            # awaiting_approval 상태 — 실제 텍스트 생성 없음으로 failure 처리
             if resp.get("status") == "awaiting_approval":
-                return True, f"[awaiting_approval] thread_id={resp.get('thread_id')}", None
+                return (
+                    False,
+                    "",
+                    f"awaiting_approval: 텍스트 미생성 (thread_id={resp.get('thread_id')})",
+                )
             return False, "", f"text 없음, status={resp.get('status')}"
         return False, "", f"HTTP {status_code}: {resp}"
     except Exception as exc:
         return False, "", str(exc)
+
+
+# Scenario 3/4 공유 세션 ID (동일 run에서 같은 세션 사용)
+_RUN_SESSION_ID = str(uuid4())
 
 
 async def scenario3_civil_lora() -> dict:
@@ -357,7 +381,7 @@ async def scenario3_civil_lora() -> dict:
     try:
         ok, text, err = await _call_agent(
             message="주차 위반 과태료 이의신청 민원에 대한 답변 초안을 작성해줘",
-            session_id="verify-civil-1",
+            session_id=_RUN_SESSION_ID,
         )
         elapsed = time.monotonic() - t0
         if not ok:
@@ -389,14 +413,14 @@ async def scenario3_civil_lora() -> dict:
 async def scenario4_legal_lora() -> dict:
     """Scenario 4: Legal LoRA — append_evidence (v2/agent/stream).
 
-    동일 세션(verify-civil-1)에 법령 근거 보강 요청을 전송한다.
-    응답에 법령/조항 관련 키워드가 포함되어 있는지 확인한다.
+    Scenario 3과 동일 세션(_RUN_SESSION_ID)에 법령 근거 보강 요청을 전송한다.
+    응답에 법령/조항 관련 패턴이 포함되어 있는지 확인한다.
     """
     t0 = time.monotonic()
     try:
         ok, text, err = await _call_agent(
             message="위 답변에 관련 법령과 판례 근거를 보강해줘",
-            session_id="verify-civil-1",
+            session_id=_RUN_SESSION_ID,
         )
         elapsed = time.monotonic() - t0
         if not ok:
@@ -414,19 +438,19 @@ async def scenario4_legal_lora() -> dict:
             )
 
         has_legal = _contains_legal_keyword(text)
+        matched = [p for p in LEGAL_PATTERNS if re.search(p, text)]
         detail = {
             "has_legal_keyword": has_legal,
-            "matched_keywords": [kw for kw in LEGAL_KEYWORDS if kw in text],
+            "matched_patterns": matched,
             "text_preview": text[:300],
         }
         if not has_legal:
-            # 법령 키워드 없음은 warning 수준으로 처리 — 서버 상태에 따라 변할 수 있음
             return _record(
                 4,
                 "Legal LoRA (append_evidence)",
                 False,
                 elapsed,
-                f"법령 키워드 미발견 ({LEGAL_KEYWORDS[:5]}...)",
+                f"법령 패턴 미발견 ({LEGAL_PATTERNS[:3]}...)",
                 detail,
             )
         return _record(4, "Legal LoRA (append_evidence)", True, elapsed, detail=detail)
@@ -438,13 +462,14 @@ async def scenario5_sequential_multi_lora_switching() -> dict:
     """Scenario 5: Sequential Multi-LoRA Switching (civil → legal x3).
 
     civil 요청 → legal 요청을 3회 반복하여 LoRA 전환 오류가 없는지 확인한다.
+    반복마다 별도의 UUID 세션 ID를 사용한다.
     """
     t0 = time.monotonic()
     errors: list[str] = []
     iterations = 3
 
     for i in range(1, iterations + 1):
-        session_id = f"verify-switching-{i}"
+        session_id = str(uuid4())
 
         # civil 요청
         ok, text, err = await _call_agent(
@@ -487,7 +512,7 @@ async def scenario6_lora_id_consistency() -> dict:
 
     /health 응답에서 civil/legal 어댑터 로드 상태를 확인한다.
     어댑터 정보가 없으면 /v1/models (vLLM OpenAI-compatible)를 시도한다.
-    두 엔드포인트 모두 어댑터 정보를 노출하지 않으면 서버 정상 응답 여부만 확인한다.
+    civil/legal 어댑터가 모두 감지되지 않으면 FAIL로 기록한다.
     """
     t0 = time.monotonic()
     try:
@@ -506,7 +531,10 @@ async def scenario6_lora_id_consistency() -> dict:
         detail["model"] = health.get("model", "")
         detail["feature_flags"] = health.get("feature_flags", {})
 
-        # /v1/models 시도 (vLLM OpenAI-compatible, 선택적 확인)
+        civil_found = False
+        legal_found = False
+
+        # /v1/models 시도 (vLLM OpenAI-compatible)
         try:
             models_status, models_resp = await http_get("/v1/models")
             if models_status == 200:
@@ -516,11 +544,26 @@ async def scenario6_lora_id_consistency() -> dict:
                 legal_found = any("legal" in mid for mid in model_ids)
                 detail["civil_adapter_in_models"] = civil_found
                 detail["legal_adapter_in_models"] = legal_found
-        except Exception:
+        except Exception as exc:
+            logger.warning("Stream error: %s", exc)
             detail["v1_models"] = "unavailable"
 
-        # 검증: /health가 정상 응답하면 일관성 체크 통과
-        # (어댑터는 런타임 설정에 따라 로드 여부가 달라지므로 존재하지 않아도 PASS)
+        # civil/legal 어댑터가 모두 감지되지 않으면 FAIL
+        if not civil_found or not legal_found:
+            missing = []
+            if not civil_found:
+                missing.append("civil")
+            if not legal_found:
+                missing.append("legal")
+            return _record(
+                6,
+                "LoRA ID Consistency Check",
+                False,
+                time.monotonic() - t0,
+                f"어댑터 미감지: {', '.join(missing)}",
+                detail,
+            )
+
         return _record(6, "LoRA ID Consistency Check", True, time.monotonic() - t0, detail=detail)
     except Exception as exc:
         return _record(6, "LoRA ID Consistency Check", False, time.monotonic() - t0, str(exc))

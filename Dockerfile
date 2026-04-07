@@ -32,9 +32,10 @@ ENV PATH="/root/.local/bin:${PATH}"
 # Copy project files
 COPY requirements.txt .
 
-# Install runtime dependencies once. The source tree is copied below and does
-# not require installing the project package or dev extras inside the image.
-RUN uv pip install --system --no-cache -r requirements.txt
+# torch must be installed before autoawq: autoawq's build backend imports torch
+# during wheel build, so installing them together causes ModuleNotFoundError.
+RUN uv pip install --system --no-cache "torch>=2.8.0" && \
+    uv pip install --system --no-cache -r requirements.txt
 
 # Copy source code
 COPY src/ ./src/

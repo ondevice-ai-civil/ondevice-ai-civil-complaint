@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-04-07T01:47:59Z",
+  "timestamp": "2026-04-07T02:23:04Z",
   "period": "last_30_days",
   "grade": "Elite",
   "primary_branch": "main",
@@ -11,14 +11,14 @@
     },
     "lead_time_for_changes": {
       "method": "first_commit_to_merge",
-      "avg_seconds": 1459,
+      "avg_seconds": 1462,
       "avg_hours": 0.4,
       "sample_count": 30
     },
     "change_failure_rate": {
-      "rate_percent": 26.2,
+      "rate_percent": 26.1,
       "failure_commits": 148,
-      "total_commits": 564
+      "total_commits": 566
     },
     "mean_time_to_recovery": {
       "avg_seconds": 0,

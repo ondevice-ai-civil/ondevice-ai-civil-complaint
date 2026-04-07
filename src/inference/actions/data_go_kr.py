@@ -10,6 +10,7 @@ Issue: #394
 import os
 import re
 from typing import Any, Dict, List, Optional
+from urllib.parse import unquote
 
 from loguru import logger
 
@@ -71,7 +72,10 @@ class MinwonAnalysisAction(BaseAction):
         timeout: float = 10.0,
     ) -> None:
         super().__init__(action_name="minwon_analysis")
-        self._api_key = api_key or os.getenv("DATA_GO_KR_API_KEY", "")
+        raw_key = api_key or os.getenv("DATA_GO_KR_API_KEY", "")
+        # data.go.kr 키는 URL-encoded 상태로 제공되는 경우가 있음
+        # httpx가 자동 인코딩하므로 미리 디코딩하여 이중 인코딩 방지
+        self._api_key = unquote(raw_key)
         self._ret_count = ret_count
         self._min_score = min_score
         self._timeout = timeout

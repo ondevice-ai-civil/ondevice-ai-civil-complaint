@@ -121,3 +121,8 @@ models/merged_model/
 *.gguf
 wandb/
 training/legal_adapter/output/
+
+# E2E / verify script result files
+verify_results.json
+verify_e2e_tool_calling_*.json
+verify_e2e_tool_calling_*.log

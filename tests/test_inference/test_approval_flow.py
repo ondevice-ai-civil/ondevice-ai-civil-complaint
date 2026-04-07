@@ -234,7 +234,7 @@ async def test_run_error_returns_error_status(patched_app):
 
     request = AgentRunRequest(query="오류 질의", session_id="sess-err")
 
-    resp = await v2_agent_run(request=request, _=None)
+    resp = await v2_agent_run(request=request, _http_request=None, _=None)
 
     # v2 에러 응답은 JSONResponse(status_code=500)로 반환됨
     import json
@@ -244,7 +244,7 @@ async def test_run_error_returns_error_status(patched_app):
     else:
         body = resp
     assert body["status"] == "error"
-    assert "테스트 오류" in body["error"]
+    assert "내부 오류" in body["error"]
     assert body["session_id"] == "sess-err"
 
 
@@ -259,7 +259,7 @@ async def test_approve_error_returns_error_status(patched_app):
     # get_state도 실패하지 않도록 설정
     mock_graph.aget_state.return_value = _make_graph_state_done()
 
-    resp = await v2_agent_approve(thread_id="t-err", approved=True, _=None)
+    resp = await v2_agent_approve(thread_id="t-err", approved=True, _http_request=None, _=None)
 
     # v2 에러 응답은 JSONResponse(status_code=500)로 반환됨
     import json
@@ -269,4 +269,4 @@ async def test_approve_error_returns_error_status(patched_app):
     else:
         body = resp
     assert body["status"] == "error"
-    assert "approve 오류" in body["error"]
+    assert "내부 오류" in body["error"]

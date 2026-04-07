@@ -62,7 +62,7 @@ RUN chown -R govon:govon /app
 USER govon
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
-    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+    CMD python3.10 -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
 # Command to run the application
 CMD ["python3.10", "-m", "src.inference.api_server"]

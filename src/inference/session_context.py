@@ -98,13 +98,6 @@ class SessionContext:
 
     def add_turn(self, role: str, content: str, **kwargs: Any) -> None:
         """대화 턴을 추가하고 필요 시 영속화한다."""
-        # 직전 턴과 동일한 내용이면 중복 저장 방지
-        if (
-            self.conversations
-            and self.conversations[-1].role == role
-            and self.conversations[-1].content == content
-        ):
-            return
         turn = ConversationTurn(role=role, content=content, metadata=kwargs)
         self.conversations.append(turn)
         if len(self.conversations) > self.max_history:
@@ -743,11 +736,14 @@ class SessionStore:
             )
             expired_ids = [row["session_id"] for row in cursor.fetchall()]
 
-            if expired_ids:
-                placeholders = ",".join("?" * len(expired_ids))
+            # 청크 단위로 metadata 삭제 (SQLite MAX_VARIABLE_NUMBER 제한 방어)
+            _CHUNK_SIZE = 500
+            for i in range(0, len(expired_ids), _CHUNK_SIZE):
+                chunk = expired_ids[i : i + _CHUNK_SIZE]
+                placeholders = ",".join("?" * len(chunk))
                 conn.execute(
-                    f"DELETE FROM metadata WHERE owner_type='session' AND owner_id IN ({placeholders})",
-                    expired_ids,
+                    f"DELETE FROM metadata WHERE owner_type='session' AND owner_id IN ({placeholders})",  # noqa: S608
+                    chunk,
                 )
 
             deleted = conn.execute("DELETE FROM sessions WHERE updated_at < ?", (cutoff,)).rowcount

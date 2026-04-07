@@ -23,8 +23,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 
 # ML 패키지를 제외한 나머지를 자동 설치
-RUN grep -ivE '^(torch|vllm|autoawq|bitsandbytes|peft|trl|optimum|accelerate|datasets|transformers|unsloth|xformers|triton|flash.attn|nvidia)' requirements.txt > /tmp/ci-reqs.txt \
-    && uv pip install --system --no-cache -r /tmp/ci-reqs.txt
+RUN grep -ivE '^(torch|vllm|autoawq|bitsandbytes|peft|trl|optimum|accelerate|datasets|transformers|sentence.transformers|unsloth|xformers|triton|flash.attn|nvidia)' requirements.txt > /tmp/ci-reqs.txt \
+    && uv pip install --system --no-cache -r /tmp/ci-reqs.txt \
+    && uv pip install --system --no-cache sentence-transformers --no-deps
 
 COPY src/ ./src/
 COPY agents/ ./agents/

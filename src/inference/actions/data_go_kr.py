@@ -15,8 +15,10 @@ from loguru import logger
 
 
 def _mask_api_key(msg: str) -> str:
-    """로그/에러 메시지에서 serviceKey 값을 마스킹."""
-    return re.sub(r"(serviceKey=)[^&\s]+", r"\1***MASKED***", str(msg))
+    """로그/에러 메시지에서 serviceKey 및 검색어 값을 마스킹."""
+    masked = re.sub(r"(serviceKey=)[^&\s]+", r"\1***MASKED***", str(msg))
+    masked = re.sub(r"(searchword=)[^&\s]+", r"\1***REDACTED***", masked)
+    return masked
 
 
 from ..session_context import SessionContext

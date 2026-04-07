@@ -32,9 +32,10 @@ ENV PATH="/root/.local/bin:${PATH}"
 # Copy project files
 COPY requirements.txt .
 
-# torch must be installed before autoawq: autoawq's build backend imports torch
-# during wheel build, so installing them together causes ModuleNotFoundError.
+# autoawq's build backend imports torch during wheel build (build isolation hides
+# system packages), so torch must be pre-installed and autoawq built without isolation.
 RUN uv pip install --system --no-cache "torch>=2.8.0" && \
+    uv pip install --system --no-cache --no-build-isolation "autoawq>=0.2.8" && \
     uv pip install --system --no-cache -r requirements.txt
 
 # Copy source code

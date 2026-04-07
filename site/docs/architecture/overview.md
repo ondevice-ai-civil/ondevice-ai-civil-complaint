@@ -86,8 +86,8 @@ graph TD
   - vLLM 서빙: `--enable-auto-tool-choice --tool-call-parser hermes --enable-lora`
 - `civil-adapter` (LoRA #1): `draft_civil_response` 작성 단계에서만 사용
   - 학습: umyunsang/govon-civil-response-data (74K건), QLoRA on AWQ base
-- `legal-adapter` (LoRA #2): `append_evidence` 단계에서만 사용
-  - 학습: neuralfoundry-coder/korean-legal-instruction-sample (232K건), QLoRA on AWQ base
+- [`legal-adapter`](https://huggingface.co/siwo/govon-legal-adapter) (LoRA #2): `append_evidence` 단계에서만 사용
+  - 학습: umyunsang/govon-legal-response-data (243K건), QLoRA on AWQ base
 
 ### 서빙 인프라
 

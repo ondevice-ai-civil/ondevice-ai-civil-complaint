@@ -152,7 +152,8 @@ class ModelConfig:
     - civil-adapter (LoRA #1): draft_civil_response 용도
       학습 데이터: umyunsang/govon-civil-response-data (74K건), QLoRA on AWQ base
     - legal-adapter (LoRA #2): append_evidence 용도
-      학습 데이터: neuralfoundry-coder/korean-legal-instruction-sample (232K건), QLoRA on AWQ base
+      학습 데이터: umyunsang/govon-legal-response-data (243K건), QLoRA on AWQ base
+      HuggingFace: siwo/govon-legal-adapter
     - 나머지 capability (rag_search, api_lookup, synthesis 등)는 LoRA 없이 base model 사용
 
     adapter_paths: Dict[str, str] 형식의 어댑터 이름-경로 매핑.

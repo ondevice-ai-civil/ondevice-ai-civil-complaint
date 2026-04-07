@@ -1043,7 +1043,7 @@ class vLLMEngineManager:
 
             gen_request = GenerateCivilResponseRequest(
                 prompt=working_query,
-                max_tokens=512,
+                max_tokens=2048,
                 temperature=0.7,
                 use_rag=False,
             )

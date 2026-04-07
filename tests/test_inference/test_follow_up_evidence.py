@@ -1,7 +1,7 @@
 """#161 후속 근거 보강 요청 UX 및 응답 렌더링 테스트.
 
 검증 범위:
-  1. synthesis._extract_final_text()가 append_evidence 타입에서 기존 답변 앞에 근거 추가
+  1. synthesis._extract_final_text()가 evidence 기반 근거 텍스트 생성
   2. _collect_evidence_items()가 RAG+API evidence items를 정확히 수집
   3. LangGraph 2턴 실행 — 초안 후 근거 요청 시 기존 답변이 유지됨
   4. render_result()가 [로컬 문서]/[외부 API] 라벨로 구조화된 출처 표시
@@ -57,18 +57,15 @@ _SAMPLE_API_EVIDENCE = {
 
 
 # ---------------------------------------------------------------------------
-# Test 1: _extract_final_text() — append_evidence 타입에서 기존 답변 prepend
+# Test 1: _extract_final_text() — evidence 기반 근거 텍스트 생성
 # ---------------------------------------------------------------------------
 
 
-def test_synthesis_prepends_draft_for_append_evidence():
-    """append_evidence 타입일 때 기존 답변 위에 근거 섹션을 추가한다."""
-    previous_draft = "도로 파손 민원을 접수해드리겠습니다. 담당 부서로 전달하겠습니다."
+def test_synthesis_generates_evidence_text_from_search_results():
+    """search 타입일 때 evidence items 기반으로 참조 근거 텍스트를 생성한다."""
     accumulated = {
-        "previous_assistant_response": previous_draft,
-        "append_evidence": {
+        "rag_search": {
             "success": True,
-            "text": "",
             "evidence": {
                 "status": "ok",
                 "items": [_SAMPLE_RAG_EVIDENCE, _SAMPLE_API_EVIDENCE],
@@ -78,14 +75,13 @@ def test_synthesis_prepends_draft_for_append_evidence():
         },
     }
 
-    result = _extract_final_text(accumulated, "append_evidence")
+    result = _extract_final_text(accumulated, "search")
 
-    assert result.startswith(previous_draft), "기존 답변이 맨 앞에 와야 한다"
     assert "[참조 근거]" in result or "[로컬]" in result or "민원처리법" in result
 
 
-def test_synthesis_append_evidence_no_previous_draft():
-    """이전 답변 없이 append_evidence 타입이면 근거 섹션만 반환한다."""
+def test_synthesis_evidence_only_rag():
+    """RAG evidence만 있을 때 근거 섹션을 반환한다."""
     accumulated = {
         "rag_search": {
             "success": True,
@@ -98,7 +94,7 @@ def test_synthesis_append_evidence_no_previous_draft():
         },
     }
 
-    result = _extract_final_text(accumulated, "append_evidence")
+    result = _extract_final_text(accumulated, "search")
 
     assert result  # 빈 문자열이 아니어야 한다
     assert "민원처리법" in result or "[참조 근거]" in result or "[로컬]" in result
@@ -186,7 +182,7 @@ class StubEvidenceExecutorAdapter(ExecutorAdapter):
     """테스트용 executor: tool별로 고정된 결과 반환."""
 
     def list_tools(self) -> list[str]:
-        return ["rag_search", "api_lookup", "draft_response", "append_evidence"]
+        return ["rag_search", "api_lookup", "draft_response"]
 
     async def execute(self, tool_name: str, query: str, context: dict) -> dict:
         if tool_name == "draft_response":
@@ -213,17 +209,6 @@ class StubEvidenceExecutorAdapter(ExecutorAdapter):
                 "evidence": {
                     "status": "ok",
                     "items": [_SAMPLE_API_EVIDENCE],
-                    "errors": [],
-                },
-                "latency_ms": 1.0,
-            }
-        if tool_name == "append_evidence":
-            return {
-                "success": True,
-                "text": "",
-                "evidence": {
-                    "status": "ok",
-                    "items": [_SAMPLE_RAG_EVIDENCE, _SAMPLE_API_EVIDENCE],
                     "errors": [],
                 },
                 "latency_ms": 1.0,

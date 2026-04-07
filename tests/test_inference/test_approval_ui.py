@@ -144,7 +144,7 @@ def test_fallback_prompt_uses_terminal_width_for_separator(capsys):
     separator_lines = [line for line in lines if set(line) == {"─"}]
 
     assert "작업 승인 요청" in title_line
-    assert "근거 보강" in type_line
+    assert "답변 초안 작성" in type_line
     assert separator_lines
     max_width = max(approval_ui._display_width(line) for line in [title_line, *separator_lines])
     assert max_width <= 32

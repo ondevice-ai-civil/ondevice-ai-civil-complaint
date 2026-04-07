@@ -12,10 +12,10 @@ class TestToolRouter:
         assert plan.tool_names == ["rag_search", "api_lookup", "draft_response"]
         assert "drafting loop" in plan.reason or "답변 작성" in plan.reason
 
-    def test_evidence_request_routes_to_append_flow(self):
+    def test_evidence_request_routes_to_drafting_loop(self):
         plan = self.router.plan("이 답변의 근거를 붙여줘")
         assert plan.tool_names == ["rag_search", "api_lookup", "draft_response"]
-        assert "근거" in plan.reason
+        assert "답변 작성" in plan.reason or "drafting loop" in plan.reason
 
     def test_lookup_only_request_routes_to_api_lookup(self):
         plan = self.router.plan("민원 통계와 최근 이슈를 조회해줘")
@@ -52,5 +52,5 @@ class TestToolStep:
         assert step.step_id == "custom_tool"
 
     def test_depends_on_is_preserved(self):
-        step = ToolStep(tool=ToolType.APPEND_EVIDENCE, depends_on="api_lookup")
+        step = ToolStep(tool=ToolType.DRAFT_RESPONSE, depends_on="api_lookup")
         assert step.depends_on == "api_lookup"

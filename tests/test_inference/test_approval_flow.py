@@ -125,7 +125,7 @@ async def test_approve_rejected_returns_rejected_status(patched_app):
         "approval_status": "rejected",
     }
 
-    resp = await v2_agent_approve(thread_id="t-1", approved=False, _=None)
+    resp = await v2_agent_approve(thread_id="t-1", approved=False, _http_request=None, _=None)
 
     assert resp["status"] == "rejected"
     assert resp["thread_id"] == "t-1"
@@ -147,7 +147,7 @@ async def test_approve_approved_returns_completed_status(patched_app):
         "approval_status": "approved",
     }
 
-    resp = await v2_agent_approve(thread_id="t-1", approved=True, _=None)
+    resp = await v2_agent_approve(thread_id="t-1", approved=True, _http_request=None, _=None)
 
     assert resp["status"] == "completed"
     assert resp["thread_id"] == "t-1"
@@ -174,7 +174,7 @@ async def test_cancel_sets_interrupted_status(patched_app):
         "interrupt_reason": "user_cancel",
     }
 
-    resp = await v2_agent_cancel(thread_id="t-1", _=None)
+    resp = await v2_agent_cancel(thread_id="t-1", _http_request=None, _=None)
 
     assert resp["status"] == "cancelled"
     assert resp["thread_id"] == "t-1"
@@ -195,7 +195,7 @@ async def test_run_response_includes_session_id(patched_app):
 
     request = AgentRunRequest(query="테스트 질의", session_id="sess-run")
 
-    resp = await v2_agent_run(request=request, _=None)
+    resp = await v2_agent_run(request=request, _http_request=None, _=None)
 
     assert resp["session_id"] == "sess-run"
     assert resp["status"] == "awaiting_approval"
@@ -217,7 +217,7 @@ async def test_approve_response_includes_session_id(patched_app):
         "approval_status": "approved",
     }
 
-    resp = await v2_agent_approve(thread_id="t-2", approved=True, _=None)
+    resp = await v2_agent_approve(thread_id="t-2", approved=True, _http_request=None, _=None)
 
     assert resp["session_id"] == "sess-approve"
     assert resp["graph_run_id"] == "req-approve"

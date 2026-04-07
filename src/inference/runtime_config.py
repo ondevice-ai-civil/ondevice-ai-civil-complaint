@@ -140,7 +140,7 @@ class GenerationDefaults:
 # ---------------------------------------------------------------------------
 
 
-def _parse_adapter_paths(raw: str) -> List[str]:
+def _parse_lora_modules(raw: str) -> List[str]:
     """ADAPTER_PATHS 환경변수를 파싱하여 vLLM --lora-modules 형식 목록으로 반환.
 
     예: "civil-adapter=/path/to/civil,legal-adapter=siwo/govon-legal-adapter"

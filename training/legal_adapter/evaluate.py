@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)
 
 DATASET_REPO = "umyunsang/govon-legal-response-data"
 SYSTEM_PROMPT = (
-    "당신은 대한민국 법률 전문가입니다. "
-    "법령 조항과 판례를 정확하게 인용하여 법률 질문에 답변해 주세요."
+    "당신은 대한민국 공무원 민원 답변 보강 전문가입니다. "
+    "법적 근거와 관련 규정을 정확하게 인용하여 evidence 섹션을 작성하세요."
 )
 
 # 법령 조항 인용 패턴

@@ -153,32 +153,14 @@ def test_prompt_injection_escaping():
 # ---------------------------------------------------------------------------
 
 
-def test_search_metadata_mapping():
-    """검색 결과의 id 필드가 doc_id로 올바르게 매핑된다."""
-    from src.inference.index_manager import IndexType
-    from src.inference.schemas import SearchResult
-
-    mock_raw = [
-        {
-            "id": "case-123",
-            "category": "교통",
-            "complaint": "주차 문제",
-            "answer": "해결하겠습니다",
-            "score": 0.9,
-        }
-    ]
-
-    results = [
-        SearchResult(
-            doc_id=str(r.get("id", "")),
-            source_type=IndexType.CASE,
-            title=r.get("category", ""),
-            content=r.get("complaint", "") + "\n" + r.get("answer", ""),
-            score=r.get("score", 0.0),
-            reliability_score=0.8,
+def test_search_metadata_mapping(mock_manager):
+    """검색 결과의 doc_id 필드가 API 응답에 올바르게 매핑된다."""
+    with patch("src.inference.api_server._API_KEY", "test-secret"):
+        response = client.post(
+            "/v1/search",
+            json={"query": "주차 문제", "doc_type": "case", "top_k": 1},
+            headers={"X-API-Key": "test-secret"},
         )
-        for r in mock_raw
-    ]
-
-    assert results[0].doc_id == "case-123"
-    assert "주차 문제" in results[0].content
+    assert response.status_code == 200
+    data = response.json()
+    assert data["results"][0]["doc_id"] == "test-1"

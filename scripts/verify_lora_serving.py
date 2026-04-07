@@ -369,8 +369,8 @@ async def _call_agent(
                             f"/v2/agent/approve?thread_id={thread_id}&approved=true", {}
                         )
                         if approve_code == 200:
-                            final_text = approve_resp.get("text", "") or approve_resp.get(
-                                "final_text", ""
+                            final_text = (
+                                approve_resp.get("text", "") or approve_resp.get("final_text", "")
                             )
                             if final_text:
                                 return True, final_text, None

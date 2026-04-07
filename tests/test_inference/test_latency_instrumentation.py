@@ -259,7 +259,7 @@ class TestCapabilityDefaults:
 
         assert get_timeout("rag_search") == 15.0
         assert get_timeout("api_lookup") == 10.0
-        assert get_timeout("draft_civil_response") == 120.0
+        assert get_timeout("draft_civil_response") == 30.0
 
     def test_get_timeout_env_override(self, monkeypatch):
         from src.inference.graph.capabilities.defaults import get_timeout

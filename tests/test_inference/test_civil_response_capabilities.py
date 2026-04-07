@@ -4,9 +4,9 @@ Issue #397: draft_civil_response / append_evidence capability 구현.
 
 검증 항목:
 - DraftCivilResponseCapability: 정상/에러 응답 LookupResult 변환
-- DraftCivilResponseCapability: timeout_sec=120.0, metadata.provider="local_llm"
+- DraftCivilResponseCapability: timeout_sec=30.0, metadata.provider="local_llm"
 - AppendEvidenceCapability: 정상/에러/혼합/빈 결과 처리
-- AppendEvidenceCapability: timeout_sec=120.0, metadata.provider="local_vectordb+data.go.kr"
+- AppendEvidenceCapability: timeout_sec=30.0, metadata.provider="local_vectordb+data.go.kr"
 - registry에 두 capability가 모두 등록되는지 검증
 - executor adapter를 통해 두 capability가 각각 올바르게 실행되는지 검증
 
@@ -142,10 +142,10 @@ class TestDraftCivilResponseCapability:
         cap = DraftCivilResponseCapability(execute_fn=_make_async_fn({}))
         assert cap.metadata.provider == "local_llm"
 
-    def test_metadata_timeout_sec_is_120(self):
-        """timeout_sec이 120.0이다."""
+    def test_metadata_timeout_sec_is_30(self):
+        """timeout_sec이 30.0이다."""
         cap = DraftCivilResponseCapability(execute_fn=_make_async_fn({}))
-        assert cap.metadata.timeout_sec == 120.0
+        assert cap.metadata.timeout_sec == 30.0
 
     def test_metadata_name(self):
         """metadata.name이 'draft_civil_response'이다."""
@@ -337,10 +337,10 @@ class TestAppendEvidenceCapability:
         cap = AppendEvidenceCapability(execute_fn=_make_async_fn({}))
         assert cap.metadata.provider == "local_vectordb+data.go.kr"
 
-    def test_metadata_timeout_sec_is_120(self):
-        """timeout_sec이 120.0이다 (32B AWQ 기준 상향)."""
+    def test_metadata_timeout_sec_is_30(self):
+        """timeout_sec이 30.0이다 (LLM 호출 경로 추가로 상향)."""
         cap = AppendEvidenceCapability(execute_fn=_make_async_fn({}))
-        assert cap.metadata.timeout_sec == 120.0
+        assert cap.metadata.timeout_sec == 30.0
 
     def test_metadata_name(self):
         """metadata.name이 'append_evidence'이다."""
@@ -647,14 +647,14 @@ class TestRegistryIntegration:
         assert cap.metadata.provider == "local_vectordb+data.go.kr"
 
     def test_draft_civil_response_timeout_in_registry(self, registry):
-        """registry에서 가져온 draft_civil_response의 timeout_sec이 120.0이다."""
+        """registry에서 가져온 draft_civil_response의 timeout_sec이 30.0이다."""
         cap = registry["draft_civil_response"]
-        assert cap.metadata.timeout_sec == 120.0
+        assert cap.metadata.timeout_sec == 30.0
 
     def test_append_evidence_timeout_in_registry(self, registry):
-        """registry에서 가져온 append_evidence의 timeout_sec이 120.0이다."""
+        """registry에서 가져온 append_evidence의 timeout_sec이 30.0이다."""
         cap = registry["append_evidence"]
-        assert cap.metadata.timeout_sec == 120.0
+        assert cap.metadata.timeout_sec == 30.0
 
 
 # ===========================================================================

@@ -191,6 +191,72 @@ class LLMPlannerAdapter(PlannerAdapter):
         return "\n\n".join(parts)
 
 
+class DirectEnginePlannerAdapter(PlannerAdapter):
+    """vLLM engine을 직접 호출하는 planner.
+
+    self-call HTTP 오버헤드를 제거하고 engine 인스턴스를 직접 참조한다.
+    운영 환경 기본 planner로 사용된다.
+    """
+
+    def __init__(self, engine_manager: Any, registry: Optional[Dict[str, Any]] = None) -> None:
+        self._engine_manager = engine_manager
+        self._registry = registry
+
+    async def plan(
+        self,
+        messages: Sequence[AnyMessage],
+        context: Dict[str, Any],
+    ) -> ToolPlan:
+        from .plan_validator import PlanValidationError
+
+        system_prompt = LLMPlannerAdapter._build_system_prompt()
+        user_prompt = LLMPlannerAdapter._build_user_prompt(messages, context)
+
+        prompt = (
+            f"[|system|]{system_prompt}[|endofturn|]\n"
+            f"[|user|]{user_prompt}[|endofturn|]\n"
+            "[|assistant|]"
+        )
+
+        try:
+            from vllm import SamplingParams as _SamplingParams
+        except ImportError:
+            raise PlanValidationError("vLLM이 설치되어 있지 않습니다.")
+
+        sampling_params = _SamplingParams(
+            max_tokens=1024,
+            temperature=0.0,
+            stop=["[|endofturn|]"],
+        )
+
+        import uuid as _uuid
+
+        request_id = str(_uuid.uuid4())
+        try:
+            output = await self._engine_manager._run_engine(prompt, sampling_params, request_id)
+        except Exception as exc:
+            raise PlanValidationError(f"Engine 호출 실패: {exc}") from exc
+
+        if output is None or not output.outputs:
+            raise PlanValidationError("Engine 출력이 비어 있음")
+
+        content = self._engine_manager._strip_thought_blocks(output.outputs[0].text)
+
+        try:
+            parsed = json.loads(content)
+            tools: list[str] = parsed["tools"]
+            return ToolPlan(
+                task_type=TaskType(parsed["task_type"]),
+                goal=parsed["goal"],
+                reason=parsed["reason"],
+                tools=tools,
+                tool_summaries=_build_tool_summaries(tools, self._registry),
+                adapter_mode="direct_engine",
+            )
+        except (json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:
+            raise PlanValidationError(f"응답 파싱 실패: {exc}") from exc
+
+
 class RegexPlannerAdapter(PlannerAdapter):
     """기존 정규식 ToolRouter를 PlannerAdapter 인터페이스로 래핑.
 

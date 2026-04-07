@@ -9,7 +9,6 @@ LABEL org.opencontainers.image.description="GovOn AI Civil Complaint Analysis Sy
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
     DEBIAN_FRONTEND=noninteractive \
     SERVING_PROFILE="container" \
     MODEL_PATH="LGAI-EXAONE/EXAONE-4.0-32B-AWQ" \
@@ -22,19 +21,20 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     python3.10 \
-    python3-pip \
+    curl \
     git \
     libgl1-mesa-glx \
     libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
 
 # Copy project files
 COPY requirements.txt .
 
 # Install runtime dependencies once. The source tree is copied below and does
 # not require installing the project package or dev extras inside the image.
-RUN python3.10 -m pip install --no-cache-dir --upgrade pip \
-    && python3.10 -m pip install --no-cache-dir -r requirements.txt
+RUN uv pip install --system --no-cache -r requirements.txt
 
 # Copy source code
 COPY src/ ./src/

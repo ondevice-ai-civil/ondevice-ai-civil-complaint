@@ -97,11 +97,15 @@ class TestLLMPlannerToolCalling:
         plan = await adapter.plan(messages=[mock_msg], context={})
 
         assert "rag_search" in plan.tools, f"rag_search가 plan.tools에 없음: {plan.tools}"
-        assert "draft_civil_response" in plan.tools, f"draft_civil_response가 plan.tools에 없음: {plan.tools}"
-        assert plan.tool_args.get("draft_civil_response", {}).get("adapter") == "civil", (
-            f"adapter가 civil이어야 함: {plan.tool_args}"
-        )
-        assert "tool_calling" in plan.adapter_mode, f"adapter_mode에 tool_calling 포함 필요: {plan.adapter_mode}"
+        assert (
+            "draft_civil_response" in plan.tools
+        ), f"draft_civil_response가 plan.tools에 없음: {plan.tools}"
+        assert (
+            plan.tool_args.get("draft_civil_response", {}).get("adapter") == "civil"
+        ), f"adapter가 civil이어야 함: {plan.tool_args}"
+        assert (
+            "tool_calling" in plan.adapter_mode
+        ), f"adapter_mode에 tool_calling 포함 필요: {plan.adapter_mode}"
 
     @pytest.mark.asyncio
     async def test_json_fallback(self):
@@ -158,7 +162,9 @@ class TestLLMPlannerToolCalling:
         plan = await adapter.plan(messages=[mock_msg], context={})
         # 중복 제거: rag_search는 1번만
         assert plan.tools.count("rag_search") == 1, f"중복 tool 제거 실패: {plan.tools}"
-        assert plan.tool_args.get("rag_search", {}).get("query") == "첫 번째", "첫 번째 args 유지 필요"
+        assert (
+            plan.tool_args.get("rag_search", {}).get("query") == "첫 번째"
+        ), "첫 번째 args 유지 필요"
 
     @pytest.mark.asyncio
     async def test_non_dict_args_normalized(self):
@@ -248,7 +254,9 @@ class TestToolPlanWithArgs:
             tools=["draft_civil_response"],
             tool_args={"draft_civil_response": {"query": "test", "adapter": "civil"}},
         )
-        assert plan.tool_args["draft_civil_response"]["adapter"] == "civil", f"adapter 불일치: {plan.tool_args}"
+        assert (
+            plan.tool_args["draft_civil_response"]["adapter"] == "civil"
+        ), f"adapter 불일치: {plan.tool_args}"
 
 
 class TestBuildToolDefinitions:

@@ -33,7 +33,7 @@ def mock_manager():
     with patch("src.inference.api_server.manager") as mock:
         mock.agent_manager.list_agents.return_value = [
             "retriever",
-            "generator_civil_response",
+            "draft_response",
         ]
         mock.index_manager = MagicMock()
         mock.local_document_sync_status = {
@@ -65,7 +65,7 @@ def test_health_endpoint(mock_manager):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"
-    assert "generator_civil_response" in data["agents_loaded"]
+    assert "draft_response" in data["agents_loaded"]
     assert data["local_documents"]["enabled"] is True
     assert data["local_documents"]["root_dir"] == "/tmp/local-docs"
     assert data["local_documents"]["last_sync"]["status"] == "ok"

@@ -488,11 +488,11 @@ class TestMultiLoraPerRequestSwitching:
 
 
 # ---------------------------------------------------------------------------
-# 8. append_evidence LLM 경로 검증
+# 8. LoRA ID 유효성 검증
 # ---------------------------------------------------------------------------
 
 
-class TestAppendEvidenceLLMPath:
+class TestLoraIdValidation:
     """AdapterRegistry를 통한 LoRA ID 유효성 검증."""
 
     def test_legal_lora_id_is_positive_int(self):

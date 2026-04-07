@@ -1,14 +1,12 @@
-"""draft_civil_response / append_evidence capability 단위·통합 테스트.
+"""draft_response capability 단위·통합 테스트.
 
-Issue #397: draft_civil_response / append_evidence capability 구현.
+Issue #397: draft_response capability 구현.
 
 검증 항목:
 - DraftResponseCapability: 정상/에러 응답 LookupResult 변환
 - DraftResponseCapability: timeout_sec=30.0, metadata.provider="local_llm"
-- AppendEvidenceCapability: 정상/에러/혼합/빈 결과 처리
-- AppendEvidenceCapability: timeout_sec=30.0, metadata.provider="local_vectordb+data.go.kr"
-- registry에 두 capability가 모두 등록되는지 검증
-- executor adapter를 통해 두 capability가 각각 올바르게 실행되는지 검증
+- registry에 capability가 올바르게 등록되는지 검증
+- executor adapter를 통해 capability가 올바르게 실행되는지 검증
 
 외부 서비스(vLLM, API)는 모두 mock 처리한다.
 """
@@ -319,16 +317,16 @@ class TestDraftResponseCapability:
 class TestRegistryIntegration:
     """registry에 두 capability가 올바르게 등록되고 실행되는지 검증."""
 
-    def test_draft_civil_response_in_registry(self, registry):
-        """draft_civil_response가 registry에 등록되어 있다."""
+    def test_draft_response_in_registry(self, registry):
+        """draft_response가 registry에 등록되어 있다."""
         assert "draft_response" in registry
 
-    def test_draft_civil_response_is_capability_base(self, registry):
-        """registry의 draft_civil_response가 CapabilityBase 인스턴스이다."""
+    def test_draft_response_is_capability_base(self, registry):
+        """registry의 draft_response가 CapabilityBase 인스턴스이다."""
         assert isinstance(registry["draft_response"], CapabilityBase)
 
-    def test_draft_civil_response_metadata_name_matches_key(self, registry):
-        """draft_civil_response의 metadata.name이 registry key와 동일하다."""
+    def test_draft_response_metadata_name_matches_key(self, registry):
+        """draft_response의 metadata.name이 registry key와 동일하다."""
         cap = registry["draft_response"]
         assert cap.metadata.name == "draft_response"
 
@@ -336,13 +334,13 @@ class TestRegistryIntegration:
         """4개 MVP capability가 모두 등록되어 있다."""
         assert set(registry.keys()) == MVP_CAPABILITY_IDS
 
-    def test_draft_civil_response_provider_in_registry(self, registry):
-        """registry에서 가져온 draft_civil_response의 provider가 'local_llm'이다."""
+    def test_draft_response_provider_in_registry(self, registry):
+        """registry에서 가져온 draft_response의 provider가 'local_llm'이다."""
         cap = registry["draft_response"]
         assert cap.metadata.provider == "local_llm"
 
-    def test_draft_civil_response_timeout_in_registry(self, registry):
-        """registry에서 가져온 draft_civil_response의 timeout_sec이 30.0이다."""
+    def test_draft_response_timeout_in_registry(self, registry):
+        """registry에서 가져온 draft_response의 timeout_sec이 30.0이다."""
         cap = registry["draft_response"]
         assert cap.metadata.timeout_sec == 30.0
 
@@ -369,8 +367,8 @@ class TestExecutorAdapterIntegration:
     # list_tools 검증
     # -----------------------------------------------------------------------
 
-    def test_list_tools_includes_draft_civil_response(self, registry):
-        """list_tools()에 draft_civil_response가 포함된다."""
+    def test_list_tools_includes_draft_response(self, registry):
+        """list_tools()에 draft_response가 포함된다."""
         adapter = self._make_adapter(registry)
         assert "draft_response" in adapter.list_tools()
 
@@ -378,8 +376,8 @@ class TestExecutorAdapterIntegration:
     # get_tool_metadata 검증
     # -----------------------------------------------------------------------
 
-    def test_get_tool_metadata_draft_civil_response(self, registry):
-        """adapter.get_tool_metadata()가 draft_civil_response의 올바른 metadata를 반환한다."""
+    def test_get_tool_metadata_draft_response(self, registry):
+        """adapter.get_tool_metadata()가 draft_response의 올바른 metadata를 반환한다."""
         adapter = self._make_adapter(registry)
         meta = adapter.get_tool_metadata("draft_response")
 
@@ -394,8 +392,8 @@ class TestExecutorAdapterIntegration:
     # -----------------------------------------------------------------------
 
     @pytest.mark.asyncio
-    async def test_execute_draft_civil_response_success(self, registry):
-        """adapter를 통해 draft_civil_response 실행 시 success=True를 반환한다."""
+    async def test_execute_draft_response_success(self, registry):
+        """adapter를 통해 draft_response 실행 시 success=True를 반환한다."""
         adapter = self._make_adapter(registry)
         result = await adapter.execute(
             "draft_response",
@@ -407,8 +405,8 @@ class TestExecutorAdapterIntegration:
         assert "context_text" in result
 
     @pytest.mark.asyncio
-    async def test_execute_draft_civil_response_has_latency(self, registry):
-        """adapter를 통한 draft_civil_response 실행 결과에 latency_ms가 있다."""
+    async def test_execute_draft_response_has_latency(self, registry):
+        """adapter를 통한 draft_response 실행 결과에 latency_ms가 있다."""
         adapter = self._make_adapter(registry)
         result = await adapter.execute(
             "draft_response",
@@ -421,7 +419,7 @@ class TestExecutorAdapterIntegration:
 
     @pytest.mark.asyncio
     async def test_draft_result_contains_text(self, registry):
-        """adapter를 통한 draft_civil_response 결과에 'context_text'가 포함된다."""
+        """adapter를 통한 draft_response 결과에 'context_text'가 포함된다."""
         adapter = self._make_adapter(registry)
         result = await adapter.execute(
             "draft_response",

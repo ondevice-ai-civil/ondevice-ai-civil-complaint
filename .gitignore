@@ -52,6 +52,9 @@ lightning_logs/
 data/raw/
 !data/raw/**/
 !data/raw/aihub/71852/*.zip
+# RAG 테스트 데이터셋 (명시적 추적)
+!data/raw/rag_test_dataset/
+!data/raw/rag_test_dataset/**
 data/processed/*
 !data/processed/*.jsonl
 !data/processed/*.json

@@ -1376,6 +1376,77 @@ async def generate(
     )
 
 
+@app.post("/v1/chat/completions")
+async def chat_completions(
+    request: Request,
+    _: None = Depends(verify_api_key),
+):
+    """OpenAI-compatible /v1/chat/completions — LLMPlannerAdapter(ChatOpenAI) 전용.
+
+    vLLM AsyncLLM을 직접 호출하여 chat template 없이 메시지를 단순 연결한 프롬프트로 생성한다.
+    tool calling / function calling 은 지원하지 않는다.
+    """
+    body = await request.json()
+    messages: list[dict] = body.get("messages", [])
+    max_tokens: int = int(body.get("max_tokens", 512))
+    temperature: float = float(body.get("temperature", 0.7))
+    model: str = body.get("model", runtime_config.model.model_path)
+
+    # 메시지 → 프롬프트 변환 (EXAONE chat template 형식)
+    prompt_parts: list[str] = []
+    for msg in messages:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if role == "system":
+            prompt_parts.append(f"[|system|]{content}[|endofturn|]")
+        elif role == "user":
+            prompt_parts.append(f"[|user|]{content}[|endofturn|]")
+        elif role == "assistant":
+            prompt_parts.append(f"[|assistant|]{content}[|endofturn|]")
+    prompt_parts.append("[|assistant|]")
+    prompt = "\n".join(prompt_parts)
+
+    if manager.engine is None:
+        raise HTTPException(status_code=503, detail="Model engine not initialized.")
+
+    request_id = str(uuid.uuid4())
+    sampling_params = SamplingParams(
+        max_tokens=max_tokens,
+        temperature=temperature,
+        stop=["[|endofturn|]"],
+    )
+
+    try:
+        final_output = await manager._run_engine(prompt, sampling_params, request_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    if final_output is None:
+        raise HTTPException(status_code=500, detail="Generation failed.")
+
+    text = manager._strip_thought_blocks(final_output.outputs[0].text)
+    prompt_tokens = len(final_output.prompt_token_ids)
+    completion_tokens = len(final_output.outputs[0].token_ids)
+
+    return {
+        "id": f"chatcmpl-{request_id}",
+        "object": "chat.completion",
+        "model": model,
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": text},
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+        },
+    }
+
+
 @app.post("/v1/stream")
 @_rate_limit("30/minute")
 async def stream_generate(

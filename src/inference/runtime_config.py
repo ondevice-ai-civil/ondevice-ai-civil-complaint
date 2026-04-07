@@ -139,6 +139,17 @@ class GenerationDefaults:
 # ---------------------------------------------------------------------------
 
 
+def _parse_adapter_paths(raw: str) -> List[str]:
+    """ADAPTER_PATHS 환경변수를 파싱하여 vLLM --lora-modules 형식 목록으로 반환.
+
+    예: "civil-adapter=/path/to/civil,legal-adapter=siwo/govon-legal-adapter"
+    →  ["civil-adapter=/path/to/civil", "legal-adapter=siwo/govon-legal-adapter"]
+    """
+    if not raw or not raw.strip():
+        return []
+    return [p.strip() for p in raw.split(",") if p.strip()]
+
+
 @dataclass(frozen=True)
 class ModelConfig:
     """모델 및 어댑터 설정.
@@ -150,12 +161,15 @@ class ModelConfig:
     Multi-LoRA 어댑터:
     - civil-adapter (LoRA #1): draft_civil_response 용도
       학습 데이터: umyunsang/govon-civil-response-data (74K건), QLoRA on AWQ base
+      HF Hub: umyunsang/GovOn-EXAONE-LoRA-v2
     - legal-adapter (LoRA #2): append_evidence 용도
-      학습 데이터: neuralfoundry-coder/korean-legal-instruction-sample (232K건), QLoRA on AWQ base
+      학습 데이터: umyunsang/govon-legal-response-data (100K건 1차, 총 270K), Unsloth QLoRA r16
+      HF Hub: siwo/govon-legal-adapter
     - 나머지 capability (rag_search, api_lookup, synthesis 등)는 LoRA 없이 base model 사용
 
     adapter_paths: vLLM --lora-modules 형식으로 전달할 어댑터 경로 목록.
-      예: ["civil-adapter=/path/to/civil", "legal-adapter=/path/to/legal"]
+      예: ["civil-adapter=/path/to/civil", "legal-adapter=siwo/govon-legal-adapter"]
+      환경변수 ADAPTER_PATHS에 콤마 구분으로 설정.
     """
 
     model_path: str = "LGAI-EXAONE/EXAONE-4.0-32B-AWQ"
@@ -163,7 +177,7 @@ class ModelConfig:
     dtype: str = "half"
     enforce_eager: bool = True
     # Multi-LoRA: vLLM --lora-modules 형식으로 전달할 어댑터 경로 목록
-    # 예: ["civil-adapter=/path/to/civil", "legal-adapter=/path/to/legal"]
+    # 예: ["civil-adapter=/path/to/civil", "legal-adapter=siwo/govon-legal-adapter"]
     adapter_paths: List[str] = field(default_factory=list)
 
     @classmethod
@@ -174,6 +188,7 @@ class ModelConfig:
             in ("true", "1", "yes"),
             dtype=os.getenv("MODEL_DTYPE", "half"),
             enforce_eager=os.getenv("ENFORCE_EAGER", "true").lower() in ("true", "1", "yes"),
+            adapter_paths=_parse_adapter_paths(os.getenv("ADAPTER_PATHS", "")),
         )
 
 

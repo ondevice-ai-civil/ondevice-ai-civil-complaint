@@ -8,7 +8,7 @@ test_orchestration_e2e.py와의 차이:
     capability→adapter→node 파이프라인을 검증
 
 실제 capability 인스턴스(RagSearchCapability, ApiLookupCapability,
-DraftResponseCapability, AppendEvidenceCapability)를 사용하고
+DraftResponseCapability)를 사용하고
 RegistryExecutorAdapter를 통해 capability->adapter->node 파이프라인을 검증한다.
 StubExecutorAdapter가 아닌 실제 capability + mock execute_fn 클로저를 사용한다.
 
@@ -29,7 +29,6 @@ from langgraph.types import Command
 
 from src.inference.graph.builder import build_govon_graph
 from src.inference.graph.capabilities.api_lookup import ApiLookupCapability
-from src.inference.graph.capabilities.append_evidence import AppendEvidenceCapability
 from src.inference.graph.capabilities.draft_response import DraftResponseCapability
 from src.inference.graph.capabilities.rag_search import RagSearchCapability
 from src.inference.graph.executor_adapter import RegistryExecutorAdapter
@@ -51,7 +50,6 @@ def _make_registry(
     rag_fn=None,
     api_action=None,
     draft_fn=None,
-    evidence_fn=None,
 ) -> Dict[str, Any]:
     """실제 capability 인스턴스로 구성된 registry를 생성한다.
 
@@ -80,16 +78,10 @@ def _make_registry(
         async def draft_fn(query, context, session):
             return {"text": f"[기본 초안] {query}에 대한 답변입니다."}
 
-    if evidence_fn is None:
-
-        async def evidence_fn(query, context, session):
-            return {"text": f"[기본 근거] {query}에 대한 근거입니다."}
-
     return {
         "rag_search": RagSearchCapability(execute_fn=rag_fn),
         "api_lookup": ApiLookupCapability(action=api_action),
         "draft_response": DraftResponseCapability(execute_fn=draft_fn),
-        "append_evidence": AppendEvidenceCapability(execute_fn=evidence_fn),
     }
 
 
@@ -145,8 +137,8 @@ def session_store(tmp_path):
 def make_tooling_graph(session_store):
     """팩토리: 실제 capability + configurable planner로 graph를 생성한다."""
 
-    def _make(planner, rag_fn=None, api_action=None, draft_fn=None, evidence_fn=None):
-        registry = _make_registry(rag_fn, api_action, draft_fn, evidence_fn)
+    def _make(planner, rag_fn=None, api_action=None, draft_fn=None):
+        registry = _make_registry(rag_fn, api_action, draft_fn)
         executor = RegistryExecutorAdapter(tool_registry=registry, session_store=session_store)
         return build_govon_graph(
             planner_adapter=planner,
@@ -324,168 +316,7 @@ class TestDraftResponsePipeline:
 
 
 # ---------------------------------------------------------------------------
-# TestClass 2: TestEvidenceAugmentationPipeline
-# ---------------------------------------------------------------------------
-
-
-class TestEvidenceAugmentationPipeline:
-    """APPEND_EVIDENCE 파이프라인 E2E 테스트.
-
-    실제 capability 인스턴스를 사용하여 rag+api+append_evidence 체인을 검증한다.
-    """
-
-    async def test_append_evidence_merges_rag_and_api(self, make_tooling_graph):
-        """3-tool 콤보: rag 결과와 api context가 append_evidence execute_fn에 전달된다.
-
-        append_evidence의 execute_fn이 병합된 텍스트를 반환하고,
-        final_text가 그 텍스트와 일치한다.
-        """
-        evidence_text = "RAG + API 병합 근거: 관련 법령 제3조에 따라 처리됩니다."
-
-        async def rag_fn(query, context, session):
-            return {
-                "results": [
-                    {
-                        "title": "관련 법령",
-                        "content": "법령 내용입니다.",
-                        "score": 0.85,
-                        "source_type": "local",
-                        "doc_id": "test-doc-001",
-                    }
-                ],
-                "context_text": "법령 검색 컨텍스트",
-                "query": query,
-            }
-
-        async def evidence_fn(query, context, session):
-            return {"text": evidence_text}
-
-        planner = ConfigurableStubPlanner(
-            task_type=TaskType.APPEND_EVIDENCE,
-            goal="민원 답변 근거 보강",
-            reason="사용자가 근거 보강을 요청했습니다",
-            tools=["rag_search", "api_lookup", "append_evidence"],
-        )
-        graph = make_tooling_graph(planner, rag_fn=rag_fn, evidence_fn=evidence_fn)
-
-        config = await _run_to_interrupt(
-            graph,
-            session_id="tooling-evidence-merge-sess-1",
-            thread_id="tooling-evidence-merge-1",
-            query="근거를 보강해줘",
-            request_id="tooling-evidence-merge-req-1",
-        )
-        result = await _approve(graph, config)
-
-        final_text = result.get("final_text", "")
-        assert (
-            evidence_text in final_text
-        ), f"final_text에 append_evidence 텍스트가 포함되어야 합니다. 실제: {final_text!r}"
-
-    async def test_evidence_context_chaining(self, make_tooling_graph):
-        """append_evidence execute_fn 호출 시 context에 rag_search/api_lookup 결과가 포함된다.
-
-        tool_execute_node는 도구를 순차 실행하며 누적 컨텍스트에 이전 결과를 반영한다.
-        accumulated_context에 rag_search와 api_lookup 결과가 존재하는지 검증한다.
-        """
-        received_context: Dict[str, Any] = {}
-
-        async def rag_fn(query, context, session):
-            return {
-                "results": [
-                    {
-                        "title": "법령 문서",
-                        "content": "관련 법령",
-                        "score": 0.9,
-                        "source_type": "local",
-                        "doc_id": "test-doc-001",
-                    }
-                ],
-                "context_text": "법령 컨텍스트",
-                "query": query,
-            }
-
-        async def evidence_fn(query, context, session):
-            # context를 캡처하여 rag/api 결과가 포함되는지 확인
-            received_context.update(context)
-            return {"text": "근거 보강 완료"}
-
-        planner = ConfigurableStubPlanner(
-            task_type=TaskType.APPEND_EVIDENCE,
-            goal="민원 답변 근거 보강",
-            reason="사용자가 근거 보강을 요청했습니다",
-            tools=["rag_search", "api_lookup", "append_evidence"],
-        )
-        graph = make_tooling_graph(planner, rag_fn=rag_fn, evidence_fn=evidence_fn)
-
-        config = await _run_to_interrupt(
-            graph,
-            session_id="tooling-evidence-chain-sess-1",
-            thread_id="tooling-evidence-chain-1",
-            query="근거를 보강해줘",
-            request_id="tooling-evidence-chain-req-1",
-        )
-        await _approve(graph, config)
-
-        # append_evidence execute_fn이 호출될 때 rag_search 결과가 누적 컨텍스트에 있어야 한다
-        assert (
-            "rag_search" in received_context
-        ), "append_evidence 호출 시 context에 rag_search 결과가 있어야 합니다"
-        assert isinstance(
-            received_context["rag_search"], dict
-        ), "rag_search 결과는 dict이어야 합니다"
-        assert (
-            "api_lookup" in received_context
-        ), "append_evidence 호출 시 context에 api_lookup 결과가 있어야 합니다"
-        assert isinstance(
-            received_context["api_lookup"], dict
-        ), "api_lookup 결과는 dict이어야 합니다"
-
-    async def test_evidence_with_empty_rag(self, make_tooling_graph):
-        """rag 결과가 없을 때도 append_evidence 파이프라인이 완료된다.
-
-        rag가 빈 결과를 반환해도 api_lookup과 append_evidence는 실행되고
-        파이프라인이 정상 완료된다.
-        """
-        evidence_text = "API 결과만으로 보강된 근거입니다."
-
-        async def rag_fn_empty(query, context, session):
-            # 빈 결과 반환 (no_match)
-            return {"results": [], "context_text": "", "query": query}
-
-        async def evidence_fn(query, context, session):
-            return {"text": evidence_text}
-
-        planner = ConfigurableStubPlanner(
-            task_type=TaskType.APPEND_EVIDENCE,
-            goal="민원 답변 근거 보강",
-            reason="사용자가 근거 보강을 요청했습니다",
-            tools=["rag_search", "api_lookup", "append_evidence"],
-        )
-        graph = make_tooling_graph(planner, rag_fn=rag_fn_empty, evidence_fn=evidence_fn)
-
-        config = await _run_to_interrupt(
-            graph,
-            session_id="tooling-evidence-empty-rag-sess-1",
-            thread_id="tooling-evidence-empty-rag-1",
-            query="근거를 보강해줘",
-            request_id="tooling-evidence-empty-rag-req-1",
-        )
-        result = await _approve(graph, config)
-
-        # 파이프라인이 정상 완료되어야 한다
-        assert result.get("approval_status") == ApprovalStatus.APPROVED.value
-        final_text = result.get("final_text", "")
-        assert final_text, "rag가 비어도 final_text가 생성되어야 합니다"
-
-        # append_evidence가 실행되어 evidence_text가 final_text에 포함되어야 한다
-        assert (
-            evidence_text in final_text
-        ), f"append_evidence 텍스트가 final_text에 포함되어야 합니다. 실제: {final_text!r}"
-
-
-# ---------------------------------------------------------------------------
-# TestClass 3: TestPartialFailureE2E
+# TestClass 2: TestPartialFailureE2E
 # ---------------------------------------------------------------------------
 
 

@@ -54,7 +54,7 @@ from huggingface_hub import HfApi
 api = HfApi(token=os.environ['HF_TOKEN'])
 api.add_space_secret(os.environ['SPACE_REPO'], 'HF_TOKEN', os.environ['HF_TOKEN'])
 # ADAPTER_PATHS: HF Hub repo ID 방식 (vLLM이 자동 다운로드)
-adapter_paths = os.environ.get('ADAPTER_PATHS', 'civil=umyunsang/govon-civil-adapter,legal=siwo/govon-legal-adapter')
+adapter_paths = os.environ.get('ADAPTER_PATHS', 'public_admin=umyunsang/govon-civil-adapter,legal=siwo/govon-legal-adapter')
 api.add_space_secret(os.environ['SPACE_REPO'], 'ADAPTER_PATHS', adapter_paths)
 print('Secrets configured')
 "

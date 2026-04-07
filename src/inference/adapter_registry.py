@@ -7,7 +7,7 @@ tool definition 용 enum/description 생성과 vLLM ``LoRARequest`` 팩토리를
 사용법::
 
     registry = AdapterRegistry.get_instance()
-    lora_req = registry.get_lora_request("civil")
+    lora_req = registry.get_lora_request("public_admin")
     enum_list = registry.build_adapter_enum()
 """
 

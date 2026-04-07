@@ -20,7 +20,7 @@ session_load → planner → approval_wait → tool_execute → synthesis → pe
 `tool_execute` 노드는 두 단계로 실행된다:
 
 1. **병렬 실행**: `rag_search`, `api_lookup` (독립 도구) — `asyncio.gather()`
-2. **순차 실행**: `draft_civil_response`, `append_evidence` (의존 도구) — 누적 컨텍스트 필요
+2. **순차 실행**: `draft_response`, `synthesis` (의존 도구) — 누적 컨텍스트 필요
 
 ## 2. 레이턴시 기준선
 
@@ -41,8 +41,8 @@ session_load → planner → approval_wait → tool_execute → synthesis → pe
 |-----------|-------------|-----------|------|
 | rag_search | 15s | 100-500ms | FAISS + BM25 hybrid |
 | api_lookup | 10s | 300-2000ms | 외부 API 의존 |
-| draft_civil_response | 30s | 500-5000ms | LLM 생성 |
-| append_evidence | 15s | 200-1000ms | RAG + API 조합 |
+| draft_response | 30s | 500-5000ms | LLM 생성 |
+| synthesis | 15s | 200-1000ms | RAG + API 조합 |
 
 ## 3. 튜닝 포인트
 
@@ -54,8 +54,8 @@ session_load → planner → approval_wait → tool_execute → synthesis → pe
 # 기본값 변경
 export GOVON_TOOL_TIMEOUT_RAG_SEARCH=20      # 15 → 20초
 export GOVON_TOOL_TIMEOUT_API_LOOKUP=15       # 10 → 15초
-export GOVON_TOOL_TIMEOUT_DRAFT_CIVIL_RESPONSE=45  # 30 → 45초
-export GOVON_TOOL_TIMEOUT_APPEND_EVIDENCE=20  # 15 → 20초
+export GOVON_TOOL_TIMEOUT_DRAFT_RESPONSE=45   # 30 → 45초
+export GOVON_TOOL_TIMEOUT_SYNTHESIS=20        # 15 → 20초
 ```
 
 코드 위치: `src/inference/graph/capabilities/defaults.py`
@@ -115,7 +115,7 @@ results, mode = await engine.search(query, index_type, top_k=5)
 
 ### 4.2 LLM 서버 무응답 시 Timeout 동작
 
-- `draft_civil_response`의 기본 timeout: 30초
+- `draft_response`의 기본 timeout: 30초
 - timeout 초과 시 `LookupResult(success=False)` 반환
 - planner가 LLM 기반이면 planner 단계에서도 timeout 적용
 - CI 환경(`SKIP_MODEL_LOAD=true`)에서는 `RegexPlannerAdapter`가 fallback

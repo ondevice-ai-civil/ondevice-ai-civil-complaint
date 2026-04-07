@@ -280,8 +280,8 @@ The runtime uses a **single vLLM instance** with per-request LoRA adapter switch
 
 | Adapter | Capability | Training Data |
 |---|---|---|
-| `civil-adapter` (LoRA #1) | `draft_civil_response` | umyunsang/govon-civil-response-data (74K, QLoRA on AWQ base) |
-| [`legal-adapter`](https://huggingface.co/siwo/govon-legal-adapter) (LoRA #2) | `append_evidence` | umyunsang/govon-legal-response-data (243K, QLoRA on AWQ base) |
+| `civil-adapter` (LoRA #1) | `draft_response` | umyunsang/govon-civil-response-data (74K, QLoRA on AWQ base) |
+| [`legal-adapter`](https://huggingface.co/siwo/govon-legal-adapter) (LoRA #2) | 근거 보강 (follow-up) | umyunsang/govon-legal-response-data (243K, QLoRA on AWQ base) |
 | _(no LoRA)_ | `rag_search`, `api_lookup`, `synthesis`, `planner` | Base model only |
 
 LoRA adapters are loaded dynamically by vLLM's `--enable-lora` mode. The LLMPlannerAdapter
@@ -310,8 +310,8 @@ MVP registry:
 
 - `api_lookup`
 - `rag_search`
-- `draft_civil_response`
-- `append_evidence`
+- `draft_response`
+- `synthesis`
 
 Each tool carries metadata for:
 
@@ -358,7 +358,7 @@ MVP provenance output from RAG:
 
 Line-level provenance is deferred.
 
-### 6.3 `draft_civil_response`
+### 6.3 `draft_response`
 
 This capability uses:
 
@@ -372,9 +372,9 @@ The output format is:
 1. evidence summary
 2. final draft
 
-### 6.4 `append_evidence`
+### 6.4 Evidence Augmentation (follow-up)
 
-This capability is used only after a draft already exists.
+This follow-up capability is used only after a draft already exists.
 
 It uses:
 

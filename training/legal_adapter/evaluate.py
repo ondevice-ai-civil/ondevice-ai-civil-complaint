@@ -76,9 +76,11 @@ def evaluate(
 
     logger.info("Loading dataset: %s", DATASET_REPO)
     ds = load_dataset(DATASET_REPO)
-    val_ds = (
-        ds["validation"].shuffle(seed=42).select(range(min(sample_size, len(ds["validation"]))))
-    )
+    raw_val = ds.get("validation") or ds.get("val")
+    if raw_val is None:
+        logger.warning("No validation split found; using 10%% of train as eval")
+        raw_val = ds["train"].train_test_split(test_size=0.1, seed=42)["test"]
+    val_ds = raw_val.shuffle(seed=42).select(range(min(sample_size, len(raw_val))))
     logger.info("Evaluation samples: %d", len(val_ds))
 
     client = OpenAI(base_url=api_base, api_key=api_key)
@@ -140,8 +142,8 @@ def evaluate(
             "adapter": round(float(adapter_bert_f1.mean()), 4),
         },
         "rouge_l": {
-            "base": round(sum(base_rouge) / len(base_rouge), 4),
-            "adapter": round(sum(adapter_rouge) / len(adapter_rouge), 4),
+            "base": round(sum(base_rouge) / len(base_rouge), 4) if base_rouge else 0.0,
+            "adapter": round(sum(adapter_rouge) / len(adapter_rouge), 4) if adapter_rouge else 0.0,
         },
     }
     return results

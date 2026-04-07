@@ -86,8 +86,11 @@ def mock_manager():
 
 def test_health_check(mock_manager):
     """health 엔드포인트가 민감 정보를 노출하지 않고 인덱스 상태를 반환한다."""
-    with patch(
-        "src.inference.api_server.runtime_config.paths.local_docs_root", "/tmp/local-docs"
+    mock_model = MagicMock()
+    mock_model.model_path = "LGAI-EXAONE/EXAONE-4.0-32B-AWQ"
+    with (
+        patch("src.inference.api_server.runtime_config.paths.local_docs_root", "/tmp/local-docs"),
+        patch("src.inference.api_server.runtime_config.model", mock_model),
     ):
         response = client.get("/health")
 

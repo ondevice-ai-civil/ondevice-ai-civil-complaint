@@ -32,11 +32,16 @@ ENV PATH="/root/.local/bin:${PATH}"
 # Copy project files
 COPY requirements.txt .
 
-# autoawq's build backend imports torch during wheel build (build isolation hides
-# system packages), so torch must be pre-installed and autoawq built without isolation.
-RUN uv pip install --system --no-cache "torch>=2.8.0" && \
+# 1) torch: CUDA 12.1 wheel (matches nvidia/cuda:12.1.1 base image)
+# 2) autoawq: --no-build-isolation so its build backend can import torch
+# 3) remaining deps: extra-index-url ensures CUDA wheels for vllm/bitsandbytes
+RUN uv pip install --system --no-cache \
+        --index-url https://download.pytorch.org/whl/cu121 \
+        "torch>=2.8.0" && \
     uv pip install --system --no-cache --no-build-isolation "autoawq>=0.2.8" && \
-    uv pip install --system --no-cache -r requirements.txt
+    uv pip install --system --no-cache \
+        --extra-index-url https://download.pytorch.org/whl/cu121 \
+        -r requirements.txt
 
 # Copy source code
 COPY src/ ./src/

@@ -381,7 +381,10 @@ class vLLMEngineManager:
 
     @staticmethod
     def _strip_thought_blocks(text: str) -> str:
-        return re.sub(r"<thought>.*?</thought>\s*", "", text, flags=re.DOTALL).strip()
+        # <thought>...</thought> (구형) 및 <think>...</think> (EXAONE-4.0 추론 모드) 모두 제거
+        text = re.sub(r"<thought>.*?</thought>\s*", "", text, flags=re.DOTALL)
+        text = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL)
+        return text.strip()
 
     def _build_rag_context(self, retrieved_cases: List[dict]) -> str:
         if not retrieved_cases:
@@ -1726,7 +1729,9 @@ async def v2_agent_stream(
                             event["evidence_items"] = state_delta["evidence_items"]
                         if state_delta.get("task_type"):
                             event["task_type"] = state_delta["task_type"]
-                    if node_name == "approval_wait":
+                    # approval_wait: 명시적 노드명 또는 LangGraph interrupt() 호출 시
+                    # stream_mode="updates"에서 emit되는 "__interrupt__" 청크 모두 처리
+                    if node_name in ("approval_wait", "__interrupt__"):
                         try:
                             graph_state = await manager.graph.aget_state(config)
                             if graph_state.next:
@@ -1739,7 +1744,10 @@ async def v2_agent_stream(
                                 }
                         except Exception as exc:
                             logger.warning(f"[v2/agent/stream] aget_state 실패: {exc}")
+                            event["node"] = "approval_wait"
                             event["status"] = "awaiting_approval"
+                            event["thread_id"] = thread_id
+                            event["session_id"] = session_id
                             event["approval_request"] = {
                                 "prompt": "승인 정보를 불러올 수 없습니다. /v2/agent/approve로 진행하세요."
                             }

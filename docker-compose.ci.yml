@@ -2,7 +2,7 @@ services:
   govon-backend:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.ci
     image: govon-backend:ci
     container_name: govon-backend-ci
     ports:

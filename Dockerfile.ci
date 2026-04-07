@@ -1,0 +1,64 @@
+# Dockerfile.ci — compose-smoke 전용 경량 이미지
+# ML 패키지(torch, vllm, autoawq 등) 제외 — SKIP_MODEL_LOAD=true 환경에서 API 기동만 검증
+
+FROM python:3.10-slim
+
+LABEL org.opencontainers.image.description="GovOn CI smoke-test image (no ML packages)"
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    SERVING_PROFILE="container" \
+    SKIP_MODEL_LOAD="true" \
+    MODEL_PATH="LGAI-EXAONE/EXAONE-4.0-32B-AWQ" \
+    DATA_PATH="/app/data/processed/v2_train.jsonl" \
+    INDEX_PATH="/app/models/faiss_index/complaints.index"
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir uv
+
+COPY requirements.txt .
+
+# ML 패키지(torch 의존) 제외한 API 구동 필수 패키지만 설치
+RUN uv pip install --system --no-cache \
+    fastapi \
+    uvicorn \
+    pydantic \
+    "rank-bm25>=0.2.2" \
+    httpx \
+    "langgraph==1.1.6" \
+    "langgraph-checkpoint==4.0.1" \
+    "langgraph-checkpoint-sqlite==3.0.3" \
+    "langchain-openai>=0.3.0" \
+    "langchain-core>=1.2.0,<2.0.0" \
+    pandas \
+    numpy \
+    scikit-learn \
+    PyMuPDF \
+    requests \
+    beautifulsoup4 \
+    lxml \
+    tqdm \
+    python-dotenv \
+    pyyaml \
+    loguru \
+    sqlalchemy \
+    psycopg2-binary \
+    "faiss-cpu>=1.7.4" \
+    "sentence-transformers>=3.0.0"
+
+COPY src/ ./src/
+COPY agents/ ./agents/
+
+RUN mkdir -p models/faiss_index models/bm25_index data/processed
+
+EXPOSE 8000
+
+RUN groupadd -r govon && useradd -r -g govon -d /app govon
+RUN chown -R govon:govon /app
+USER govon
+
+CMD ["python3.10", "-m", "src.inference.api_server"]

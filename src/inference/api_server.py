@@ -164,6 +164,18 @@ def _extract_approval_request(graph_state: Any) -> Any:
     return task.interrupts[0].value
 
 
+def _safe_state_field(vals: Any, key: str, default: Any = "") -> Any:
+    """graph state에서 JSON 직렬화 가능한 값을 안전하게 추출한다."""
+    if not isinstance(vals, dict):
+        return default
+    v = vals.get(key, default)
+    if isinstance(v, (str, int, float, bool, type(None))):
+        return v
+    if isinstance(v, (dict, list)):
+        return v
+    return default
+
+
 class vLLMEngineManager:
     """GovOn Shell MVP용 로컬 런타임 매니저."""
 
@@ -1759,8 +1771,8 @@ async def v2_agent_stream(
                                     "approval_request": _extract_approval_request(graph_state),
                                     "thread_id": thread_id,
                                     "session_id": session_id,
-                                    "adapter_mode": _vals.get("adapter_mode", ""),
-                                    "tool_args": _vals.get("tool_args", {}),
+                                    "adapter_mode": _safe_state_field(_vals, "adapter_mode", ""),
+                                    "tool_args": _safe_state_field(_vals, "tool_args", {}),
                                 }
                         except Exception as exc:
                             logger.warning(f"[v2/agent/stream] aget_state 실패: {exc}")
@@ -1875,8 +1887,8 @@ async def v2_agent_run(
             "text": final_state.get("final_text", ""),
             "evidence_items": final_state.get("evidence_items", []),
             "task_type": final_state.get("task_type", ""),
-            "adapter_mode": final_state.get("adapter_mode", ""),
-            "tool_args": final_state.get("tool_args", {}),
+            "adapter_mode": _safe_state_field(final_state, "adapter_mode", ""),
+            "tool_args": _safe_state_field(final_state, "tool_args", {}),
         }
     except Exception as exc:
         logger.error(f"[v2/agent/run] 예외 발생: {exc}")
@@ -1954,8 +1966,8 @@ async def v2_agent_approve(
             "task_type": result.get("task_type", ""),
             "tool_results": result.get("tool_results", {}),
             "approval_status": approval_status,
-            "adapter_mode": result.get("adapter_mode", ""),
-            "tool_args": result.get("tool_args", {}),
+            "adapter_mode": _safe_state_field(result, "adapter_mode", ""),
+            "tool_args": _safe_state_field(result, "tool_args", {}),
         }
     except Exception as exc:
         logger.error(f"[v2/agent/approve] 예외 발생: {exc}")

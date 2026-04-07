@@ -422,7 +422,7 @@ async def _call_agent_with_approval(
                 return True, final_text, meta, None
             if final_text:
                 return True, final_text, meta, None
-            return False, "", meta, f"approve 200 but text 없음"
+            return False, "", meta, "approve 200 but text 없음"
 
         if resp.get("status") == "error":
             return False, "", meta, resp.get("error", "agent run error")

@@ -1,4 +1,4 @@
-FROM nvidia/cuda:13.2.0-runtime-ubuntu22.04
+FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -15,8 +15,21 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN python3.10 -m pip install --no-cache-dir --upgrade pip \
-    && python3.10 -m pip install --no-cache-dir -r requirements.txt
+
+# 1) torch: requirements.txt를 단일 소스로 읽어 CUDA 12.1 wheel 설치
+# 2) autoawq: --no-build-isolation으로 시스템 torch를 빌드 백엔드에 노출
+# 3) remaining deps: extra-index-url로 CUDA wheels (vllm, bitsandbytes) 해석
+RUN set -eux; \
+    TORCH_SPEC="$(grep -E '^[[:space:]]*torch([[:space:]]*[<>=!~].*)?$' requirements.txt | head -n 1 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"; \
+    test -n "$TORCH_SPEC"; \
+    python3.10 -m pip install --no-cache-dir --upgrade pip && \
+    python3.10 -m pip install --no-cache-dir \
+        --extra-index-url https://download.pytorch.org/whl/cu121 \
+        "$TORCH_SPEC" && \
+    python3.10 -m pip install --no-cache-dir --no-build-isolation "autoawq>=0.2.8" && \
+    python3.10 -m pip install --no-cache-dir \
+        --extra-index-url https://download.pytorch.org/whl/cu121 \
+        -r requirements.txt
 
 # HF Spaces는 uid 1000 권장 — COPY 전에 유저/디렉터리 생성으로 레이어 캐시 최적화
 RUN useradd -m -u 1000 user

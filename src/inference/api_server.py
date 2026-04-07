@@ -11,7 +11,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Security
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
 from loguru import logger
 
@@ -1668,6 +1668,7 @@ async def agent_stream(
 
 
 @app.post("/v2/agent/stream")
+@_rate_limit("30/minute")
 async def v2_agent_stream(
     request: AgentRunRequest,
     _: None = Depends(verify_api_key),
@@ -1705,6 +1706,19 @@ async def v2_agent_stream(
         "request_id": request_id,
         "messages": [HumanMessage(content=request.query)],
     }
+
+    # 기존 interrupt 상태가 남아있으면 거절(cancel)로 해소
+    try:
+        from langgraph.types import Command
+
+        existing_state = await manager.graph.aget_state(config)
+        if existing_state and existing_state.next:
+            await manager.graph.ainvoke(
+                Command(resume={"approved": False, "cancel": True}),
+                config,
+            )
+    except Exception:
+        pass  # 상태 확인 실패는 무시하고 새 실행 진행
 
     async def _generate() -> AsyncGenerator[str, None]:
         try:
@@ -1766,6 +1780,7 @@ async def v2_agent_stream(
 
 
 @app.post("/v2/agent/run")
+@_rate_limit("30/minute")
 async def v2_agent_run(
     request: AgentRunRequest,
     _: None = Depends(verify_api_key),
@@ -1812,6 +1827,19 @@ async def v2_agent_run(
         "messages": [HumanMessage(content=request.query)],
     }
 
+    # 기존 interrupt 상태가 남아있으면 거절(cancel)로 해소
+    try:
+        existing_state = await manager.graph.aget_state(config)
+        if existing_state and existing_state.next:
+            from langgraph.types import Command
+
+            await manager.graph.ainvoke(
+                Command(resume={"approved": False, "cancel": True}),
+                config,
+            )
+    except Exception:
+        pass  # 상태 확인 실패는 무시하고 새 실행 진행
+
     try:
         await manager.graph.ainvoke(initial_state, config)
 
@@ -1854,16 +1882,17 @@ async def v2_agent_run(
                 )
         except Exception as persist_exc:
             logger.warning(f"[v2/agent/run] error persist 실패: {persist_exc}")
-        return {
+        return JSONResponse(status_code=500, content={
             "status": "error",
             "thread_id": thread_id,
             "session_id": session_id,
             "graph_run_id": request_id,
             "error": str(exc),
-        }
+        })
 
 
 @app.post("/v2/agent/approve")
+@_rate_limit("30/minute")
 async def v2_agent_approve(
     thread_id: str,
     approved: bool,
@@ -1932,16 +1961,17 @@ async def v2_agent_approve(
                     )
         except Exception as persist_exc:
             logger.warning(f"[v2/agent/approve] error persist 실패: {persist_exc}")
-        return {
+        return JSONResponse(status_code=500, content={
             "status": "error",
             "thread_id": thread_id,
             "session_id": session_id,
             "graph_run_id": request_id,
             "error": str(exc),
-        }
+        })
 
 
 @app.post("/v2/agent/cancel")
+@_rate_limit("30/minute")
 async def v2_agent_cancel(
     thread_id: str,
     _: None = Depends(verify_api_key),
@@ -1993,11 +2023,11 @@ async def v2_agent_cancel(
         raise
     except Exception as exc:
         logger.error(f"[v2/agent/cancel] 예외 발생: {exc}")
-        return {
+        return JSONResponse(status_code=500, content={
             "status": "error",
             "thread_id": thread_id,
             "error": str(exc),
-        }
+        })
 
 
 if __name__ == "__main__":

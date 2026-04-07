@@ -98,6 +98,13 @@ class SessionContext:
 
     def add_turn(self, role: str, content: str, **kwargs: Any) -> None:
         """대화 턴을 추가하고 필요 시 영속화한다."""
+        # 직전 턴과 동일한 내용이면 중복 저장 방지
+        if (
+            self.conversations
+            and self.conversations[-1].role == role
+            and self.conversations[-1].content == content
+        ):
+            return
         turn = ConversationTurn(role=role, content=content, metadata=kwargs)
         self.conversations.append(turn)
         if len(self.conversations) > self.max_history:
@@ -234,6 +241,8 @@ class SessionStore:
         conn = sqlite3.connect(self._db_path)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
         return conn
 
     def _init_db(self) -> None:
@@ -727,7 +736,23 @@ class SessionStore:
         """
         cutoff = time.time() - max_age_days * 86400
         with closing(self._connect()) as conn, conn:
-            deleted = conn.execute("DELETE FROM sessions WHERE updated_at < ?", (cutoff,)).rowcount
+            # 삭제 대상 session_id 목록 먼저 조회 (metadata 테이블에는 FK CASCADE가 없음)
+            cursor = conn.execute(
+                "SELECT session_id FROM sessions WHERE updated_at < ?",
+                (cutoff,),
+            )
+            expired_ids = [row["session_id"] for row in cursor.fetchall()]
+
+            if expired_ids:
+                placeholders = ",".join("?" * len(expired_ids))
+                conn.execute(
+                    f"DELETE FROM metadata WHERE owner_type='session' AND owner_id IN ({placeholders})",
+                    expired_ids,
+                )
+
+            deleted = conn.execute(
+                "DELETE FROM sessions WHERE updated_at < ?", (cutoff,)
+            ).rowcount
         if deleted:
             logger.info(f"SessionStore: {deleted}개 세션 정리 (max_age_days={max_age_days})")
         return deleted

@@ -140,17 +140,6 @@ class GenerationDefaults:
 # ---------------------------------------------------------------------------
 
 
-def _parse_adapter_paths(raw: str) -> List[str]:
-    """ADAPTER_PATHS 환경변수를 파싱하여 vLLM --lora-modules 형식 목록으로 반환.
-
-    예: "civil-adapter=/path/to/civil,legal-adapter=siwo/govon-legal-adapter"
-    →  ["civil-adapter=/path/to/civil", "legal-adapter=siwo/govon-legal-adapter"]
-    """
-    if not raw or not raw.strip():
-        return []
-    return [p.strip() for p in raw.split(",") if p.strip()]
-
-
 @dataclass(frozen=True)
 class ModelConfig:
     """모델 및 어댑터 설정.

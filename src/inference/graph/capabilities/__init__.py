@@ -5,7 +5,11 @@ from .append_evidence import AppendEvidenceCapability
 from .base import CapabilityBase, CapabilityMetadata, LookupResult
 from .defaults import get_all_defaults, get_max_retries, get_timeout
 from .draft_civil_response import DraftCivilResponseCapability
+from .demographics_lookup import DemographicsLookupCapability
+from .issue_detector import IssueDetectorCapability
+from .keyword_analyzer import KeywordAnalyzerCapability
 from .rag_search import RagSearchCapability, RagSearchParams
+from .stats_lookup import StatsLookupCapability
 from .registry import (
     MVP_CAPABILITY_IDS,
     build_mvp_registry,
@@ -24,6 +28,10 @@ __all__ = [
     "RagSearchParams",
     "DraftCivilResponseCapability",
     "AppendEvidenceCapability",
+    "IssueDetectorCapability",
+    "StatsLookupCapability",
+    "KeywordAnalyzerCapability",
+    "DemographicsLookupCapability",
     "MVP_CAPABILITY_IDS",
     "build_mvp_registry",
     "get_all_metadata",

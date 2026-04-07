@@ -1,3 +1,20 @@
+# HF Space 배포 및 환경 설정 워크플로
+#
+# 팀원 자체 Space에서 테스트하는 방법:
+#   1. huggingface.co 에서 Docker Space 생성 (hardware: a100-large)
+#   2. GitHub repo Settings > Secrets and variables > Actions 에서 HF_TOKEN 등록
+#   3. Space 이름을 아래 SPACE_ID 에 맞게 변경 후 workflow_dispatch 실행
+#
+# Space 필수 환경변수 (HF Space Settings > Variables):
+#   ADAPTER_PATHS = civil=umyunsang/GovOn-EXAONE-LoRA-v2,legal=siwo/govon-legal-adapter
+#   SERVING_PROFILE = container
+#   GPU_UTILIZATION = 0.90       (기본값, Dockerfile.hfspace 에 설정됨)
+#   MAX_MODEL_LEN = 8192         (기본값, Dockerfile.hfspace 에 설정됨)
+#
+# Multi-LoRA 서빙 검증:
+#   GOVON_RUNTIME_URL=https://<space-subdomain>.hf.space \
+#     python3 scripts/verify_lora_serving.py
+
 name: Deploy HF Space
 
 on:
@@ -52,6 +69,19 @@ jobs:
             exit 1
           fi
           echo "Hardware changed to $FLAVOR"
+
+      - name: Set Space variables (ADAPTER_PATHS, SERVING_PROFILE)
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set_var() {
+            curl -s -X POST "${{ env.HF_API }}/spaces/${{ env.SPACE_ID }}/variables" \
+              -H "Authorization: Bearer $HF_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"key\": \"$1\", \"value\": \"$2\"}" | python3 -c "import sys,json; d=json.load(sys.stdin); print('$1 =', list(d.values())[0].get('value') if d else 'error')"
+          }
+          set_var "ADAPTER_PATHS" "civil=umyunsang/GovOn-EXAONE-LoRA-v2,legal=siwo/govon-legal-adapter"
+          set_var "SERVING_PROFILE" "container"
 
       - name: Push to HF Space repo
         env:

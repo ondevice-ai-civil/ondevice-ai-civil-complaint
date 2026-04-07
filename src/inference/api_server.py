@@ -210,6 +210,8 @@ class vLLMEngineManager:
         # Multi-LoRA 서빙 시 --enable-lora --lora-modules 옵션 추가
         # HuggingFace Spaces L4 (24GB VRAM) 기준 ~20GB 점유
         try:
+            # KV cache dtype: fp8이면 메모리 50% 절감 (A10G/L4 24GB 필수)
+            kv_cache_dtype = os.getenv("KV_CACHE_DTYPE", "auto")
             engine_kwargs = dict(
                 model=MODEL_PATH,
                 trust_remote_code=TRUST_REMOTE_CODE,
@@ -217,6 +219,7 @@ class vLLMEngineManager:
                 max_model_len=MAX_MODEL_LEN,
                 dtype=runtime_config.model.dtype,
                 enforce_eager=runtime_config.model.enforce_eager,
+                kv_cache_dtype=kv_cache_dtype,
             )
             # Multi-LoRA 서빙: adapter_paths가 설정되어 있으면 활성화
             lora_enabled = bool(runtime_config.model.adapter_paths)

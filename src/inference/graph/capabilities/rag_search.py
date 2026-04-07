@@ -167,8 +167,11 @@ class RagSearchCapability(CapabilityBase):
                     },
                     "source_types": {
                         "type": "array",
-                        "items": {"type": "string"},
-                        "description": "검색 대상 문서 유형 (예: civil, legal, manual, notice)",
+                        "items": {
+                            "type": "string",
+                            "enum": ["case", "law", "manual", "notice"],
+                        },
+                        "description": "검색 대상 문서 유형 (case=민원사례, law=법령, manual=매뉴얼, notice=공지)",
                     },
                     "min_confidence": {
                         "type": "number",

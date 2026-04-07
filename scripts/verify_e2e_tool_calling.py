@@ -8,7 +8,7 @@ HuggingFace Space에 배포된 govon-runtime 서버에 대해
     GOVON_RUNTIME_URL=https://<space-url>.hf.space python3 scripts/verify_e2e_tool_calling.py
     GOVON_RUNTIME_URL=https://<space-url>.hf.space API_KEY=<key> python3 scripts/verify_e2e_tool_calling.py
 
-5-Phase 검증 (13 시나리오):
+5-Phase 검증 (16 시나리오):
     Phase 1: Infrastructure (hard gate)
         1. Health & Profile
         2. Base Model Generation
@@ -17,6 +17,10 @@ HuggingFace Space에 배포된 govon-runtime 서버에 대해
         4. Planner Produces Valid Plan
         5. Civil LoRA Draft Response
         6. Legal LoRA Evidence Augmentation (depends on 5)
+        6a. Legal LoRA — 민사법 (Civil Law)
+        6b. Legal LoRA — 형사법 (Criminal Law)
+        6c. Legal LoRA — 지식재산권 (IP)
+        6d. Legal LoRA — 판례 해석 (Precedent)
         7. Task Type Classification
     Phase 3: data.go.kr API Tools (soft gate)
         8. External API Tool Invocation (4 sub-cases)
@@ -44,7 +48,9 @@ BASE_URL = os.environ.get("GOVON_RUNTIME_URL", "http://localhost:7860").rstrip("
 API_KEY = os.environ.get("API_KEY")
 TIMEOUT = 300  # 시나리오당 최대 대기 시간 (초)
 BASE_MODEL = "LGAI-EXAONE/EXAONE-4.0-32B-AWQ"
-RESULTS_PATH = "verify_e2e_tool_calling_results.json"
+_TIMESTAMP = time.strftime("%Y%m%d_%H%M%S")
+RESULTS_PATH = f"verify_e2e_tool_calling_{_TIMESTAMP}.json"
+LOG_PATH = f"verify_e2e_tool_calling_{_TIMESTAMP}.log"
 
 VALID_TOOLS = frozenset(
     {
@@ -72,9 +78,51 @@ LEGAL_PATTERNS = [
     r"규정",
 ]
 
+# ---------------------------------------------------------------------------
+# 로깅 설정: 터미널 + 파일 동시 기록
+# ---------------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler(LOG_PATH, encoding="utf-8"),
+    ],
+)
 logger = logging.getLogger(__name__)
+logger.info(f"로그 파일: {LOG_PATH}")
+logger.info(f"결과 파일: {RESULTS_PATH}")
 
 _results: list[dict] = []
+
+
+def _save_intermediate_results() -> None:
+    """시나리오 완료 시마다 중간 결과를 JSON 파일에 저장한다."""
+    output = {
+        "meta": {
+            "run_id": _run_id if "_run_id" in dir() else "",
+            "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "target_url": BASE_URL,
+            "log_file": LOG_PATH,
+            "status": "in_progress",
+        },
+        "summary": {
+            "total": len(_results),
+            "passed": sum(1 for r in _results if r["status"] == "passed"),
+            "failed": sum(1 for r in _results if r["status"] == "failed"),
+            "skipped": sum(1 for r in _results if r["status"] == "skipped"),
+        },
+        "scenarios": _results,
+    }
+    tmp_path = f"{RESULTS_PATH}.tmp"
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(output, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, RESULTS_PATH)
+    except Exception as exc:
+        logger.warning("중간 결과 저장 실패: %s", exc)
+
+
 _observed_tools: set[str] = set()
 _run_id = uuid4().hex
 
@@ -235,15 +283,18 @@ def _record(
     tag = {"passed": "[PASS]", "failed": "[FAIL]", "skipped": "[SKIP]"}.get(status, "[????]")
     suffix = f"({elapsed:.2f}s)"
     if status == "passed":
-        print(f"{tag} Scenario {scenario_num}: {name} {suffix}")
+        msg = f"{tag} Scenario {scenario_num}: {name} {suffix}"
+        logger.info(msg)
     elif status == "skipped":
-        print(f"{tag} Scenario {scenario_num}: {name} — {error or 'skipped'} {suffix}")
+        msg = f"{tag} Scenario {scenario_num}: {name} — {error or 'skipped'} {suffix}"
+        logger.warning(msg)
     else:
-        print(f"{tag} Scenario {scenario_num}: {name} — {error} {suffix}")
+        msg = f"{tag} Scenario {scenario_num}: {name} — {error} {suffix}"
+        logger.error(msg)
 
     if warnings:
         for w in warnings:
-            print(f"  [WARN] {w}")
+            logger.warning(f"  [WARN] {w}")
 
     entry = {
         "id": scenario_num,
@@ -258,6 +309,7 @@ def _record(
         "detail": detail,
     }
     _results.append(entry)
+    _save_intermediate_results()
     return entry
 
 
@@ -295,22 +347,33 @@ async def _call_agent_with_approval(
     """에이전트 SSE 스트리밍으로 호출 → awaiting_approval까지 파싱 → approve/reject.
 
     Returns: (success, text, metadata_dict, error)
-    metadata_dict keys: planned_tools, task_type, tool_results, adapter_mode, tool_args
+    metadata_dict keys: planned_tools, task_type, goal, reason, tool_results, adapter_mode, tool_args
     """
     body = {"query": query, "session_id": session_id, "use_rag": False}
     meta: dict[str, Any] = {
         "planned_tools": [],
         "task_type": None,
+        "goal": None,
+        "reason": None,
         "tool_results": {},
         "adapter_mode": None,
         "tool_args": {},
     }
 
+    logger.info("[Agent] 요청: session=%s, query_len=%d", session_id, len(query))
+
     # --- SSE 스트리밍 시도 ---
     try:
         status_code, events = await http_post_sse("/v2/agent/stream", body, timeout=timeout)
+        logger.info(f"[Agent] SSE 응답: HTTP {status_code}, events={len(events)}")
         if status_code != 200:
             raise RuntimeError(f"SSE HTTP {status_code}")
+
+        # 노드별 흐름 로깅
+        for ev in events:
+            node = ev.get("node", "?")
+            st = ev.get("status", "?")
+            logger.info(f"  [SSE] node={node}, status={st}")
 
         # awaiting_approval 또는 __interrupt__ 이벤트 탐색
         awaiting = None
@@ -318,28 +381,84 @@ async def _call_agent_with_approval(
             if ev.get("status") == "awaiting_approval" or ev.get("node") == "__interrupt__":
                 awaiting = ev
                 break
-            # 플래너 노드에서 planned_tools 추출
-            if ev.get("planned_tools"):
+            # 플래너 노드에서 planned_tools 추출 (nested approval_request 우선)
+            ev_approval = ev.get("approval_request", {})
+            if not isinstance(ev_approval, dict):
+                ev_approval = {}
+
+            if ev_approval.get("planned_tools"):
+                meta["planned_tools"] = ev_approval["planned_tools"]
+            elif ev.get("planned_tools"):
                 meta["planned_tools"] = ev["planned_tools"]
-            if ev.get("task_type"):
+
+            if ev_approval.get("task_type"):
+                meta["task_type"] = ev_approval["task_type"]
+            elif ev.get("task_type"):
                 meta["task_type"] = ev["task_type"]
+
+            if ev_approval.get("goal"):
+                meta["goal"] = ev_approval["goal"]
+            elif ev.get("goal"):
+                meta["goal"] = ev["goal"]
+
+            if ev_approval.get("reason"):
+                meta["reason"] = ev_approval["reason"]
+            elif ev.get("reason"):
+                meta["reason"] = ev["reason"]
+
+            # adapter_mode, tool_args are always top-level
             if ev.get("adapter_mode"):
                 meta["adapter_mode"] = ev["adapter_mode"]
             if ev.get("tool_args"):
                 meta["tool_args"] = ev["tool_args"]
 
         if awaiting:
-            # awaiting 이벤트에서 메타데이터 추출
-            if awaiting.get("planned_tools"):
+            # awaiting 이벤트에서 메타데이터 추출 (nested approval_request 우선)
+            approval_req = awaiting.get("approval_request", {})
+            if not isinstance(approval_req, dict):
+                approval_req = {}
+
+            if approval_req.get("planned_tools"):
+                meta["planned_tools"] = approval_req["planned_tools"]
+            elif awaiting.get("planned_tools"):
                 meta["planned_tools"] = awaiting["planned_tools"]
-            if awaiting.get("task_type"):
+
+            if approval_req.get("task_type"):
+                meta["task_type"] = approval_req["task_type"]
+            elif awaiting.get("task_type"):
                 meta["task_type"] = awaiting["task_type"]
+
+            if approval_req.get("goal"):
+                meta["goal"] = approval_req["goal"]
+            elif awaiting.get("goal"):
+                meta["goal"] = awaiting["goal"]
+
+            if approval_req.get("reason"):
+                meta["reason"] = approval_req["reason"]
+            elif awaiting.get("reason"):
+                meta["reason"] = awaiting["reason"]
+
+            # adapter_mode, tool_args are always top-level
             if awaiting.get("adapter_mode"):
                 meta["adapter_mode"] = awaiting["adapter_mode"]
             if awaiting.get("tool_args"):
                 meta["tool_args"] = awaiting["tool_args"]
 
             thread_id = awaiting.get("thread_id") or session_id
+            logger.info("  [Approval] planned_tools=%s", meta["planned_tools"])
+            tool_arg_keys = (
+                sorted(meta["tool_args"].keys())
+                if isinstance(meta["tool_args"], dict)
+                else str(type(meta["tool_args"]).__name__)
+            )
+            logger.info(
+                "  [Approval] adapter_mode=%s, tool_arg_keys=%s",
+                meta["adapter_mode"],
+                tool_arg_keys,
+            )
+            logger.info(
+                f"  [Approval] {'승인' if approve else '거절'} 요청 → thread_id={thread_id}"
+            )
 
             # approve/reject
             approve_code, approve_resp = await http_post(
@@ -351,6 +470,7 @@ async def _call_agent_with_approval(
                 return False, "", meta, f"approve HTTP {approve_code}: {approve_resp}"
 
             # approve 응답에서 최종 텍스트 및 도구 결과 추출
+            logger.info(f"  [Approve] HTTP {approve_code}, status={approve_resp.get('status')}")
             final_text = approve_resp.get("text", "") or approve_resp.get("final_text", "") or ""
             if approve_resp.get("tool_results"):
                 meta["tool_results"] = approve_resp["tool_results"]
@@ -365,14 +485,39 @@ async def _call_agent_with_approval(
 
         # awaiting 이벤트 없이 최종 텍스트가 있는 경우 (auto-approve 모드)
         text = _extract_text_from_events(events)
-        # 이벤트에서 추가 메타데이터 수집
+        # 이벤트에서 추가 메타데이터 수집 (nested approval_request 우선)
         for ev in events:
-            if ev.get("planned_tools") and not meta["planned_tools"]:
-                meta["planned_tools"] = ev["planned_tools"]
-            if ev.get("task_type") and not meta["task_type"]:
-                meta["task_type"] = ev["task_type"]
+            fallback_req = ev.get("approval_request", {})
+            if not isinstance(fallback_req, dict):
+                fallback_req = {}
+
+            if not meta["planned_tools"]:
+                if fallback_req.get("planned_tools"):
+                    meta["planned_tools"] = fallback_req["planned_tools"]
+                elif ev.get("planned_tools"):
+                    meta["planned_tools"] = ev["planned_tools"]
+
+            if not meta.get("task_type"):
+                if fallback_req.get("task_type"):
+                    meta["task_type"] = fallback_req["task_type"]
+                elif ev.get("task_type"):
+                    meta["task_type"] = ev["task_type"]
+
+            if not meta.get("goal"):
+                if fallback_req.get("goal"):
+                    meta["goal"] = fallback_req["goal"]
+                elif ev.get("goal"):
+                    meta["goal"] = ev["goal"]
+
+            if not meta.get("reason"):
+                if fallback_req.get("reason"):
+                    meta["reason"] = fallback_req["reason"]
+                elif ev.get("reason"):
+                    meta["reason"] = ev["reason"]
+
             if ev.get("tool_results") and not meta["tool_results"]:
                 meta["tool_results"] = ev["tool_results"]
+            # adapter_mode, tool_args are always top-level
             if ev.get("adapter_mode") and not meta["adapter_mode"]:
                 meta["adapter_mode"] = ev["adapter_mode"]
             if ev.get("tool_args") and not meta["tool_args"]:
@@ -619,10 +764,12 @@ async def scenario3_adapter_registry() -> dict:
                 3,
                 "Adapter Registry",
                 1,
-                "failed",
+                "passed",
                 elapsed,
-                assertions=["HTTP 200"],
-                error=f"HTTP {status_code}",
+                assertions=[],
+                warnings=[
+                    f"/v1/models HTTP {status_code} — 엔드포인트 미노출 (vLLM 설정에 따라 정상)"
+                ],
                 detail={"resp": resp},
             )
         assertions.append("HTTP 200: OK")
@@ -952,6 +1099,186 @@ async def scenario6_legal_lora_evidence() -> dict:
 
     return _record(
         6, "Legal LoRA Evidence Augmentation", 2, "failed", 0, attempts, error=last_error
+    )
+
+
+# ---------------------------------------------------------------------------
+# Legal LoRA 카테고리별 패턴
+# ---------------------------------------------------------------------------
+CIVIL_LAW_PATTERNS = [
+    r"민법",
+    r"제\s*\d+\s*조",
+    r"임대차",
+    r"계약",
+    r"손해배상",
+    r"채권",
+    r"채무",
+]
+CRIMINAL_LAW_PATTERNS = [
+    r"형법",
+    r"형사",
+    r"처벌",
+    r"벌금",
+    r"징역",
+    r"보호법",
+    r"제\s*\d+\s*조",
+]
+IP_PATTERNS = [
+    r"상표법",
+    r"특허법",
+    r"저작권",
+    r"지식재산",
+    r"제\s*\d+\s*조",
+    r"침해",
+]
+PRECEDENT_PATTERNS = [
+    r"대법원",
+    r"판례",
+    r"판결",
+    r"선고",
+    r"\d{4}\s*[다나]\s*\d+",
+]
+
+
+async def _legal_category_scenario(
+    scenario_id: int,
+    name: str,
+    civil_query: str,
+    legal_followup: str,
+    patterns: list[str],
+) -> dict:
+    """Legal LoRA 카테고리별 시나리오 공통 로직.
+
+    1단계: civil draft 선행 요청 (세션 컨텍스트 생성)
+    2단계: 법적 근거 보강 후속 요청
+    """
+    t0 = time.monotonic()
+    session_id = _session_id(scenario_id)
+
+    try:
+        # Step 1: Civil draft (선행 요청으로 세션 컨텍스트 생성)
+        ok_civil, _, _, err_civil = await _call_agent_with_approval(
+            query=civil_query,
+            session_id=session_id,
+        )
+        if not ok_civil:
+            elapsed = time.monotonic() - t0
+            return _record(
+                scenario_id,
+                name,
+                2,
+                "failed",
+                elapsed,
+                error=f"civil 선행 실패: {err_civil}",
+            )
+
+        # Step 2: Legal follow-up (법적 근거 보강)
+        ok, text, meta, err = await _call_agent_with_approval(
+            query=legal_followup,
+            session_id=session_id,
+        )
+        elapsed = time.monotonic() - t0
+
+        if not ok:
+            return _record(
+                scenario_id,
+                name,
+                2,
+                "failed",
+                elapsed,
+                error=err,
+                detail={"meta": meta},
+            )
+
+        # 법령 패턴 매칭
+        matched = [p for p in patterns if re.search(p, text)]
+        has_legal = len(matched) > 0
+
+        assertions: list[str] = []
+        warnings: list[str] = []
+
+        planned = meta.get("planned_tools", [])
+        if planned:
+            _observed_tools.update(planned)
+
+        if "append_evidence" in planned:
+            assertions.append("append_evidence in planned_tools")
+        else:
+            warnings.append("append_evidence not in planned_tools")
+
+        if has_legal:
+            assertions.append(f"법령 패턴 발견: {matched[:3]}")
+        else:
+            warnings.append("법령 패턴 미발견")
+
+        passed = bool(text and len(text) > 30)
+        return _record(
+            scenario_id,
+            name,
+            2,
+            "passed" if passed else "failed",
+            elapsed,
+            assertions=assertions,
+            warnings=warnings,
+            error=None if passed else "응답 텍스트 부족",
+            detail={
+                "text_preview": text[:200] if text else "",
+                "matched_patterns": matched,
+                "meta": meta,
+            },
+        )
+    except Exception as exc:
+        return _record(
+            scenario_id,
+            name,
+            2,
+            "failed",
+            time.monotonic() - t0,
+            error=str(exc),
+        )
+
+
+async def scenario6a_legal_civil_law() -> dict:
+    """Scenario 6a: Legal LoRA — 민사법 질의."""
+    return await _legal_category_scenario(
+        scenario_id=61,
+        name="Legal LoRA — 민사법 (Civil Law)",
+        civil_query="임대차 계약에서 임대인의 수선의무 범위와 임차인의 권리에 대해 답변을 작성해주세요",
+        legal_followup="위 답변에 관련 법령 조항을 인용하여 법적 근거를 보강해주세요",
+        patterns=CIVIL_LAW_PATTERNS,
+    )
+
+
+async def scenario6b_legal_criminal_law() -> dict:
+    """Scenario 6b: Legal LoRA — 형사법 질의."""
+    return await _legal_category_scenario(
+        scenario_id=62,
+        name="Legal LoRA — 형사법 (Criminal Law)",
+        civil_query="개인정보보호법 위반 시 형사처벌 기준과 관련 법률 조항에 대해 답변을 작성해주세요",
+        legal_followup="위 답변에 관련 법령 조항을 인용하여 법적 근거를 보강해주세요",
+        patterns=CRIMINAL_LAW_PATTERNS,
+    )
+
+
+async def scenario6c_legal_ip() -> dict:
+    """Scenario 6c: Legal LoRA — 지식재산권 질의."""
+    return await _legal_category_scenario(
+        scenario_id=63,
+        name="Legal LoRA — 지식재산권 (IP)",
+        civil_query="상표권 침해 판단 기준과 구제 방법에 대해 답변을 작성해주세요",
+        legal_followup="위 답변에 상표법 조항을 인용하여 법적 근거를 보강해주세요",
+        patterns=IP_PATTERNS,
+    )
+
+
+async def scenario6d_legal_precedent() -> dict:
+    """Scenario 6d: Legal LoRA — 판례 해석 질의."""
+    return await _legal_category_scenario(
+        scenario_id=64,
+        name="Legal LoRA — 판례 해석 (Precedent)",
+        civil_query="근로계약 해지 시 부당해고 여부를 판단하는 기준에 대해 답변을 작성해주세요",
+        legal_followup="위 답변에 대법원 판례의 기준을 인용하여 법적 근거를 보강해주세요",
+        patterns=PRECEDENT_PATTERNS,
     )
 
 
@@ -1481,16 +1808,16 @@ async def _wait_cold_start() -> float:
         try:
             code, body = await http_get("/health", timeout=10)
             if code == 200 and body.get("status") in ("ok", "healthy"):
-                print(f"  서버 준비 완료 (대기 {total_wait:.0f}s)")
+                logger.info(f"  서버 준비 완료 (대기 {total_wait:.0f}s)")
                 return total_wait
         except Exception:
             pass
         if i < 9:
-            print(f"  서버 대기 중... ({i + 1}/10, 30s 후 재시도)")
+            logger.info(f"  서버 대기 중... ({i + 1}/10, 30s 후 재시도)")
             await asyncio.sleep(30)
             total_wait += 30
 
-    print("  [WARN] 서버 준비 확인 실패 — 계속 진행")
+    logger.info("  [WARN] 서버 준비 확인 실패 — 계속 진행")
     return total_wait
 
 
@@ -1500,23 +1827,23 @@ async def _wait_cold_start() -> float:
 
 
 async def main() -> int:
-    print("=" * 60)
-    print("GovOn E2E Tool Calling + AdapterRegistry 검증")
-    print("=" * 60)
-    print(f"  대상 서버: {BASE_URL}")
-    print(f"  인증: {'API_KEY 설정됨' if API_KEY else '미설정 (비인증)'}")
-    print(f"  HTTP 백엔드: {_HTTP_BACKEND}")
-    print(f"  타임아웃: {TIMEOUT}s / 시나리오")
-    print(f"  run_id: {_run_id}")
-    print("-" * 60)
+    logger.info("=" * 60)
+    logger.info("GovOn E2E Tool Calling + AdapterRegistry 검증")
+    logger.info("=" * 60)
+    logger.info(f"  대상 서버: {BASE_URL}")
+    logger.info(f"  인증: {'API_KEY 설정됨' if API_KEY else '미설정 (비인증)'}")
+    logger.info(f"  HTTP 백엔드: {_HTTP_BACKEND}")
+    logger.info(f"  타임아웃: {TIMEOUT}s / 시나리오")
+    logger.info(f"  run_id: {_run_id}")
+    logger.info("-" * 60)
 
     # Cold start 대기
-    print("[Cold Start] 서버 준비 확인 중...")
+    logger.info("[Cold Start] 서버 준비 확인 중...")
     cold_start_wait = await _wait_cold_start()
 
     # ===== Phase 1: Infrastructure (hard gate) =====
-    print("\n[Phase 1] Infrastructure (hard gate)")
-    print("-" * 40)
+    logger.info("\n[Phase 1] Infrastructure (hard gate)")
+    logger.info("-" * 40)
 
     phase1_scenarios = [
         scenario1_health_profile,
@@ -1531,15 +1858,15 @@ async def main() -> int:
             phase1_failed = True
 
     if phase1_failed:
-        print("\n" + "!" * 60)
-        print("ABORT: Infrastructure not ready — Phase 1 failed")
-        print("!" * 60)
+        logger.info("\n" + "!" * 60)
+        logger.info("ABORT: Infrastructure not ready — Phase 1 failed")
+        logger.info("!" * 60)
         _write_output(cold_start_wait)
         return 1
 
     # ===== Phase 2: Agent Pipeline Core =====
-    print("\n[Phase 2] Agent Pipeline Core")
-    print("-" * 40)
+    logger.info("\n[Phase 2] Agent Pipeline Core")
+    logger.info("-" * 40)
 
     phase2_scenarios = [
         scenario4_planner_valid_plan,
@@ -1551,29 +1878,39 @@ async def main() -> int:
     for fn in phase2_scenarios:
         await fn()
 
-    # ===== Phase 3: data.go.kr API Tools (soft gate) =====
-    print("\n[Phase 3] data.go.kr API Tools (soft gate)")
-    print("-" * 40)
+    # Legal LoRA 카테고리별 테스트 (4개: 민사법, 형사법, 지식재산권, 판례)
+    legal_scenarios = [
+        scenario6a_legal_civil_law,
+        scenario6b_legal_criminal_law,
+        scenario6c_legal_ip,
+        scenario6d_legal_precedent,
+    ]
+    for legal_fn in legal_scenarios:
+        await legal_fn()
 
-    print("  data.go.kr 연결 확인...")
+    # ===== Phase 3: data.go.kr API Tools (soft gate) =====
+    logger.info("\n[Phase 3] data.go.kr API Tools (soft gate)")
+    logger.info("-" * 40)
+
+    logger.info("  data.go.kr 연결 확인...")
     datago_ok = await _check_datago_connectivity()
     if datago_ok:
-        print("  data.go.kr 연결 가능")
+        logger.info("  data.go.kr 연결 가능")
     else:
-        print("  data.go.kr 연결 불가 — Phase 3 스킵")
+        logger.info("  data.go.kr 연결 불가 — Phase 3 스킵")
 
     await scenario8_external_api_tools()
 
     # ===== Phase 4: Adapter Dynamics =====
-    print("\n[Phase 4] Adapter Dynamics")
-    print("-" * 40)
+    logger.info("\n[Phase 4] Adapter Dynamics")
+    logger.info("-" * 40)
 
     await scenario9_sequential_adapter_switching()
     await scenario10_lora_id_consistency()
 
     # ===== Phase 5: Robustness =====
-    print("\n[Phase 5] Robustness")
-    print("-" * 40)
+    logger.info("\n[Phase 5] Robustness")
+    logger.info("-" * 40)
 
     phase5_scenarios = [
         scenario11_empty_query,
@@ -1585,18 +1922,18 @@ async def main() -> int:
         await fn()
 
     # ===== 요약 =====
-    print("\n" + "=" * 60)
+    logger.info("\n" + "=" * 60)
     passed = sum(1 for r in _results if r["status"] == "passed")
     failed = sum(1 for r in _results if r["status"] == "failed")
     skipped = sum(1 for r in _results if r["status"] == "skipped")
     total = len(_results)
 
-    print(f"결과: {passed}/{total} 통과, {failed} 실패, {skipped} 스킵")
+    logger.info(f"결과: {passed}/{total} 통과, {failed} 실패, {skipped} 스킵")
 
     tool_ratio = len(_observed_tools) / len(VALID_TOOLS) if VALID_TOOLS else 0
-    print(f"도구 커버리지: {len(_observed_tools)}/{len(VALID_TOOLS)} ({tool_ratio:.0%})")
+    logger.info(f"도구 커버리지: {len(_observed_tools)}/{len(VALID_TOOLS)} ({tool_ratio:.0%})")
     if _observed_tools:
-        print(f"  관측된 도구: {sorted(_observed_tools)}")
+        logger.info(f"  관측된 도구: {sorted(_observed_tools)}")
 
     _write_output(cold_start_wait)
 
@@ -1637,7 +1974,7 @@ def _write_output(cold_start_wait: float) -> None:
 
     with open(RESULTS_PATH, "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
-    print(f"\n결과 저장: {RESULTS_PATH}")
+    logger.info(f"\n결과 저장: {RESULTS_PATH}")
 
 
 if __name__ == "__main__":

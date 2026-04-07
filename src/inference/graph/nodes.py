@@ -113,14 +113,26 @@ async def planner_node(
         plan = await planner_adapter.plan(messages=messages, context=context)
     except PlanValidationError as exc:
         _latency_ms = round((time.monotonic() - _start) * 1000, 2)
-        logger.warning(f"[planner] plan 생성 실패, fallback 적용: {exc} latency_ms={_latency_ms}")
-        return {
-            **validator.make_fallback_plan(exc),
-            "goal": f"⚠ 계획 수립 실패: {str(exc)[:100]}",
-            "reason": "시스템이 요청을 분석하지 못했습니다. 거절 후 다시 시도해주세요.",
-            "task_type": "",
-            "node_latencies": {"planner": _latency_ms},
-        }
+        logger.warning(f"[planner] LLM plan 실패, RegexPlannerAdapter fallback 시도: {exc}")
+        try:
+            from .planner_adapter import RegexPlannerAdapter
+
+            regex_fallback = RegexPlannerAdapter(
+                registry=getattr(planner_adapter, "_registry", None)
+            )
+            plan = await regex_fallback.plan(messages=messages, context=context)
+            logger.info(f"[planner] Regex fallback 성공: tools={plan.tools}")
+        except Exception as fallback_exc:
+            logger.warning(
+                f"[planner] Regex fallback도 실패: {fallback_exc} latency_ms={_latency_ms}"
+            )
+            return {
+                **validator.make_fallback_plan(exc),
+                "goal": f"⚠ 계획 수립 실패: {str(exc)[:100]}",
+                "reason": "시스템이 요청을 분석하지 못했습니다. 거절 후 다시 시도해주세요.",
+                "task_type": "",
+                "node_latencies": {"planner": _latency_ms},
+            }
 
     try:
         validator.validate(plan)
@@ -298,7 +310,7 @@ async def tool_execute_node(
     # 새로운 독립 capability를 추가할 때는 이 집합에도 등록해야 한다.
     # 독립 도구란 다른 도구의 실행 결과(accumulated_context)에 의존하지 않아
     # 병렬 실행이 안전한 capability를 의미한다.
-    INDEPENDENT_TOOLS = {"rag_search", "api_lookup"}
+    INDEPENDENT_TOOLS = {"rag_search", "api_lookup", "draft_civil_response"}
 
     independent = [t for t in planned_tools if t in INDEPENDENT_TOOLS]
     dependent = [t for t in planned_tools if t not in INDEPENDENT_TOOLS]
@@ -389,7 +401,11 @@ async def tool_execute_node(
     }
 
 
-async def synthesis_node(state: GovOnGraphState) -> dict:
+async def synthesis_node(
+    state: GovOnGraphState,
+    *,
+    engine_manager: Any = None,
+) -> dict:
     """결과 종합 노드.
 
     tool_results와 accumulated_context를 종합하여 최종 응답 텍스트를 생성한다.
@@ -409,9 +425,44 @@ async def synthesis_node(state: GovOnGraphState) -> dict:
 
     accumulated = state.get("accumulated_context", {})
     task_type = state.get("task_type", "")
+    tool_args = state.get("tool_args", {})
 
-    final_text = _extract_final_text(accumulated, task_type)
+    # LoRA 합성: 초안 + 도구 결과 → 최종 답변
+    draft_data = accumulated.get("draft_civil_response", {})
+    draft_text = ""
+    if isinstance(draft_data, dict):
+        draft_text = draft_data.get("draft_text", "") or draft_data.get("text", "")
+
     evidence_items = _collect_evidence_items(accumulated)
+
+    if (
+        engine_manager is not None
+        and draft_text
+        and task_type in ("draft_response", "revise_response")
+    ):
+        # LoRA 모델로 초안 + 근거 통합 생성
+        query = accumulated.get("query", "")
+        # adapter 이름: planner가 선택한 값 또는 기본 civil
+        adapter_name = "civil"
+        for ta in tool_args.values():
+            if isinstance(ta, dict) and ta.get("adapter"):
+                adapter_name = ta["adapter"]
+                break
+
+        try:
+            final_text = await engine_manager.synthesize_final(
+                draft_text=draft_text,
+                evidence_items=evidence_items,
+                query=query,
+                adapter_name=adapter_name,
+            )
+            logger.info(f"[synthesis] LoRA 합성 완료: final_text_len={len(final_text)}")
+        except Exception as exc:
+            logger.warning(f"[synthesis] LoRA 합성 실패, 규칙 기반 fallback: {exc}")
+            final_text = _extract_final_text(accumulated, task_type)
+    else:
+        # Fallback: 규칙 기반 텍스트 추출 (engine 없거나, 초안 없거나, 비생성 task)
+        final_text = _extract_final_text(accumulated, task_type)
 
     _latency_ms = round((time.monotonic() - _start) * 1000, 2)
     logger.info(

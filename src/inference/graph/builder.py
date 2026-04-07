@@ -59,6 +59,7 @@ def build_govon_graph(
     executor_adapter: ExecutorAdapter,
     session_store: "SessionStore",
     checkpointer: Optional[object] = None,
+    engine_manager: Optional[object] = None,
 ) -> object:
     """GovOn MVP StateGraph를 구성하고 컴파일한다.
 
@@ -79,6 +80,9 @@ def build_govon_graph(
         LangGraph checkpoint 저장소.
         None이면 MemorySaver를 사용한다 (메모리에만 저장, 재시작 시 소멸).
         프로덕션에서는 `AsyncSqliteSaver`를 주입한다.
+    engine_manager : optional
+        LoRA 엔진 매니저. synthesis_node에서 LoRA 기반 합성에 사용한다.
+        None이면 규칙 기반 텍스트 추출로 fallback한다.
 
     Returns
     -------
@@ -101,7 +105,7 @@ def build_govon_graph(
         return await tool_execute_node(state, executor_adapter=executor_adapter)
 
     async def _synthesis(state: GovOnGraphState) -> dict:
-        return await synthesis_node(state)
+        return await synthesis_node(state, engine_manager=engine_manager)
 
     async def _persist(state: GovOnGraphState) -> dict:
         return await persist_node(state, session_store=session_store)

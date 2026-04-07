@@ -47,17 +47,29 @@ class KeywordAnalyzerCapability(CapabilityBase):
             parameters={
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "키워드 분석 대상 질의문"},
-                    "date_from": {"type": "string", "description": "분석 시작일 (예: 20260101)"},
-                    "date_to": {"type": "string", "description": "분석 종료일 (예: 20260407)"},
-                    "searchword": {"type": "string", "description": "핵심 검색어"},
+                    "query": {
+                        "type": "string",
+                        "description": "키워드 분석 대상 질의문",
+                    },
+                    "date_from": {
+                        "type": "string",
+                        "description": "분석 시작일 (YYYYMMDD 형식, 8자리 필수). 예: '20260101'",
+                    },
+                    "date_to": {
+                        "type": "string",
+                        "description": "분석 종료일 (YYYYMMDD 형식, 8자리 필수). 예: '20260408'",
+                    },
+                    "searchword": {
+                        "type": "string",
+                        "description": "연관어 분석 시 기준 키워드. 연관어 분석에는 필수",
+                    },
                     "result_count": {
                         "type": "integer",
-                        "description": "반환할 키워드 수",
+                        "description": "반환할 키워드 수 (기본값 5)",
                         "default": 5,
                     },
                 },
-                "required": ["query"],
+                "required": ["query", "date_from", "date_to"],
             },
         )
 

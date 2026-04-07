@@ -50,10 +50,23 @@ class IssueDetectorCapability(CapabilityBase):
             parameters={
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "이슈 탐지 대상 키워드 또는 질의문"},
-                    "analysis_time": {"type": "string", "description": "분석 시간대 (예: 202604)"},
-                    "search_date": {"type": "string", "description": "검색 일자 (예: 20260407)"},
-                    "max_result": {"type": "integer", "description": "최대 결과 수", "default": 5},
+                    "query": {
+                        "type": "string",
+                        "description": "이슈 탐지 대상 키워드 또는 질의문",
+                    },
+                    "analysis_time": {
+                        "type": "string",
+                        "description": "분석 시간대 (YYYYMMDDHH 형식, 10자리). 예: '2026040814'는 2026년 4월 8일 14시",
+                    },
+                    "search_date": {
+                        "type": "string",
+                        "description": "오늘의 이슈 검색 기준일자 (YYYYMMDD 형식, 8자리). 예: '20260408'",
+                    },
+                    "max_result": {
+                        "type": "integer",
+                        "description": "반환할 최대 결과 수 (기본값 5)",
+                        "default": 5,
+                    },
                 },
                 "required": ["query"],
             },

@@ -193,6 +193,7 @@ def approval_wait_node(state: GovOnGraphState) -> dict:
 
     approval_request = {
         "type": "approval_request",
+        "task_type": state.get("task_type", ""),
         "goal": state.get("goal", ""),
         "reason": state.get("reason", ""),
         "planned_tools": planned_tools,

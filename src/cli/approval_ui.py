@@ -6,6 +6,7 @@ Falls back to a plain input() prompt if prompt_toolkit is not installed.
 
 from __future__ import annotations
 
+import io
 import unicodedata
 
 from src.cli.terminal import (
@@ -18,7 +19,7 @@ from src.cli.terminal import (
 _PT_AVAILABLE = False
 try:
     from prompt_toolkit import Application
-    from prompt_toolkit.formatted_text import HTML
+    from prompt_toolkit.formatted_text import ANSI
     from prompt_toolkit.key_binding import KeyBindings
     from prompt_toolkit.layout import Layout
     from prompt_toolkit.layout.containers import HSplit, Window
@@ -27,6 +28,42 @@ try:
     _PT_AVAILABLE = True
 except ImportError:  # pragma: no cover
     pass
+
+_RICH_AVAILABLE = False
+try:
+    from rich.console import Console, Group
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.text import Text
+
+    _RICH_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    pass
+
+TASK_TYPE_STYLES = {
+    "draft_response": "cyan",
+    "revise_response": "blue",
+    "append_evidence": "green",
+    "lookup_stats": "magenta",
+    "issue_detection": "yellow",
+    "stats_query": "magenta",
+    "keyword_analysis": "yellow",
+    "demographics_query": "bright_blue",
+}
+
+TASK_TYPE_LABELS = {
+    "draft_response": "답변 초안 작성",
+    "revise_response": "답변 수정",
+    "append_evidence": "근거 보강",
+    "lookup_stats": "통계 조회",
+    "issue_detection": "이슈 탐지",
+    "stats_query": "통계 조회",
+    "keyword_analysis": "키워드 분석",
+    "demographics_query": "인구통계 조회",
+}
+
+DEFAULT_TASK_TYPE_STYLE = "cyan"
+DEFAULT_TASK_TYPE_LABEL = "일반 작업"
 
 
 def _display_width(s: str) -> int:
@@ -38,104 +75,85 @@ def _display_width(s: str) -> int:
     return w
 
 
-def _box_line(content: str = "", *, width: int) -> str:
-    """Return a single box line padded to *width* display columns."""
-    pad = width - _display_width(content)
-    inner = content + " " * max(pad, 0)
-    return f"│ {inner} │"
+def _get_task_type_style(task_type: str | None) -> str:
+    """Return the accent style used for an approval task type."""
+    return TASK_TYPE_STYLES.get(task_type or "", DEFAULT_TASK_TYPE_STYLE)
 
 
-def _build_box_lines(
-    approval_request: dict, selected: int, box_width: int | None = None
-) -> list[str]:
-    """Build the raw text lines of the approval box (no ANSI needed here)."""
+def _get_task_type_label(task_type: str | None) -> str:
+    """Return the human-readable label used for an approval task type."""
+    return TASK_TYPE_LABELS.get(task_type or "", DEFAULT_TASK_TYPE_LABEL)
+
+
+def _get_approval_panel_width(columns: int) -> int:
+    """Return a responsive rich panel width for the approval UI."""
+    return min(columns - 2, get_approval_box_width(columns) + 4)
+
+
+def _build_tool_summaries_text(tool_summaries: list[str], accent_style: str):
+    """Return styled tool summary lines for the approval panel."""
+    text = Text()
+    for idx, summary in enumerate(tool_summaries, 1):
+        if idx > 1:
+            text.append("\n")
+        text.append(f"{idx}. ", style=f"bold {accent_style}")
+        text.append(summary)
+    return text
+
+
+def _build_choice_text(label: str, *, selected: bool, style: str):
+    """Return a styled approval choice row."""
+    bullet = "●" if selected else "○"
+    text_style = f"bold {style}" if selected else "dim white"
+    return Text(f"{bullet} {label}", style=text_style)
+
+
+def _build_approval_panel(approval_request: dict, selected: int, *, columns: int):
+    """Build the rich approval panel shown inside the prompt_toolkit UI."""
+    task_type: str | None = approval_request.get("task_type")
+    accent_style = _get_task_type_style(task_type)
     goal: str = approval_request.get("goal", "")
     reason: str = approval_request.get("reason", "")
     tool_summaries: list[str] = approval_request.get("tool_summaries") or []
 
-    w = get_approval_box_width(get_terminal_columns()) if box_width is None else box_width
-    _header = "─ 작업 승인 요청 "
-    top = "┌" + _header + "─" * max(w - _display_width(_header) + 2, 0) + "┐"
-    bot = "└" + "─" * (w + 2) + "┘"
-
-    lines: list[str] = [top, _box_line(width=w)]
-
-    def _wrap(label: str, value: str) -> None:
-        prefix = f"  {label}: "
-        available = max(w - _display_width(prefix), 1)
-        if _display_width(value) <= available:
-            lines.append(_box_line(f"{prefix}{value}", width=w))
-        else:
-            # Truncate value to fit within available display columns
-            chunk: list[str] = []
-            used = 0
-            for ch in value:
-                cw = 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
-                if used + cw > available:
-                    break
-                chunk.append(ch)
-                used += cw
-            first = "".join(chunk)
-            lines.append(_box_line(f"{prefix}{first}", width=w))
-            rest = value[len(first) :]
-            while rest:
-                row: list[str] = []
-                used = 0
-                col_limit = w - 4
-                for ch in rest:
-                    cw = 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
-                    if used + cw > col_limit:
-                        break
-                    row.append(ch)
-                    used += cw
-                seg = "".join(row)
-                lines.append(_box_line(f"    {seg}", width=w))
-                rest = rest[len(seg) :]
-
-    _wrap("목표", goal)
-    _wrap("이유", reason)
-
+    summary = Table.grid(expand=True, padding=(0, 1))
+    summary.add_column(style="bold bright_white", no_wrap=True, width=6)
+    summary.add_column(ratio=1)
+    summary.add_row("유형", Text(_get_task_type_label(task_type), style=f"bold {accent_style}"))
+    if goal:
+        summary.add_row("목표", Text(goal))
+    if reason:
+        summary.add_row("이유", Text(reason, style="dim"))
     if tool_summaries:
-        lines.append(_box_line(width=w))
-        lines.append(_box_line("  수행할 작업:", width=w))
-        for idx, summary in enumerate(tool_summaries, 1):
-            prefix = f"    {idx}. "
-            avail = max(w - _display_width(prefix), 1)
-            if _display_width(summary) <= avail:
-                lines.append(_box_line(f"{prefix}{summary}", width=w))
-            else:
-                chunk2: list[str] = []
-                used2 = 0
-                for ch in summary:
-                    cw = 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
-                    if used2 + cw > avail:
-                        break
-                    chunk2.append(ch)
-                    used2 += cw
-                first2 = "".join(chunk2)
-                lines.append(_box_line(f"{prefix}{first2}", width=w))
-                rest2 = summary[len(first2) :]
-                while rest2:
-                    row2: list[str] = []
-                    used2 = 0
-                    col_limit2 = max(w - 7, 1)
-                    for ch in rest2:
-                        cw = 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
-                        if used2 + cw > col_limit2:
-                            break
-                        row2.append(ch)
-                        used2 += cw
-                    seg2 = "".join(row2)
-                    lines.append(_box_line(f"       {seg2}", width=w))
-                    rest2 = rest2[len(seg2) :]
+        summary.add_row("작업", _build_tool_summaries_text(tool_summaries, accent_style))
 
-    lines.append(_box_line(width=w))
-    approve_bullet = "●" if selected == 0 else "○"
-    reject_bullet = "●" if selected == 1 else "○"
-    lines.append(_box_line(f"  {approve_bullet} 승인", width=w))
-    lines.append(_box_line(f"  {reject_bullet} 거절", width=w))
-    lines.append(bot)
-    return lines
+    choices = Table.grid(expand=True)
+    choices.add_column()
+    choices.add_row(_build_choice_text("승인", selected=selected == 0, style="green"))
+    choices.add_row(_build_choice_text("거절", selected=selected == 1, style="red"))
+
+    footer = Text("↑↓ 방향키 / j k 선택, Enter 확정, q 취소", style="dim")
+    body = Group(summary, Text(""), choices, Text(""), footer)
+    return Panel(
+        body,
+        title=Text("작업 승인 요청", style=f"bold {accent_style}"),
+        border_style=accent_style,
+        width=_get_approval_panel_width(columns),
+        padding=(0, 1),
+    )
+
+
+def _render_approval_panel_ansi(approval_request: dict, selected: int, *, columns: int) -> str:
+    """Render the rich approval panel to ANSI text for prompt_toolkit."""
+    buffer = io.StringIO()
+    console = Console(
+        file=buffer,
+        force_terminal=True,
+        color_system="truecolor",
+        width=columns,
+    )
+    console.print(_build_approval_panel(approval_request, selected, columns=columns))
+    return buffer.getvalue().rstrip()
 
 
 def show_approval_prompt(approval_request: dict) -> bool:
@@ -148,7 +166,7 @@ def show_approval_prompt(approval_request: dict) -> bool:
         print(get_narrow_terminal_warning(terminal_columns))
         return _fallback_prompt(approval_request, columns=terminal_columns)
 
-    if not _PT_AVAILABLE:
+    if not (_PT_AVAILABLE and _RICH_AVAILABLE):
         return _fallback_prompt(approval_request, columns=terminal_columns)
 
     return _pt_prompt(approval_request, columns=terminal_columns)
@@ -157,12 +175,15 @@ def show_approval_prompt(approval_request: dict) -> bool:
 def _pt_prompt(approval_request: dict, *, columns: int) -> bool:
     """prompt_toolkit–based arrow-key selection UI."""
     state = {"selected": 0, "result": None}
-    box_width = get_approval_box_width(columns)
 
     def get_text():
-        # Keep a stable width for a single prompt interaction.
-        lines = _build_box_lines(approval_request, state["selected"], box_width=box_width)
-        return "\n".join(lines) + "\n\n↑↓ 방향키로 선택, Enter로 확정"
+        return ANSI(
+            _render_approval_panel_ansi(
+                approval_request,
+                state["selected"],
+                columns=columns,
+            )
+        )
 
     kb = KeyBindings()
 
@@ -205,6 +226,7 @@ def _pt_prompt(approval_request: dict, *, columns: int) -> bool:
 
 def _fallback_prompt(approval_request: dict, columns: int | None = None) -> bool:
     """Plain input() fallback when prompt_toolkit is unavailable."""
+    task_type: str | None = approval_request.get("task_type")
     goal: str = approval_request.get("goal", "")
     reason: str = approval_request.get("reason", "")
     tool_summaries: list[str] = approval_request.get("tool_summaries") or []
@@ -221,6 +243,8 @@ def _fallback_prompt(approval_request: dict, columns: int | None = None) -> bool
         title_line = title
 
     print(f"\n{title_line}")
+    if task_type:
+        print(f"  유형: {_get_task_type_label(task_type)}")
     if goal:
         print(f"  목표: {goal}")
     if reason:

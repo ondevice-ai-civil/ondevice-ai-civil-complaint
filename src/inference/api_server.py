@@ -1099,7 +1099,10 @@ class vLLMEngineManager:
         try:
             from src.inference.graph.builder import build_govon_graph
             from src.inference.graph.executor_adapter import RegistryExecutorAdapter
-            from src.inference.graph.planner_adapter import LLMPlannerAdapter
+            from src.inference.graph.planner_adapter import (
+                DirectEnginePlannerAdapter,
+                LLMPlannerAdapter,
+            )
         except ImportError as exc:
             logger.warning(f"LangGraph graph 초기화 실패 (import 오류): {exc}")
             return
@@ -1111,26 +1114,21 @@ class vLLMEngineManager:
             from src.inference.graph.planner_adapter import RegexPlannerAdapter
 
             planner = RegexPlannerAdapter(registry=tool_registry)
-        else:
-            # 운영 환경: vLLM OpenAI-compatible endpoint를 LLMPlannerAdapter로 연결
-            # NOTE: ChatOpenAI는 lazy connection이므로 생성 시점에 vLLM이 미시작이어도 안전하다.
-            # 실제 LLM 호출은 graph invoke 시점에 발생하며,
-            # 그때는 lifespan에서 vLLM이 이미 시작된 상태다.
+        elif os.getenv("LANGGRAPH_MODEL_BASE_URL"):
+            # 외부 LLM 엔드포인트가 명시된 경우: LLMPlannerAdapter (HTTP) 사용
             from langchain_openai import ChatOpenAI
 
-            planner_base_url = os.getenv(
-                "LANGGRAPH_MODEL_BASE_URL",
-                f"http://127.0.0.1:{runtime_config.port}/v1",
-            )
-            planner_api_key = os.getenv("LANGGRAPH_MODEL_API_KEY", "EMPTY")
-            planner_model = os.getenv("LANGGRAPH_PLANNER_MODEL", runtime_config.model.model_path)
             llm = ChatOpenAI(
-                base_url=planner_base_url,
-                api_key=planner_api_key,
-                model=planner_model,
+                base_url=os.environ["LANGGRAPH_MODEL_BASE_URL"],
+                api_key=os.getenv("LANGGRAPH_MODEL_API_KEY", "EMPTY"),
+                model=os.getenv("LANGGRAPH_PLANNER_MODEL", runtime_config.model.model_path),
                 temperature=0.0,
+                max_tokens=1024,
             )
             planner = LLMPlannerAdapter(llm=llm, registry=tool_registry)
+        else:
+            # 운영 환경: vLLM engine 직접 호출 (self-call HTTP 오버헤드 제거)
+            planner = DirectEnginePlannerAdapter(engine_manager=self, registry=tool_registry)
         executor = RegistryExecutorAdapter(
             tool_registry=tool_registry,
             session_store=self.session_store,
@@ -1377,19 +1375,39 @@ async def generate(
 
 
 @app.post("/v1/chat/completions")
+@_rate_limit("30/minute")
 async def chat_completions(
     request: Request,
     _: None = Depends(verify_api_key),
 ):
-    """OpenAI-compatible /v1/chat/completions — LLMPlannerAdapter(ChatOpenAI) 전용.
+    """OpenAI-compatible /v1/chat/completions.
 
-    vLLM AsyncLLM을 직접 호출하여 chat template 없이 메시지를 단순 연결한 프롬프트로 생성한다.
+    vLLM AsyncLLM을 직접 호출하여 EXAONE chat template 형식으로 생성한다.
     tool calling / function calling 은 지원하지 않는다.
     """
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body.")
+
     messages: list[dict] = body.get("messages", [])
-    max_tokens: int = int(body.get("max_tokens", 512))
-    temperature: float = float(body.get("temperature", 0.7))
+    if not messages:
+        raise HTTPException(status_code=422, detail="messages must not be empty.")
+
+    try:
+        max_tokens = int(body.get("max_tokens", 512))
+        temperature = float(body.get("temperature", 0.7))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid max_tokens or temperature value.")
+
+    if not (1 <= max_tokens <= runtime_config.max_model_len):
+        raise HTTPException(
+            status_code=400,
+            detail=f"max_tokens must be between 1 and {runtime_config.max_model_len}.",
+        )
+    if not (0.0 <= temperature <= 2.0):
+        raise HTTPException(status_code=400, detail="temperature must be between 0.0 and 2.0.")
+
     model: str = body.get("model", runtime_config.model.model_path)
 
     # 메시지 → 프롬프트 변환 (EXAONE chat template 형식)
@@ -1403,6 +1421,8 @@ async def chat_completions(
             prompt_parts.append(f"[|user|]{content}[|endofturn|]")
         elif role == "assistant":
             prompt_parts.append(f"[|assistant|]{content}[|endofturn|]")
+        else:
+            logger.warning(f"chat_completions: 지원하지 않는 role 무시: {role!r}")
     prompt_parts.append("[|assistant|]")
     prompt = "\n".join(prompt_parts)
 
@@ -1410,6 +1430,7 @@ async def chat_completions(
         raise HTTPException(status_code=503, detail="Model engine not initialized.")
 
     request_id = str(uuid.uuid4())
+    logger.info(f"chat_completions request_id={request_id} messages={len(messages)} max_tokens={max_tokens}")
     sampling_params = SamplingParams(
         max_tokens=max_tokens,
         temperature=temperature,
@@ -1419,24 +1440,29 @@ async def chat_completions(
     try:
         final_output = await manager._run_engine(prompt, sampling_params, request_id)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        logger.error(f"chat_completions generation failed: {exc}")
+        raise HTTPException(status_code=500, detail="Generation failed due to internal error.")
 
-    if final_output is None:
+    if final_output is None or not final_output.outputs:
         raise HTTPException(status_code=500, detail="Generation failed.")
 
-    text = manager._strip_thought_blocks(final_output.outputs[0].text)
+    output = final_output.outputs[0]
+    text = manager._strip_thought_blocks(output.text)
     prompt_tokens = len(final_output.prompt_token_ids)
-    completion_tokens = len(final_output.outputs[0].token_ids)
+    completion_tokens = len(output.token_ids)
+    vllm_reason = getattr(output, "finish_reason", None)
+    finish_reason = "length" if vllm_reason == "length" else "stop"
 
     return {
         "id": f"chatcmpl-{request_id}",
         "object": "chat.completion",
+        "created": int(time.time()),
         "model": model,
         "choices": [
             {
                 "index": 0,
                 "message": {"role": "assistant", "content": text},
-                "finish_reason": "stop",
+                "finish_reason": finish_reason,
             }
         ],
         "usage": {

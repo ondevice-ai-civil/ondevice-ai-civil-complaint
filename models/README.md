@@ -33,7 +33,7 @@ MODEL_PATH=LGAI-EXAONE/EXAONE-4.0-32B-AWQ
 | 어댑터 | 용도 | 상태 |
 |--------|------|------|
 | `civil-adapter` | 민원 초안 생성 | ✅ 운영 중 |
-| `legal-adapter` | 법률 근거 조회 | 🔜 개발 중 |
+| [`legal-adapter`](https://huggingface.co/siwo/govon-legal-adapter) | 법률 근거 조회 | ✅ 운영 중 |
 
 어댑터 경로는 `ADAPTER_PATHS` 환경변수로 설정합니다:
 
@@ -53,7 +53,7 @@ ADAPTER_PATHS=/app/models/adapters/civil-adapter,/app/models/adapters/legal-adap
   EXAONE-4.0-32B-AWQ/      ← 베이스 모델 가중치
   adapters/
     civil-adapter/           ← 민원 LoRA 어댑터
-    legal-adapter/           ← 법률 LoRA 어댑터 (예정)
+    legal-adapter/           ← 법률 LoRA 어댑터
 ```
 
 `.env.airgap.example`을 참고하여 환경변수를 구성하세요.

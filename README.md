@@ -52,7 +52,7 @@ flowchart LR
 |---|---|---|---|
 | Planner | EXAONE 4.0-32B-AWQ | 없음 (베이스) | 도구 선택, 실행 계획 (네이티브 tool calling) |
 | 민원답변 초안 | EXAONE 4.0-32B-AWQ | **civil-adapter** (r16) | `draft_civil_response` capability |
-| 법률 근거 인용 | EXAONE 4.0-32B-AWQ | **legal-adapter** (r16) | `append_evidence` capability |
+| 법률 근거 인용 | EXAONE 4.0-32B-AWQ | [**legal-adapter**](https://huggingface.co/siwo/govon-legal-adapter) (r16) | `append_evidence` capability |
 | 검색/조회 | EXAONE 4.0-32B-AWQ | 없음 | `rag_search`, `api_lookup` |
 
 ## 데이터 파이프라인

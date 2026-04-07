@@ -281,7 +281,7 @@ The runtime uses a **single vLLM instance** with per-request LoRA adapter switch
 | Adapter | Capability | Training Data |
 |---|---|---|
 | `civil-adapter` (LoRA #1) | `draft_civil_response` | umyunsang/govon-civil-response-data (74K, QLoRA on AWQ base) |
-| `legal-adapter` (LoRA #2) | `append_evidence` | neuralfoundry-coder/korean-legal-instruction-sample (232K, QLoRA on AWQ base) |
+| [`legal-adapter`](https://huggingface.co/siwo/govon-legal-adapter) (LoRA #2) | `append_evidence` | umyunsang/govon-legal-response-data (243K, QLoRA on AWQ base) |
 | _(no LoRA)_ | `rag_search`, `api_lookup`, `synthesis`, `planner` | Base model only |
 
 LoRA adapters are loaded dynamically by vLLM's `--enable-lora` mode. The LLMPlannerAdapter

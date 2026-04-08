@@ -72,6 +72,13 @@ with patch("src.inference.vllm_stabilizer.apply_transformers_patch"):
     manager = api_server.manager
 
 from fastapi.testclient import TestClient
+from unittest.mock import patch as _patch
+
+# 테스트 환경에서 인증 우회
+_allow_no_auth_patch = _patch("src.inference.api_server._ALLOW_NO_AUTH", True)
+_allow_no_auth_patch.start()
+_api_key_patch = _patch("src.inference.api_server._API_KEY", None)
+_api_key_patch.start()
 
 test_client = TestClient(app)
 

@@ -189,7 +189,7 @@
 
   <!-- Arrow types -->
   <line x1="460" y1="1420" x2="510" y2="1420" stroke="#534AB7" stroke-width="2" stroke-dasharray="8,4"/>
-  <text x="520" y="1425" font-size="12" fill="#3C3489">ReAct loop (agent <-> ToolNode cycle)</text>
+  <text x="520" y="1425" font-size="12" fill="#3C3489">ReAct loop (agent ↔ ToolNode cycle)</text>
 
   <line x1="460" y1="1448" x2="510" y2="1448" stroke="#534AB7" stroke-width="1" stroke-dasharray="5,3"/>
   <text x="520" y="1453" font-size="12" fill="#534AB7">Conditional routing</text>

@@ -16,19 +16,17 @@ from fastapi.security import APIKeyHeader
 from loguru import logger
 
 try:
-    from vllm import AsyncLLM, SamplingParams
+    from vllm import SamplingParams
 except ImportError:
     try:
-        from vllm.engine.async_llm_engine import AsyncLLMEngine as AsyncLLM
         from vllm.sampling_params import SamplingParams
     except ImportError:
-        AsyncLLM = None
         SamplingParams = None
 
 try:
-    from vllm.lora.request import LoRARequest
+    import httpx as _httpx
 except ImportError:
-    LoRARequest = None
+    _httpx = None
 
 
 from .adapter_registry import AdapterRegistry
@@ -59,12 +57,8 @@ async def _noop_tool(query: str, context: dict, session: Any) -> dict:
 
 if not SKIP_MODEL_LOAD:
     try:
-        from vllm.engine.arg_utils import AsyncEngineArgs
-
         from .vllm_stabilizer import apply_transformers_patch
     except ImportError:
-        logger.warning("vllm modules not found. Model loading will fail if attempted.")
-        AsyncEngineArgs = object
         apply_transformers_patch = lambda: None
 
 try:
@@ -112,6 +106,41 @@ if not SKIP_MODEL_LOAD:
     apply_transformers_patch()
 
 
+class _VLLMOutputItem:
+    """vLLM HTTP 응답의 단일 choice를 기존 인터페이스로 래핑."""
+
+    def __init__(self, text: str, finish_reason: str, token_ids: list):
+        self.text = text
+        self.finish_reason = finish_reason
+        self.token_ids = token_ids
+
+
+class _VLLMHttpResult:
+    """vLLM HTTP 응답을 기존 AsyncLLM 결과 인터페이스로 래핑.
+
+    기존 코드가 ``output.outputs[0].text``, ``output.prompt_token_ids`` 등에
+    접근하므로 동일한 속성을 제공한다.
+    """
+
+    def __init__(self, data: dict):
+        self._data = data
+        choices = data.get("choices", [])
+        usage = data.get("usage", {})
+        self.outputs = []
+        for choice in choices:
+            msg = choice.get("message", {})
+            text = msg.get("content", "")
+            finish = choice.get("finish_reason", "stop")
+            self.outputs.append(
+                _VLLMOutputItem(
+                    text=text,
+                    finish_reason=finish,
+                    token_ids=list(range(usage.get("completion_tokens", 0))),
+                )
+            )
+        self.prompt_token_ids = list(range(usage.get("prompt_tokens", 0)))
+
+
 def _extract_approval_request(graph_state: Any) -> Any:
     """LangGraph interrupt state에서 approval payload를 추출한다."""
     if not graph_state or not getattr(graph_state, "tasks", None):
@@ -123,10 +152,15 @@ def _extract_approval_request(graph_state: Any) -> Any:
 
 
 class vLLMEngineManager:
-    """GovOn Shell MVP용 로컬 런타임 매니저."""
+    """GovOn Shell MVP용 로컬 런타임 매니저.
+
+    vLLM은 별도 프로세스(entrypoint.sh)에서 OpenAI-compatible 서버로 실행된다.
+    이 클래스는 httpx로 vLLM HTTP API를 호출한다.
+    """
 
     def __init__(self):
-        self.engine: AsyncLLM = None
+        self._vllm_base_url = f"http://localhost:{os.getenv('VLLM_PORT', '8000')}"
+        self._http_client: Optional[Any] = None
         self.feature_flags = FeatureFlags.from_env()
         self.session_store = SessionStore()
         self.agent_manager = AgentManager(AGENTS_DIR)
@@ -142,43 +176,29 @@ class vLLMEngineManager:
             logger.info("SKIP_MODEL_LOAD=true: 모델 및 인덱스 로딩을 건너뜁니다.")
             return
 
-        logger.info(f"Initializing vLLM runtime with model: {MODEL_PATH}")
-        # EXAONE 4.0-32B-AWQ 네이티브 tool calling 활성화:
-        #   --enable-auto-tool-choice --tool-call-parser hermes
-        # Multi-LoRA 서빙 시 --enable-lora --lora-modules 옵션 추가
-        # HuggingFace Spaces L4 (24GB VRAM) 기준 ~20GB 점유
-        try:
-            # KV cache dtype: fp8이면 메모리 50% 절감 (A10G/L4 24GB 필수)
-            kv_cache_dtype = os.getenv("KV_CACHE_DTYPE", "auto")
-            engine_kwargs = dict(
-                model=MODEL_PATH,
-                trust_remote_code=TRUST_REMOTE_CODE,
-                gpu_memory_utilization=GPU_UTILIZATION,
-                max_model_len=MAX_MODEL_LEN,
-                dtype=runtime_config.model.dtype,
-                enforce_eager=runtime_config.model.enforce_eager,
-                kv_cache_dtype=kv_cache_dtype,
-            )
-            # Multi-LoRA 서빙: adapter_paths가 설정되어 있으면 활성화
-            lora_enabled = bool(runtime_config.model.adapter_paths)
-            if lora_enabled:
-                adapter_count = len(runtime_config.model.adapter_paths)
-                engine_kwargs.update(
-                    enable_lora=True,
-                    max_loras=max(4, adapter_count + 1),
-                    max_lora_rank=64,
-                )
-                logger.info(
-                    f"Multi-LoRA 활성화: adapters={list(runtime_config.model.adapter_paths.keys())}"
-                )
-            engine_args = AsyncEngineArgs(**engine_kwargs)
-            if hasattr(AsyncLLM, "from_engine_args"):
-                self.engine = AsyncLLM.from_engine_args(engine_args)
-            else:
-                self.engine = AsyncLLM(engine_args)
-        except Exception as exc:
-            logger.error(f"vLLM 엔진 초기화 실패: {exc}")
-            raise
+        # vLLM 서버는 entrypoint.sh에서 이미 기동됨 — health check만 수행
+        logger.info(f"vLLM 서버 연결 확인: {self._vllm_base_url}")
+        if _httpx is None:
+            raise RuntimeError("httpx가 설치되어 있지 않습니다. pip install httpx")
+
+        self._http_client = _httpx.AsyncClient(
+            base_url=self._vllm_base_url,
+            timeout=_httpx.Timeout(300.0, connect=30.0),
+        )
+
+        # vLLM 서버 health check (entrypoint.sh에서 이미 확인했지만 이중 검증)
+        for attempt in range(10):
+            try:
+                resp = await self._http_client.get("/health")
+                if resp.status_code == 200:
+                    logger.info("vLLM 서버 연결 성공")
+                    return
+            except Exception:
+                pass
+            logger.debug(f"vLLM 서버 대기 중... ({attempt + 1}/10)")
+            await asyncio.sleep(3)
+
+        raise RuntimeError(f"vLLM 서버에 연결할 수 없습니다: {self._vllm_base_url}")
 
     def _escape_special_tokens(self, text: str) -> str:
         tokens = [
@@ -515,18 +535,63 @@ class vLLMEngineManager:
         request_id: str,
         lora_request=None,
     ):
-        if self.engine is None:
+        """vLLM OpenAI-compatible HTTP API를 통해 텍스트를 생성한다."""
+        if self._http_client is None:
             return None
 
-        result = self.engine.generate(
-            prompt, sampling_params, request_id, lora_request=lora_request
-        )
-        if hasattr(result, "__aiter__"):
-            final_output = None
-            async for output in result:
-                final_output = output
-            return final_output
-        return await result
+        # EXAONE chat template 형식의 prompt를 messages로 변환
+        messages = self._prompt_to_messages(prompt)
+
+        body: Dict[str, Any] = {
+            "model": MODEL_PATH,
+            "messages": messages,
+            "max_tokens": sampling_params.max_tokens,
+            "temperature": sampling_params.temperature,
+            "stream": False,
+        }
+        if sampling_params.top_p is not None and sampling_params.top_p < 1.0:
+            body["top_p"] = sampling_params.top_p
+        if sampling_params.stop:
+            body["stop"] = list(sampling_params.stop)
+        if sampling_params.repetition_penalty and sampling_params.repetition_penalty != 1.0:
+            body["repetition_penalty"] = sampling_params.repetition_penalty
+
+        # LoRA 어댑터 지정
+        if lora_request is not None:
+            body["model"] = lora_request.lora_name
+
+        try:
+            resp = await self._http_client.post("/v1/chat/completions", json=body)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as exc:
+            logger.error(f"vLLM HTTP 호출 실패: {exc}")
+            return None
+
+        # OpenAI 응답을 기존 인터페이스와 호환되는 객체로 래핑
+        return _VLLMHttpResult(data)
+
+    @staticmethod
+    def _prompt_to_messages(prompt: str) -> list:
+        """EXAONE chat template 형식 프롬프트를 OpenAI messages로 변환."""
+        messages = []
+        # [|system|]...[|endofturn|], [|user|]...[|endofturn|], [|assistant|]... 파싱
+        import re as _re
+
+        parts = _re.split(r"\[\\?\|(\w+)\\?\|]", prompt)
+        role = None
+        for part in parts:
+            if part in ("system", "user", "assistant"):
+                role = part
+            elif role and part.strip():
+                content = part.replace("[|endofturn|]", "").strip()
+                if content:
+                    messages.append({"role": role, "content": content})
+                role = None
+
+        if not messages:
+            messages = [{"role": "user", "content": prompt}]
+        return messages
 
     async def generate(
         self,
@@ -556,11 +621,21 @@ class vLLMEngineManager:
         flags: Optional[FeatureFlags] = None,
     ) -> Any:
         prepared = await self._prepare_civil_response_generation(request, flags)
-        if self.engine is None:
-            raise RuntimeError("모델 엔진이 초기화되지 않았습니다.")
-        if hasattr(self.engine, "stream"):
-            return self.engine.stream(prepared.prompt, prepared.sampling_params, request_id)
-        return self.engine.generate(prepared.prompt, prepared.sampling_params, request_id)
+        if self._http_client is None:
+            raise RuntimeError("vLLM 서버에 연결되지 않았습니다.")
+
+        messages = self._prompt_to_messages(prepared.prompt)
+        body = {
+            "model": MODEL_PATH,
+            "messages": messages,
+            "max_tokens": prepared.sampling_params.max_tokens,
+            "temperature": prepared.sampling_params.temperature,
+            "stream": True,
+        }
+        if prepared.sampling_params.stop:
+            body["stop"] = list(prepared.sampling_params.stop)
+
+        return self._http_client.stream("POST", "/v1/chat/completions", json=body)
 
     def _init_agent_loop(self) -> None:
         from src.inference.actions.data_go_kr import MinwonAnalysisAction
@@ -948,8 +1023,9 @@ async def chat_completions(
 ):
     """OpenAI-compatible /v1/chat/completions.
 
-    vLLM AsyncLLM을 직접 호출하여 EXAONE chat template 형식으로 생성한다.
-    tool calling / function calling 은 지원하지 않는다.
+    vLLM HTTP API를 경유하여 텍스트를 생성한다.
+    v2 ReAct graph는 ChatOpenAI가 vLLM OpenAI 서버에 직접 연결하므로
+    이 엔드포인트는 v1 호환 유지용이다.
     """
     try:
         body = await request.json()
@@ -992,8 +1068,8 @@ async def chat_completions(
     prompt_parts.append("[|assistant|]")
     prompt = "\n".join(prompt_parts)
 
-    if manager.engine is None:
-        raise HTTPException(status_code=503, detail="Model engine not initialized.")
+    if manager._http_client is None:
+        raise HTTPException(status_code=503, detail="vLLM server not connected.")
 
     request_id = str(uuid.uuid4())
     logger.info(

@@ -27,20 +27,20 @@ VALID_TOOLS = frozenset(
     }
 )
 
-# 6-node 그래프 표준 흐름 (승인 경로)
+# ReAct 5-node 그래프 표준 흐름 (승인 경로)
 EXPECTED_APPROVED_FLOW = [
     "session_load",
-    "planner",
+    "agent",
     "approval_wait",
-    "tool_execute",
-    "synthesis",
+    "tools",
+    "agent",
     "persist",
 ]
 
 # 거절 경로
 EXPECTED_REJECTED_FLOW = [
     "session_load",
-    "planner",
+    "agent",
     "approval_wait",
     "persist",
 ]
@@ -55,9 +55,8 @@ class NodeSLA:
 
 
 NODE_SLA_THRESHOLDS: list[NodeSLA] = [
-    NodeSLA("planner", 10.0),
-    NodeSLA("tool_execute", 60.0),
-    NodeSLA("synthesis", 30.0),
+    NodeSLA("agent", 60.0),
+    NodeSLA("tools", 60.0),
     NodeSLA("session_load", 5.0),
     NodeSLA("persist", 5.0),
 ]

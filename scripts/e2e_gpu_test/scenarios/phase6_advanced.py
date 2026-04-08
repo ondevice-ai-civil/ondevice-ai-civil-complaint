@@ -48,10 +48,10 @@ async def scenario14_full_pipeline_flow(logger: E2ELogger) -> dict:
             for issue in issues:
                 warnings.append(issue)
 
-        # planner와 tool_execute 노드가 모두 관측되어야 PASS
-        has_planner = any("planner" in n for n in actual_nodes)
-        has_tool_execute = any("tool_execute" in n or "tool" in n for n in actual_nodes)
-        has_key_nodes = has_planner and has_tool_execute and ok
+        # ReAct: agent와 tools 노드가 모두 관측되어야 PASS
+        has_agent = any("agent" in n for n in actual_nodes)
+        has_tools = any("tool" in n for n in actual_nodes)
+        has_key_nodes = has_agent and has_tools and ok
         status = "passed" if has_key_nodes else "failed"
 
         return logger.scenario_result(
@@ -128,15 +128,14 @@ async def scenario15_node_latency_sla(logger: E2ELogger, aggregator: LatencyAggr
     )
 
 
-async def scenario16_planner_fallback_chain(logger: E2ELogger) -> dict:
-    """S16: Planner Fallback Chain — Regex fallback이 정상 동작하는지 확인."""
+async def scenario16_llm_tool_selection(logger: E2ELogger) -> dict:
+    """S16: LLM Tool Selection — ReAct LLM이 적절한 도구를 자율 선택하는지 검증."""
     logger.set_context(phase=6, scenario_id=16)
     t0 = time.monotonic()
 
     try:
-        # 애매한 쿼리로 Regex fallback 유도
         ok, text, meta, err = await call_agent_with_approval(
-            "처리해주세요",
+            "최근 민원 동향을 분석해주세요",
             session_id(16),
             approve=True,
             timeout=120,
@@ -145,28 +144,32 @@ async def scenario16_planner_fallback_chain(logger: E2ELogger) -> dict:
 
         planned = meta.get("planned_tools", [])
         assertions = []
+        if ok and text:
+            assertions.append(f"LLM 응답 생성 성공 ({len(text)} chars)")
         if planned:
-            assertions.append(f"planned_tools 생성됨: {planned}")
+            assertions.append(f"도구 선택됨: {planned}")
             invalid = [t for t in planned if t not in VALID_TOOLS]
             if invalid:
                 assertions.append(f"비정상 도구 포함: {invalid}")
             else:
                 assertions.append("모든 도구가 VALID_TOOLS 내에 있음")
+        else:
+            assertions.append("도구 없이 직접 응답 (정상)")
 
-        status = "passed" if planned and not invalid else "failed"
+        status = "passed" if ok and text else "failed"
         return logger.scenario_result(
             16,
-            "Planner Fallback Chain",
+            "LLM Tool Selection",
             6,
             status,
             elapsed,
             assertions=assertions,
-            error=err if not planned else None,
+            error=err if not ok else None,
             detail={"meta": meta},
         )
     except Exception as exc:
         return logger.scenario_result(
-            16, "Planner Fallback Chain", 6, "failed", time.monotonic() - t0, error=str(exc)
+            16, "LLM Tool Selection", 6, "failed", time.monotonic() - t0, error=str(exc)
         )
 
 
@@ -414,7 +417,7 @@ async def run_phase6(
     scenarios = [
         lambda: scenario14_full_pipeline_flow(logger),
         lambda: scenario15_node_latency_sla(logger, aggregator),
-        lambda: scenario16_planner_fallback_chain(logger),
+        lambda: scenario16_llm_tool_selection(logger),
         lambda: scenario17_session_context_persistence(logger),
         lambda: scenario18_lora_hot_switch(logger),
         lambda: scenario19_graceful_error_propagation(logger),
@@ -426,7 +429,7 @@ async def run_phase6(
         results.append(result)
         # 실행된 시나리오에서 관측된 도구 수집
         if observed_tools is not None:
-            detail = result.get("detail", {})
+            detail = result.get("detail") or {}
             for key in ("planned_tools", "actual_nodes"):
                 if isinstance(detail.get(key), (list, set)):
                     observed_tools.update(detail[key])

@@ -51,9 +51,11 @@ COPY agents* ./agents/
 RUN chown -R user:user /app
 USER user
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=600s --retries=3 \
     CMD python3.10 -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT}/health')"
 
 EXPOSE ${PORT}
 
-CMD ["python3.10", "-m", "src.inference.api_server"]
+# vLLM OpenAI 서버 + FastAPI를 entrypoint script로 순차 기동
+COPY scripts/entrypoint.sh ./scripts/entrypoint.sh
+CMD ["bash", "scripts/entrypoint.sh"]

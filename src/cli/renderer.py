@@ -512,6 +512,49 @@ def render_error(message: str) -> None:
         print(f"오류: {message}")
 
 
+def render_thinking(content: str) -> None:
+    """LLM thinking 과정을 dim 스타일로 표시."""
+    use_rich, _ = _resolve_render_mode()
+    if use_rich:
+        _console.print(f"[dim]{content}[/dim]", end="")
+    else:
+        print(content, end="", flush=True)
+
+
+def render_tool_progress(tool_name: str, status: str, latency_ms: float = 0) -> None:
+    """도구 실행 진행 표시."""
+    use_rich, _ = _resolve_render_mode()
+    if status == "start":
+        msg = f"도구 실행: {tool_name}…"
+    else:
+        msg = (
+            f"도구 완료: {tool_name} ({latency_ms:.0f}ms)"
+            if latency_ms
+            else f"도구 완료: {tool_name}"
+        )
+
+    if use_rich:
+        style = "yellow" if status == "start" else "green"
+        _console.print(f"[{style}]  → {msg}[/{style}]")
+    else:
+        print(f"  → {msg}", flush=True)
+
+
+def render_metadata(metadata: dict) -> None:
+    """실행 메타데이터 (iterations, tool calls, latency) 표시."""
+    iterations = metadata.get("total_iterations", 0)
+    tool_calls = metadata.get("total_tool_calls", 0)
+    latency = metadata.get("total_latency_ms", 0)
+
+    summary = f"iterations={iterations}  tools={tool_calls}  latency={latency:.0f}ms"
+
+    use_rich, _ = _resolve_render_mode()
+    if use_rich:
+        _console.print(f"[dim]⎯ {summary}[/dim]")
+    else:
+        print(f"⎯ {summary}")
+
+
 def render_session_info(session_id: str) -> None:
     """Render session resume hint at shell exit."""
     hint = f"[session: {session_id}]  govon --session {session_id} 로 재개 가능"

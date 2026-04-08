@@ -34,9 +34,12 @@ from src.cli.renderer import (
     StreamingStatusDisplay,
     get_node_message,
     render_error,
+    render_metadata,
     render_result,
     render_session_info,
     render_status,
+    render_thinking,
+    render_tool_progress,
 )
 
 # ---------------------------------------------------------------------------
@@ -117,7 +120,24 @@ def _process_query(
     `should_continue` is False only when an unrecoverable error is returned
     that suggests the daemon is down.
     """
-    # --- Try streaming path first ---
+    # --- Try v3 streaming path first ---
+    # MagicMock 자동 속성을 배제: 클래스에 실제 정의된 경우만 시도.
+    # 서브클래스 상속도 지원하기 위해 MRO 전체를 탐색한다.
+    _has_v3 = any("stream_v3" in cls.__dict__ for cls in type(client).__mro__)
+    if _has_v3:
+        try:
+            return _process_query_streaming_v3(client, query, session_id)
+        except (
+            AttributeError,
+            NotImplementedError,
+            httpx.HTTPStatusError,
+            httpx.StreamError,
+            OSError,
+            ConnectionError,
+        ):
+            pass
+
+    # --- Try v2 streaming path ---
     try:
         return _process_query_streaming(client, query, session_id)
     except (AttributeError, NotImplementedError):
@@ -133,6 +153,65 @@ def _process_query(
 
     # --- Fallback: blocking run() with simple spinner ---
     return _process_query_blocking(client, query, session_id)
+
+
+def _process_query_streaming_v3(
+    client: "GovOnClient",
+    query: str,
+    session_id: str | None,
+) -> tuple[str | None, bool]:
+    """v3 streaming path: calls client.stream_v3() with fine-grained SSE events."""
+    new_session_id: str | None = None
+    final_response: dict = {}
+
+    render_status("에이전트 추론 중…")
+
+    for event in client.stream_v3(query, session_id):
+        event_type = event.get("type", "")
+
+        if event_type == "error":
+            render_error(event.get("error", "알 수 없는 오류가 발생했습니다."))
+            return session_id, True
+
+        if event_type == "thinking_start":
+            iteration = event.get("iteration", 0)
+            if iteration > 0:
+                render_status(f"재추론 중… (iteration {iteration + 1})")
+
+        elif event_type == "thinking_delta":
+            content = event.get("content", "")
+            if content:
+                render_thinking(content)
+
+        elif event_type == "thinking_end":
+            tool_calls = event.get("tool_calls", [])
+            if tool_calls:
+                print()  # thinking_delta 줄바꿈
+                for tc in tool_calls:
+                    render_tool_progress(tc.get("name", "unknown"), "start")
+
+        elif event_type == "tool_start":
+            pass  # thinking_end에서 이미 표시
+
+        elif event_type == "tool_end":
+            tool_name = event.get("tool", "")
+            render_tool_progress(tool_name, "end")
+
+        elif event_type == "run_complete":
+            print()  # 줄바꿈
+            new_session_id = event.get("session_id") or event.get("thread_id")
+            final_response = event
+            metadata = event.get("metadata", {})
+            if metadata:
+                render_metadata(metadata)
+
+    if final_response:
+        _sid = final_response.get("session_id") or final_response.get("thread_id") or new_session_id
+        render_result(final_response)
+        return _sid or session_id, True
+
+    render_result({"text": ""})
+    return new_session_id or session_id, True
 
 
 def _process_query_streaming(

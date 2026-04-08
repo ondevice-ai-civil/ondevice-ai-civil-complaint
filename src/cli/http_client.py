@@ -156,6 +156,91 @@ class GovOnClient:
             logger.error(f"[http_client] HTTP {exc.response.status_code}: {url}")
             raise
 
+    def stream_v3(
+        self,
+        query: str,
+        session_id: Optional[str] = None,
+        max_iterations: int = 10,
+    ) -> Generator[Dict[str, Any], None, None]:
+        """POST /v3/agent/stream — v3 ReAct 세밀한 SSE 스트리밍.
+
+        Parameters
+        ----------
+        query : str
+            사용자 입력 쿼리.
+        session_id : str | None
+            기존 세션을 이어받을 경우 session ID.
+        max_iterations : int
+            최대 ReAct 루프 반복 횟수.
+
+        Yields
+        ------
+        dict
+            파싱된 SSE 이벤트 dict. ``type`` 키로 이벤트 종류를 구분한다.
+        """
+        body: Dict[str, Any] = {"query": query, "max_iterations": max_iterations}
+        if session_id is not None:
+            body["session_id"] = session_id
+
+        url = f"{self._base_url}/v3/agent/stream"
+        logger.debug(f"[http_client] stream_v3: session_id={session_id} query_len={len(query)}")
+
+        try:
+            timeout = httpx.Timeout(connect=10.0, read=300.0, write=10.0, pool=10.0)
+            with httpx.Client(timeout=timeout) as client:
+                with client.stream("POST", url, json=body) as resp:
+                    resp.raise_for_status()
+                    for line in resp.iter_lines():
+                        line = line.strip()
+                        if not line:
+                            continue
+                        if line.startswith("data:"):
+                            data_str = line[len("data:") :].strip()
+                            if not data_str:
+                                continue
+                            try:
+                                event = json.loads(data_str)
+                                yield event
+                            except json.JSONDecodeError:
+                                logger.warning(
+                                    f"[http_client] v3 SSE JSON 파싱 실패: len={len(data_str)}"
+                                )
+                                continue
+        except httpx.ConnectError as exc:
+            raise ConnectionError(f"daemon이 실행 중이 아닙니다. ({self._base_url})") from exc
+        except httpx.HTTPStatusError as exc:
+            logger.error(f"[http_client] HTTP {exc.response.status_code}: {url}")
+            raise
+
+    def run_v3(
+        self,
+        query: str,
+        session_id: Optional[str] = None,
+        max_iterations: int = 10,
+    ) -> Dict[str, Any]:
+        """POST /v3/agent/run — v3 ReAct 블로킹 실행.
+
+        Parameters
+        ----------
+        query : str
+            사용자 입력 쿼리.
+        session_id : str | None
+            기존 세션을 이어받을 경우 session ID.
+        max_iterations : int
+            최대 ReAct 루프 반복 횟수.
+
+        Returns
+        -------
+        dict
+            서버 응답 (metadata 포함).
+        """
+        body: Dict[str, Any] = {"query": query, "max_iterations": max_iterations}
+        if session_id is not None:
+            body["session_id"] = session_id
+
+        logger.debug(f"[http_client] run_v3: session_id={session_id} query_len={len(query)}")
+        return self._post("/v3/agent/run", body=body, timeout=self._RUN_TIMEOUT)
+
     def cancel(self, thread_id: str) -> Dict[str, Any]:
         """POST /v2/agent/cancel — 실행 중인 세션 취소.
 

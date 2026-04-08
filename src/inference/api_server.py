@@ -178,6 +178,7 @@ class vLLMEngineManager:
         self.agent_manager = AgentManager(AGENTS_DIR)
         self.agent_loop: Optional[AgentLoop] = None
         self.graph = None  # LangGraph CompiledGraph (v2 엔드포인트용)
+        self.graph_v3 = None  # v3 ReAct graph (v3 엔드포인트용)
         self._checkpointer_ctx = None  # AsyncSqliteSaver 컨텍스트 매니저 (lifespan에서 관리)
         self._sync_checkpointer_conn = None  # SqliteSaver용 sqlite3 connection (leak 방지)
         self._init_agent_loop()
@@ -870,7 +871,26 @@ class vLLMEngineManager:
             session_store=self.session_store,
             checkpointer=checkpointer,
         )
-        logger.info("LangGraph graph 초기화 완료")
+        logger.info("LangGraph v2 graph 초기화 완료")
+
+        # v3 ReAct graph 초기화 — v2와 동일 checkpointer 공유
+        # (thread_id가 항상 새 UUID이므로 checkpoint 충돌 없음)
+        try:
+            from src.inference.graph.builder import build_govon_graph_v3
+
+            self.graph_v3 = build_govon_graph_v3(
+                llm=llm,
+                tools=tools,
+                session_store=self.session_store,
+                checkpointer=checkpointer,
+            )
+            logger.info("LangGraph v3 ReAct graph 초기화 완료")
+        except (ImportError, AttributeError) as exc:
+            logger.warning(f"v3 graph 초기화 실패 (v2는 정상): {exc}")
+            self.graph_v3 = None
+        except Exception as exc:
+            logger.exception(f"v3 graph 초기화 중 예상치 못한 오류 발생: {exc}")
+            self.graph_v3 = None
 
 
 def _build_sync_sqlite_checkpointer(
@@ -1677,6 +1697,215 @@ async def v2_agent_cancel(
                 "status": "error",
                 "thread_id": thread_id,
                 "error": "취소 처리 중 내부 오류가 발생했습니다.",
+            },
+        )
+
+
+# ---------------------------------------------------------------------------
+# v3 엔드포인트: ReAct 자율 루프 + 세밀한 SSE 스트리밍
+# ---------------------------------------------------------------------------
+
+
+@app.post("/v3/agent/stream", response_model=None)
+@_rate_limit("30/minute")
+async def v3_agent_stream(
+    request: AgentRunRequest,
+    _http_request: Request,
+    _: None = Depends(verify_api_key),
+) -> StreamingResponse:
+    """v3 ReAct agent — astream_events 기반 세밀한 SSE 스트리밍.
+
+    이벤트 타입:
+      - thinking_start: LLM 추론 시작
+      - thinking_delta: LLM 토큰 스트리밍
+      - thinking_end: LLM 추론 완료 (tool_calls 포함)
+      - tool_start: 도구 실행 시작
+      - tool_end: 도구 실행 완료
+      - run_complete: 전체 실행 완료 (메타데이터 포함)
+    """
+    if not manager.graph_v3:
+        raise HTTPException(status_code=503, detail="v3 graph가 초기화되지 않았습니다.")
+
+    from langchain_core.messages import HumanMessage
+
+    # v3는 단발 실행이므로 체크포인트 격리를 위해 thread_id는 항상 새 UUID 사용.
+    # session_id는 클라이언트가 전달한 값을 그대로 유지한다.
+    thread_id = str(uuid.uuid4())
+    session_id = request.session_id or thread_id
+    request_id = str(uuid.uuid4())
+    config = {"configurable": {"thread_id": thread_id}}
+    initial_state = {
+        "session_id": session_id,
+        "request_id": request_id,
+        "messages": [HumanMessage(content=request.query)],
+        "max_iterations": request.max_iterations,
+        "iteration_count": 0,
+        "tool_call_history": [],
+        "pending_tool_calls": [],
+    }
+
+    async def _generate_v3() -> AsyncGenerator[str, None]:
+        run_t0 = time.monotonic()
+        iteration = 0
+
+        try:
+            async for event in manager.graph_v3.astream_events(initial_state, config, version="v2"):
+                if await _http_request.is_disconnected():
+                    logger.info("[v3/agent/stream] 클라이언트 연결 끊김 감지 — 스트림 조기 종료")
+                    return
+
+                kind = event["event"]
+
+                if kind == "on_chat_model_start":
+                    sse_event = {"type": "thinking_start", "iteration": iteration}
+                    yield f"data: {json.dumps(sse_event, ensure_ascii=False)}\n\n"
+
+                elif kind == "on_chat_model_stream":
+                    chunk = event.get("data", {}).get("chunk")
+                    if chunk:
+                        content = getattr(chunk, "content", "")
+                        if content:
+                            sse_event = {
+                                "type": "thinking_delta",
+                                "content": content,
+                            }
+                            yield f"data: {json.dumps(sse_event, ensure_ascii=False)}\n\n"
+
+                elif kind == "on_chat_model_end":
+                    output = event.get("data", {}).get("output")
+                    tool_calls = []
+                    if output:
+                        raw_calls = getattr(output, "tool_calls", None) or []
+                        tool_calls = [
+                            {
+                                "name": tc.get("name", ""),
+                                "args": tc.get("args", {}),
+                            }
+                            for tc in raw_calls
+                        ]
+                    sse_event = {
+                        "type": "thinking_end",
+                        "tool_calls": tool_calls,
+                        "iteration": iteration,
+                    }
+                    yield f"data: {json.dumps(sse_event, ensure_ascii=False)}\n\n"
+                    if tool_calls:
+                        iteration += 1
+
+                elif kind == "on_tool_start":
+                    tool_name = event.get("name", "")
+                    sse_event = {"type": "tool_start", "tool": tool_name}
+                    yield f"data: {json.dumps(sse_event, ensure_ascii=False)}\n\n"
+
+                elif kind == "on_tool_end":
+                    tool_name = event.get("name", "")
+                    tool_output = event.get("data", {}).get("output")
+                    sse_event: dict = {"type": "tool_end", "tool": tool_name}
+                    if tool_output is not None:
+                        output_status = getattr(tool_output, "status", None)
+                        if isinstance(tool_output, Exception):
+                            sse_event["success"] = False
+                        elif output_status == "error":
+                            sse_event["success"] = False
+                        else:
+                            sse_event["success"] = True
+                    yield f"data: {json.dumps(sse_event, ensure_ascii=False)}\n\n"
+
+            # 실행 완료 — 최종 state에서 메타데이터 추출
+            total_latency = round((time.monotonic() - run_t0) * 1000, 2)
+            try:
+                final_state = await manager.graph_v3.aget_state(config)
+                state_values = final_state.values if final_state else {}
+            except Exception:
+                state_values = {}
+
+            complete_event = {
+                "type": "run_complete",
+                "thread_id": thread_id,
+                "session_id": session_id,
+                "text": state_values.get("final_text", ""),
+                "evidence_items": state_values.get("evidence_items", []),
+                "metadata": {
+                    "total_iterations": state_values.get("iteration_count", 0),
+                    "total_tool_calls": len(state_values.get("tool_call_history", [])),
+                    "total_latency_ms": total_latency,
+                    "node_latencies": state_values.get("node_latencies", {}),
+                },
+            }
+            yield f"data: {json.dumps(complete_event, ensure_ascii=False)}\n\n"
+
+        except Exception as exc:
+            logger.exception(f"[v3/agent/stream] 스트림 예외: {exc}")
+            error_event = {
+                "type": "error",
+                "error": "요청 처리 중 내부 오류가 발생했습니다.",
+            }
+            yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(_generate_v3(), media_type="text/event-stream")
+
+
+@app.post("/v3/agent/run", response_model=None)
+@_rate_limit("30/minute")
+async def v3_agent_run(
+    request: AgentRunRequest,
+    _http_request: Request,
+    _: None = Depends(verify_api_key),
+):
+    """v3 ReAct agent 블로킹 실행.
+
+    v2와 동일한 인터페이스를 제공하되, v3 graph를 사용한다.
+    모든 도구가 자동 실행되므로 approval_wait가 없다.
+    """
+    if not manager.graph_v3:
+        raise HTTPException(status_code=503, detail="v3 graph가 초기화되지 않았습니다.")
+
+    from langchain_core.messages import HumanMessage
+
+    # v3는 단발 실행 — checkpoint 격리를 위해 thread_id는 항상 새 UUID
+    thread_id = str(uuid.uuid4())
+    session_id = request.session_id or thread_id
+    request_id = str(uuid.uuid4())
+    config = {"configurable": {"thread_id": thread_id}}
+    initial_state = {
+        "session_id": session_id,
+        "request_id": request_id,
+        "messages": [HumanMessage(content=request.query)],
+        "max_iterations": request.max_iterations,
+        "iteration_count": 0,
+        "tool_call_history": [],
+        "pending_tool_calls": [],
+    }
+
+    try:
+        t0 = time.monotonic()
+        result = await manager.graph_v3.ainvoke(initial_state, config)
+        total_latency = round((time.monotonic() - t0) * 1000, 2)
+
+        return {
+            "status": "completed",
+            "thread_id": thread_id,
+            "session_id": session_id,
+            "graph_run_id": request_id,
+            "text": result.get("final_text", ""),
+            "evidence_items": result.get("evidence_items", []),
+            "metadata": {
+                "total_iterations": result.get("iteration_count", 0),
+                "total_tool_calls": len(result.get("tool_call_history", [])),
+                "total_latency_ms": total_latency,
+                "node_latencies": result.get("node_latencies", {}),
+            },
+        }
+    except Exception as exc:
+        logger.exception(f"[v3/agent/run] 요청 처리 실패: {exc}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "thread_id": thread_id,
+                "session_id": session_id,
+                "graph_run_id": request_id,
+                "error": "요청 처리 중 내부 오류가 발생했습니다.",
             },
         )
 

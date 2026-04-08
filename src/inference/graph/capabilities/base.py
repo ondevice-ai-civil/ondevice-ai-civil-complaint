@@ -62,6 +62,7 @@ class CapabilityMetadata:
     provider: str  # 데이터 제공자 식별자 (예: "data.go.kr")
     timeout_sec: float = 10.0  # 기본 타임아웃
     parameters: Dict[str, Any] = field(default_factory=dict)  # JSON Schema for tool parameters
+    risk_level: str = "low"  # "low" | "high" — 향후 고위험 도구 추가 시 사용
 
 
 @dataclass

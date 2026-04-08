@@ -19,7 +19,7 @@ GovOn은 행정 업무를 보조하는 **에이전틱 CLI 셸**이다. 사용자
 
 <p align="center">
   <a href="https://govon-org.github.io/GovOn/govon-tobe-architecture.svg">
-    <img src="https://govon-org.github.io/GovOn/govon-tobe-architecture.svg" alt="GovOn TO-BE Architecture" width="100%"/>
+    <img src="docs/architecture/govon-tobe-architecture.svg" alt="GovOn TO-BE Architecture" width="100%"/>
   </a>
 </p>
 

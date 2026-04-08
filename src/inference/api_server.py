@@ -1068,7 +1068,6 @@ class vLLMEngineManager:
 
         if self.agent_loop is None:
             return build_all_tools(
-                rag_search_fn=_noop_tool,
                 api_lookup_action=self._get_api_lookup_action(),
             )
 
@@ -1078,7 +1077,6 @@ class vLLMEngineManager:
         }
 
         return build_all_tools(
-            rag_search_fn=raw_tools.get("rag_search", _noop_tool),
             api_lookup_action=self._get_api_lookup_action(),
             draft_response_fn=raw_tools.get("draft_response"),
         )

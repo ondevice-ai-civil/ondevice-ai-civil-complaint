@@ -14,7 +14,6 @@ from .search_tools import build_search_tools
 
 def build_all_tools(
     *,
-    rag_search_fn: Callable[..., Any],
     api_lookup_action: Optional[Any] = None,
     draft_response_fn: Optional[Callable[..., Any]] = None,
 ) -> list:
@@ -22,8 +21,6 @@ def build_all_tools(
 
     Parameters
     ----------
-    rag_search_fn : Callable
-        RAG 검색 실행 클로저.
     api_lookup_action : Optional[MinwonAnalysisAction]
         공공데이터포털 API Action 인스턴스.
     draft_response_fn : Optional[Callable]
@@ -35,7 +32,7 @@ def build_all_tools(
         전체 도구 목록.
     """
     tools: list = []
-    tools.extend(build_search_tools(rag_search_fn, api_lookup_action))
+    tools.extend(build_search_tools(api_lookup_action))
     tools.extend(build_analysis_tools(api_lookup_action))
     if draft_response_fn:
         try:

@@ -41,54 +41,52 @@ class ApiLookupInput(BaseModel):
 
 
 def build_search_tools(
-    rag_search_fn: Callable[..., Any],
     api_lookup_action: Optional[Any] = None,
 ) -> list:
     """검색 관련 StructuredTool 목록을 생성한다.
 
     Parameters
     ----------
-    rag_search_fn : Callable
-        RAG 검색 실행 클로저 (async (query, context, session) -> dict).
     api_lookup_action : Optional[MinwonAnalysisAction]
         공공데이터포털 API Action 인스턴스. None이면 빈 결과 반환.
 
     Returns
     -------
     list[StructuredTool]
-        [rag_search_tool, api_lookup_tool]
+        [api_lookup_tool]
     """
     from src.inference.graph.capabilities.api_lookup import ApiLookupCapability
-    from src.inference.graph.capabilities.rag_search import RagSearchCapability
 
-    # -- rag_search 클로저 캡처 --
-    _rag_cap = RagSearchCapability(execute_fn=rag_search_fn)
-
-    async def _rag_search(
-        query: str,
-        top_k: int = 5,
-        source_types: Optional[List[str]] = None,
-    ) -> str:
-        context: dict[str, Any] = {"top_k": top_k}
-        if source_types is not None:
-            context["source_types"] = source_types
-        try:
-            result = await _rag_cap.execute(query=query, context=context, session=None)
-            return json.dumps(result.to_dict(), ensure_ascii=False)
-        except Exception as e:
-            return json.dumps({"error": str(e), "success": False}, ensure_ascii=False)
-
-    rag_search_tool = StructuredTool.from_function(
-        coroutine=_rag_search,
-        name="rag_search",
-        description=(
-            "민원 관련 문서, 매뉴얼, 판례, 법령을 로컬 벡터 DB에서 검색합니다. "
-            "민원 답변의 근거 자료를 찾을 때 사용하세요. "
-            "반환값: 관련 문서 목록 (제목, 내용 발췌, 유사도 점수)"
-        ),
-        args_schema=RagSearchInput,
-        metadata={"requires_approval": False},
-    )
+    # -- rag_search: 검색할 문서가 없어 비활성화 --
+    # from src.inference.graph.capabilities.rag_search import RagSearchCapability
+    #
+    # _rag_cap = RagSearchCapability(execute_fn=rag_search_fn)
+    #
+    # async def _rag_search(
+    #     query: str,
+    #     top_k: int = 5,
+    #     source_types: Optional[List[str]] = None,
+    # ) -> str:
+    #     context: dict[str, Any] = {"top_k": top_k}
+    #     if source_types is not None:
+    #         context["source_types"] = source_types
+    #     try:
+    #         result = await _rag_cap.execute(query=query, context=context, session=None)
+    #         return json.dumps(result.to_dict(), ensure_ascii=False)
+    #     except Exception as e:
+    #         return json.dumps({"error": str(e), "success": False}, ensure_ascii=False)
+    #
+    # rag_search_tool = StructuredTool.from_function(
+    #     coroutine=_rag_search,
+    #     name="rag_search",
+    #     description=(
+    #         "민원 관련 문서, 매뉴얼, 판례, 법령을 로컬 벡터 DB에서 검색합니다. "
+    #         "민원 답변의 근거 자료를 찾을 때 사용하세요. "
+    #         "반환값: 관련 문서 목록 (제목, 내용 발췌, 유사도 점수)"
+    #     ),
+    #     args_schema=RagSearchInput,
+    #     metadata={"requires_approval": False},
+    # )
 
     # -- api_lookup 클로저 캡처 --
     _api_cap = ApiLookupCapability(action=api_lookup_action)
@@ -116,4 +114,5 @@ def build_search_tools(
         metadata={"requires_approval": False},
     )
 
-    return [rag_search_tool, api_lookup_tool]
+    # rag_search 비활성화 — 검색할 문서 없음
+    return [api_lookup_tool]

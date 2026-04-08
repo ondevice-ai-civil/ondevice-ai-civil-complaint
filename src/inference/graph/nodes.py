@@ -240,17 +240,22 @@ def make_persist_node(session_store: "SessionStore"):
         t0 = time.monotonic()
         messages = state.get("messages", [])
 
-        # 최종 텍스트: 마지막 AIMessage 중 tool_calls가 없는 것
-        final_text = ""
-        for msg in reversed(messages):
-            if (
-                hasattr(msg, "type")
-                and msg.type == "ai"
-                and not getattr(msg, "tool_calls", None)
-                and hasattr(msg, "content")
-            ):
-                final_text = msg.content
-                break
+        # 최종 텍스트: agent_node_v3가 명시적으로 저장한 경우 우선 사용,
+        # 없으면 messages에서 tool_calls 없는 마지막 AIMessage 추출
+        final_text = state.get("final_text") or ""
+        if not final_text:
+            for msg in reversed(messages):
+                if isinstance(msg, AIMessage) and not getattr(msg, "tool_calls", None):
+                    final_text = msg.content or ""
+                    break
+                elif (
+                    hasattr(msg, "type")
+                    and msg.type == "ai"
+                    and not getattr(msg, "tool_calls", None)
+                    and hasattr(msg, "content")
+                ):
+                    final_text = msg.content
+                    break
 
         # 현재 턴 시작점: 마지막 HumanMessage (거부 메시지 제외) 이후부터
         turn_start = 0
@@ -390,8 +395,10 @@ def make_agent_node_v3(llm, tools: list):
             result["pending_tool_calls"] = tool_calls
             result["iteration_count"] = iteration + 1
         else:
-            # 최종 답변 — pending_tool_calls 비우기
+            # 최종 답변 — pending_tool_calls 비우기, final_text 명시적 저장
             result["pending_tool_calls"] = []
+            if response.content:
+                result["final_text"] = response.content
 
         logger.debug(
             f"[agent_v3] iteration={iteration} tool_calls={len(tool_calls)} "

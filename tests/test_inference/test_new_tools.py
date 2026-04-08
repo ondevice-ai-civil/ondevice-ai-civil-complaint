@@ -18,11 +18,8 @@ from src.inference.graph.capabilities.demographics_lookup import (
 )
 from src.inference.graph.capabilities.issue_detector import IssueDetectorCapability
 from src.inference.graph.capabilities.keyword_analyzer import KeywordAnalyzerCapability
-from src.inference.graph.capabilities.registry import (
-    MVP_CAPABILITY_IDS,
-    build_mvp_registry,
-)
 from src.inference.graph.capabilities.stats_lookup import StatsLookupCapability
+from src.inference.tool_router import ToolType
 
 # ---------------------------------------------------------------------------
 # 공용 fixture
@@ -81,43 +78,28 @@ class FakeAction:
 
 
 class TestRegistry:
-    """신규 capability가 registry에 정상 등록되는지 확인."""
+    """신규 capability가 ToolType에 정상 등록되는지 확인."""
 
-    def test_mvp_capability_ids_include_new_tools(self):
-        """MVP_CAPABILITY_IDS에 4개 신규 도구가 포함된다."""
-        assert "issue_detector" in MVP_CAPABILITY_IDS
-        assert "stats_lookup" in MVP_CAPABILITY_IDS
-        assert "keyword_analyzer" in MVP_CAPABILITY_IDS
-        assert "demographics_lookup" in MVP_CAPABILITY_IDS
+    def test_tool_type_includes_new_tools(self):
+        """ToolType에 4개 신규 도구가 포함된다."""
+        tool_values = {t.value for t in ToolType}
+        assert "issue_detector" in tool_values
+        assert "stats_lookup" in tool_values
+        assert "keyword_analyzer" in tool_values
+        assert "demographics_lookup" in tool_values
 
-    def test_build_mvp_registry_includes_new_tools(self):
-        """build_mvp_registry가 6개 capability를 모두 반환한다."""
-
-        async def dummy_fn(query="", context=None, session=None):
-            return {}
-
-        registry = build_mvp_registry(
-            api_lookup_action=None,
-            draft_response_fn=dummy_fn,
-        )
-        assert "issue_detector" in registry
-        assert "stats_lookup" in registry
-        assert "keyword_analyzer" in registry
-        assert "demographics_lookup" in registry
-        assert len(registry) == 6
-
-    def test_all_capabilities_are_capability_base(self):
-        """모든 등록된 capability가 CapabilityBase 인스턴스이다."""
-
-        async def dummy_fn(query="", context=None, session=None):
-            return {}
-
-        registry = build_mvp_registry(
-            api_lookup_action=None,
-            draft_response_fn=dummy_fn,
-        )
-        for name, cap in registry.items():
-            assert isinstance(cap, CapabilityBase), f"{name}이 CapabilityBase가 아닙니다"
+    def test_all_new_capabilities_are_capability_base(self):
+        """모든 신규 capability가 CapabilityBase 인스턴스이다."""
+        caps = [
+            IssueDetectorCapability(),
+            StatsLookupCapability(),
+            KeywordAnalyzerCapability(),
+            DemographicsLookupCapability(),
+        ]
+        for cap in caps:
+            assert isinstance(
+                cap, CapabilityBase
+            ), f"{cap.metadata.name}이 CapabilityBase가 아닙니다"
 
 
 # ---------------------------------------------------------------------------

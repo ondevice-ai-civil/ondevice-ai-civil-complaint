@@ -1,0 +1,231 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1720" viewBox="0 0 1200 1720" font-family="'Segoe UI','Noto Sans KR',system-ui,sans-serif">
+
+  <!-- ============ TITLE ============ -->
+  <rect width="1200" height="1720" rx="0" fill="#fafbfd"/>
+  <text x="600" y="44" text-anchor="middle" font-size="26" font-weight="600" fill="#1a1a2e">GovOn TO-BE Architecture</text>
+  <text x="600" y="70" text-anchor="middle" font-size="14" fill="#7a8090" letter-spacing="1.5">ReAct LOOP · ToolNode · MESSAGES APPEND-ONLY · LLM AUTONOMOUS TOOL SELECTION</text>
+  <line x1="100" y1="88" x2="1100" y2="88" stroke="#e0e4ec" stroke-width="1"/>
+
+  <!-- ============ MAIN FLOW ============ -->
+
+  <!-- START -->
+  <rect x="510" y="110" width="180" height="42" rx="21" fill="#F1EFE8" stroke="#B4B2A9" stroke-width="1"/>
+  <text x="600" y="136" text-anchor="middle" font-size="14" font-weight="600" fill="#444441">START</text>
+
+  <!-- Arrow: START -> session_load -->
+  <line x1="600" y1="152" x2="600" y2="182" stroke="#8a90a0" stroke-width="1.5" marker-end="url(#ah)"/>
+
+  <!-- session_load -->
+  <rect x="460" y="182" width="280" height="58" rx="10" fill="#E6F1FB" stroke="#85B7EB" stroke-width="1"/>
+  <text x="600" y="207" text-anchor="middle" font-size="15" font-weight="600" fill="#0C447C">session_load</text>
+  <text x="600" y="227" text-anchor="middle" font-size="12" fill="#185FA5">Restore checkpointed messages + metadata</text>
+
+  <!-- Arrow: session_load -> agent -->
+  <line x1="600" y1="240" x2="600" y2="278" stroke="#8a90a0" stroke-width="1.5" marker-end="url(#ah)"/>
+
+  <!-- agent node (main) -->
+  <rect x="400" y="278" width="400" height="66" rx="12" fill="#EEEDFE" stroke="#AFA9EC" stroke-width="1.2"/>
+  <text x="600" y="305" text-anchor="middle" font-size="17" font-weight="700" fill="#3C3489">agent  (LLM + bind_tools)</text>
+  <text x="600" y="327" text-anchor="middle" font-size="12" fill="#534AB7">Autonomous tool selection · System prompt = judgment principles only</text>
+
+  <!-- Conditional diamond label -->
+  <text x="600" y="368" text-anchor="middle" font-size="13" font-weight="600" fill="#534AB7">route_agent()</text>
+
+  <!-- Diamond shape -->
+  <polygon points="600,380 640,405 600,430 560,405" fill="#EEEDFE" stroke="#AFA9EC" stroke-width="1"/>
+
+  <!-- 3 branches from diamond -->
+  <!-- Left branch: No tool_calls -> persist -->
+  <line x1="560" y1="405" x2="220" y2="405" stroke="#534AB7" stroke-width="1" stroke-dasharray="5,3"/>
+  <line x1="220" y1="405" x2="220" y2="480" stroke="#534AB7" stroke-width="1" marker-end="url(#ap)"/>
+  <rect x="280" y="390" width="130" height="20" rx="4" fill="#fafbfd"/>
+  <text x="345" y="404" text-anchor="middle" font-size="11" fill="#534AB7">No tool_calls</text>
+
+  <!-- Middle branch: All Tier 0 -> ToolNode -->
+  <line x1="600" y1="430" x2="600" y2="480" stroke="#0F6E56" stroke-width="1.5" marker-end="url(#at)"/>
+  <rect x="535" y="442" width="130" height="20" rx="4" fill="#fafbfd"/>
+  <text x="600" y="456" text-anchor="middle" font-size="11" fill="#0F6E56">All Tier 0 (safe)</text>
+
+  <!-- Right branch: Tier 1 -> approval_wait -->
+  <line x1="640" y1="405" x2="960" y2="405" stroke="#993C1D" stroke-width="1" stroke-dasharray="5,3"/>
+  <line x1="960" y1="405" x2="960" y2="480" stroke="#993C1D" stroke-width="1" marker-end="url(#ac)"/>
+  <rect x="770" y="390" width="130" height="20" rx="4" fill="#fafbfd"/>
+  <text x="835" y="404" text-anchor="middle" font-size="11" fill="#993C1D">Any Tier 1 included</text>
+
+  <!-- persist node (left) -->
+  <rect x="130" y="480" width="180" height="58" rx="10" fill="#E6F1FB" stroke="#85B7EB" stroke-width="1"/>
+  <text x="220" y="505" text-anchor="middle" font-size="15" font-weight="600" fill="#0C447C">persist</text>
+  <text x="220" y="525" text-anchor="middle" font-size="12" fill="#185FA5">Save turn + evidence to DB</text>
+
+  <!-- ToolNode (center) -->
+  <rect x="460" y="480" width="280" height="58" rx="10" fill="#E1F5EE" stroke="#5DCAA5" stroke-width="1.2"/>
+  <text x="600" y="505" text-anchor="middle" font-size="15" font-weight="700" fill="#085041">ToolNode</text>
+  <text x="600" y="525" text-anchor="middle" font-size="12" fill="#0F6E56">Parse tool_calls · Parallel execution · ToolMessage</text>
+
+  <!-- approval_wait (right) -->
+  <rect x="870" y="480" width="180" height="58" rx="10" fill="#FAECE7" stroke="#F0997B" stroke-width="1"/>
+  <text x="960" y="505" text-anchor="middle" font-size="15" font-weight="600" fill="#712B13">approval_wait</text>
+  <text x="960" y="525" text-anchor="middle" font-size="12" fill="#993C1D">interrupt() · User confirm</text>
+
+  <!-- approval_wait conditional -->
+  <text x="960" y="560" text-anchor="middle" font-size="12" font-weight="600" fill="#993C1D">route_after_approval()</text>
+  <polygon points="960,568 988,586 960,604 932,586" fill="#FAECE7" stroke="#F0997B" stroke-width="1"/>
+
+  <!-- Approved -> ToolNode -->
+  <line x1="932" y1="586" x2="740" y2="509" stroke="#0F6E56" stroke-width="1.5" marker-end="url(#at)"/>
+  <rect x="780" y="536" width="90" height="18" rx="4" fill="#fafbfd"/>
+  <text x="825" y="549" text-anchor="middle" font-size="11" font-weight="600" fill="#0F6E56">Approved</text>
+
+  <!-- Rejected -> agent (loop back for alternatives) -->
+  <line x1="988" y1="586" x2="1080" y2="586" stroke="#A32D2D" stroke-width="1" stroke-dasharray="5,3"/>
+  <line x1="1080" y1="586" x2="1080" y2="310" stroke="#A32D2D" stroke-width="1"/>
+  <line x1="1080" y1="310" x2="800" y2="310" stroke="#A32D2D" stroke-width="1" marker-end="url(#ar)"/>
+  <rect x="1010" y="560" width="140" height="36" rx="6" fill="#FCEBEB" stroke="#F09595" stroke-width="0.8"/>
+  <text x="1080" y="575" text-anchor="middle" font-size="11" font-weight="600" fill="#A32D2D">Rejected</text>
+  <text x="1080" y="589" text-anchor="middle" font-size="10" fill="#A32D2D">-> agent (suggest alt.)</text>
+
+  <!-- ReAct Loop: ToolNode -> agent (big curved arrow) -->
+  <path d="M460,509 C320,509 280,440 280,370 C280,310 340,296 400,305" fill="none" stroke="#534AB7" stroke-width="2" stroke-dasharray="8,4" marker-end="url(#ap2)"/>
+  <!-- ReAct loop label -->
+  <rect x="240" y="360" width="80" height="36" rx="6" fill="#EEEDFE" stroke="#AFA9EC" stroke-width="0.8"/>
+  <text x="280" y="375" text-anchor="middle" font-size="12" font-weight="700" fill="#3C3489">ReAct</text>
+  <text x="280" y="390" text-anchor="middle" font-size="11" fill="#534AB7">loop</text>
+
+  <!-- persist -> END -->
+  <line x1="220" y1="538" x2="220" y2="700" stroke="#185FA5" stroke-width="1"/>
+
+  <!-- END -->
+  <line x1="220" y1="700" x2="600" y2="700" stroke="#8a90a0" stroke-width="1"/>
+  <rect x="510" y="680" width="180" height="42" rx="21" fill="#F1EFE8" stroke="#B4B2A9" stroke-width="1"/>
+  <text x="600" y="706" text-anchor="middle" font-size="14" font-weight="600" fill="#444441">END</text>
+
+  <!-- ============ SEPARATOR ============ -->
+  <line x1="100" y1="760" x2="1100" y2="760" stroke="#e0e4ec" stroke-width="1"/>
+
+  <!-- ============ TOOL APPROVAL TIERS ============ -->
+  <text x="600" y="800" text-anchor="middle" font-size="20" font-weight="700" fill="#1a1a2e">Tool approval tiers</text>
+  <text x="600" y="822" text-anchor="middle" font-size="12" fill="#7a8090">Dynamic requires_approval flag from YAML · No hardcoded tier mapping</text>
+
+  <!-- Tier 0 box -->
+  <rect x="100" y="846" width="460" height="150" rx="12" fill="#E1F5EE" stroke="#5DCAA5" stroke-width="1"/>
+  <text x="330" y="876" text-anchor="middle" font-size="16" font-weight="700" fill="#085041">Tier 0 — Auto-execute</text>
+  <text x="330" y="898" text-anchor="middle" font-size="12" fill="#0F6E56">Read-only · No side effects · Skip approval_wait</text>
+  <line x1="140" y1="912" x2="520" y2="912" stroke="#5DCAA5" stroke-width="0.5"/>
+  <text x="200" y="936" text-anchor="middle" font-size="13" fill="#085041">rag_search</text>
+  <text x="340" y="936" text-anchor="middle" font-size="13" fill="#085041">api_lookup</text>
+  <text x="475" y="936" text-anchor="middle" font-size="13" fill="#085041">stats_lookup</text>
+  <text x="200" y="960" text-anchor="middle" font-size="13" fill="#085041">keyword_analyzer</text>
+  <text x="370" y="960" text-anchor="middle" font-size="13" fill="#085041">demographics_lookup</text>
+  <text x="200" y="984" text-anchor="middle" font-size="13" fill="#085041">issue_detector</text>
+
+  <!-- Tier 1 box -->
+  <rect x="600" y="846" width="460" height="150" rx="12" fill="#FAECE7" stroke="#F0997B" stroke-width="1"/>
+  <text x="830" y="876" text-anchor="middle" font-size="16" font-weight="700" fill="#712B13">Tier 1 — User approval required</text>
+  <text x="830" y="898" text-anchor="middle" font-size="12" fill="#993C1D">GPU inference cost · Draft generation needs confirmation</text>
+  <line x1="640" y1="912" x2="1020" y2="912" stroke="#F0997B" stroke-width="0.5"/>
+  <text x="770" y="936" text-anchor="middle" font-size="13" fill="#712B13">public_admin_adapter</text>
+  <text x="940" y="936" text-anchor="middle" font-size="13" fill="#712B13">legal_adapter</text>
+  <text x="830" y="960" text-anchor="middle" font-size="13" fill="#712B13">All *_adapter tools (from YAML)</text>
+
+  <!-- ============ SEPARATOR ============ -->
+  <line x1="100" y1="1030" x2="1100" y2="1030" stroke="#e0e4ec" stroke-width="1"/>
+
+  <!-- ============ STATE SCHEMA ============ -->
+  <text x="600" y="1070" text-anchor="middle" font-size="20" font-weight="700" fill="#1a1a2e">Minimal state schema</text>
+  <text x="600" y="1092" text-anchor="middle" font-size="12" fill="#7a8090">No planner-specific fields · All tool results flow through messages</text>
+
+  <!-- Kept fields -->
+  <rect x="100" y="1114" width="480" height="200" rx="12" fill="#E6F1FB" stroke="#85B7EB" stroke-width="1"/>
+  <text x="340" y="1142" text-anchor="middle" font-size="15" font-weight="700" fill="#0C447C">Kept (dynamic via messages)</text>
+  <line x1="140" y1="1154" x2="540" y2="1154" stroke="#85B7EB" stroke-width="0.5"/>
+  <text x="140" y="1178" font-size="13" fill="#0C447C" font-weight="600">messages</text>
+  <text x="280" y="1178" font-size="12" fill="#185FA5">Annotated[Sequence[AnyMessage], add_messages]</text>
+  <text x="140" y="1200" font-size="13" fill="#0C447C" font-weight="600">session_id</text>
+  <text x="280" y="1200" font-size="12" fill="#185FA5">Session identifier</text>
+  <text x="140" y="1222" font-size="13" fill="#0C447C" font-weight="600">request_id</text>
+  <text x="280" y="1222" font-size="12" fill="#185FA5">Per-turn request ID</text>
+  <text x="140" y="1244" font-size="13" fill="#0C447C" font-weight="600">approval_status</text>
+  <text x="310" y="1244" font-size="12" fill="#185FA5">pending / approved / rejected</text>
+  <text x="140" y="1266" font-size="13" fill="#0C447C" font-weight="600">final_text</text>
+  <text x="280" y="1266" font-size="12" fill="#185FA5">Final assistant response text</text>
+  <text x="140" y="1288" font-size="13" fill="#0C447C" font-weight="600">evidence_items</text>
+  <text x="310" y="1288" font-size="12" fill="#185FA5">List[Dict] from ToolMessages</text>
+  <text x="140" y="1310" font-size="13" fill="#0C447C" font-weight="600">node_latencies</text>
+  <text x="310" y="1310" font-size="12" fill="#185FA5">Annotated[Dict, _merge_dicts]</text>
+
+  <!-- Removed fields -->
+  <rect x="620" y="1114" width="440" height="200" rx="12" fill="#FCEBEB" stroke="#F09595" stroke-width="1"/>
+  <text x="840" y="1142" text-anchor="middle" font-size="15" font-weight="700" fill="#791F1F">Removed (planner-era fields)</text>
+  <line x1="660" y1="1154" x2="1020" y2="1154" stroke="#F09595" stroke-width="0.5"/>
+  <text x="660" y="1178" font-size="13" fill="#A32D2D" text-decoration="line-through">task_type</text>
+  <text x="820" y="1178" font-size="13" fill="#A32D2D" text-decoration="line-through">goal</text>
+  <text x="920" y="1178" font-size="13" fill="#A32D2D" text-decoration="line-through">reason</text>
+  <text x="660" y="1200" font-size="13" fill="#A32D2D" text-decoration="line-through">planned_tools</text>
+  <text x="860" y="1200" font-size="13" fill="#A32D2D" text-decoration="line-through">tool_results</text>
+  <text x="660" y="1222" font-size="13" fill="#A32D2D" text-decoration="line-through">accumulated_context</text>
+  <text x="900" y="1222" font-size="13" fill="#A32D2D" text-decoration="line-through">tool_args</text>
+  <text x="660" y="1244" font-size="13" fill="#A32D2D" text-decoration="line-through">adapter_mode</text>
+  <text x="840" y="1244" font-size="13" fill="#A32D2D" text-decoration="line-through">tool_summaries</text>
+  <text x="660" y="1266" font-size="13" fill="#A32D2D" text-decoration="line-through">TaskType enum</text>
+
+  <!-- ============ SEPARATOR ============ -->
+  <line x1="100" y1="1350" x2="1100" y2="1350" stroke="#e0e4ec" stroke-width="1"/>
+
+  <!-- ============ LEGEND ============ -->
+  <text x="600" y="1388" text-anchor="middle" font-size="18" font-weight="700" fill="#1a1a2e">Legend</text>
+
+  <!-- Node types -->
+  <rect x="100" y="1412" width="24" height="16" rx="4" fill="#EEEDFE" stroke="#AFA9EC" stroke-width="1"/>
+  <text x="134" y="1425" font-size="12" fill="#3C3489">Agent node (LLM reasoning)</text>
+
+  <rect x="100" y="1440" width="24" height="16" rx="4" fill="#E1F5EE" stroke="#5DCAA5" stroke-width="1"/>
+  <text x="134" y="1453" font-size="12" fill="#085041">ToolNode (tool execution)</text>
+
+  <rect x="100" y="1468" width="24" height="16" rx="4" fill="#FAECE7" stroke="#F0997B" stroke-width="1"/>
+  <text x="134" y="1481" font-size="12" fill="#712B13">Approval gate (interrupt)</text>
+
+  <rect x="100" y="1496" width="24" height="16" rx="4" fill="#E6F1FB" stroke="#85B7EB" stroke-width="1"/>
+  <text x="134" y="1509" font-size="12" fill="#0C447C">Infrastructure node</text>
+
+  <!-- Arrow types -->
+  <line x1="460" y1="1420" x2="510" y2="1420" stroke="#534AB7" stroke-width="2" stroke-dasharray="8,4"/>
+  <text x="520" y="1425" font-size="12" fill="#3C3489">ReAct loop (agent ↔ ToolNode cycle)</text>
+
+  <line x1="460" y1="1448" x2="510" y2="1448" stroke="#534AB7" stroke-width="1" stroke-dasharray="5,3"/>
+  <text x="520" y="1453" font-size="12" fill="#534AB7">Conditional routing</text>
+
+  <line x1="460" y1="1476" x2="510" y2="1476" stroke="#0F6E56" stroke-width="1.5"/>
+  <text x="520" y="1481" font-size="12" fill="#0F6E56">Approved / Tier 0 direct path</text>
+
+  <line x1="460" y1="1504" x2="510" y2="1504" stroke="#A32D2D" stroke-width="1" stroke-dasharray="5,3"/>
+  <text x="520" y="1509" font-size="12" fill="#A32D2D">Rejection path -> agent (suggest alternatives)</text>
+
+  <!-- Dynamic design note -->
+  <rect x="100" y="1550" width="1000" height="72" rx="10" fill="#FAEEDA" stroke="#FAC775" stroke-width="1"/>
+  <text x="600" y="1576" text-anchor="middle" font-size="14" font-weight="700" fill="#633806">Dynamic design principles</text>
+  <text x="600" y="1598" text-anchor="middle" font-size="12" fill="#854F0B">Tools auto-registered from adapters.yaml · No hardcoded tool names in state or system prompt</text>
+  <text x="600" y="1616" text-anchor="middle" font-size="12" fill="#854F0B">bind_tools() passes schema to LLM automatically · New adapter = YAML config only, zero code changes</text>
+
+  <!-- ============ MARKERS ============ -->
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M2 1.5L8 5L2 8.5" fill="none" stroke="#8a90a0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="ap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M2 1.5L8 5L2 8.5" fill="none" stroke="#534AB7" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="ap2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M2 1.5L8 5L2 8.5" fill="none" stroke="#534AB7" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M2 1.5L8 5L2 8.5" fill="none" stroke="#0F6E56" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="ac" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M2 1.5L8 5L2 8.5" fill="none" stroke="#993C1D" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M2 1.5L8 5L2 8.5" fill="none" stroke="#A32D2D" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+</svg>

@@ -8,52 +8,30 @@ GovOn은 행정 업무를 보조하는 **에이전틱 CLI 셸**이다. 사용자
 <!-- DORA-BADGES:START -->
 ![DORA Grade](https://img.shields.io/badge/DORA-Elite-brightgreen)
 ![Deploy Freq](https://img.shields.io/badge/Deploy_Freq-30%2Fweek-blue)
-![Lead Time](https://img.shields.io/badge/Lead_Time-2.0h-brightgreen)
-![CFR](https://img.shields.io/badge/CFR-27.0%2525-yellow)
+![Lead Time](https://img.shields.io/badge/Lead_Time-1.4h-brightgreen)
+![CFR](https://img.shields.io/badge/CFR-27.7%2525-yellow)
 ![MTTR](https://img.shields.io/badge/MTTR-0.0h-brightgreen)
 <!-- DORA-BADGES:END -->
 
 ## 아키텍처
 
-```mermaid
-flowchart LR
-    subgraph CLI["CLI Layer"]
-        A["govon CLI"] -->|"query"| B["GovOnClient"]
-        B -->|"SSE stream"| C["Streaming Status"]
-        B -->|"approve/reject"| D["Approval UI"]
-    end
+> ReAct + ToolNode 기반 v4 아키텍처. LLM이 자율적으로 도구를 선택하며, 정적 planner/executor를 제거했다.
 
-    subgraph API["FastAPI Runtime"]
-        E["/v2/agent/stream"] --> F["LangGraph StateGraph"]
-    end
-
-    subgraph Graph["LangGraph Approval-Gated Runtime"]
-        G["session_load"] --> H["planner"]
-        H --> I["approval_wait"]
-        I -->|"approved"| J["tool_execute"]
-        I -->|"rejected"| L["persist"]
-        J --> K["synthesis"]
-        K --> L
-    end
-
-    subgraph Model["EXAONE 4.0-32B-AWQ — vLLM Multi-LoRA"]
-        M["Base Model"] -->|"tool calling"| H
-        N["LoRA #1 civil-adapter"] --> J
-        O["LoRA #2 legal-adapter"] --> J
-    end
-
-    B --> E
-    F --> G
-```
+<p align="center">
+  <a href="https://govon-org.github.io/GovOn/govon-tobe-architecture.svg">
+    <img src="docs/architecture/govon-tobe-architecture.svg" alt="GovOn TO-BE Architecture" width="100%"/>
+  </a>
+</p>
 
 ### 모델 구성
 
-| 역할 | 모델 | LoRA | 용도 |
-|---|---|---|---|
-| Planner | EXAONE 4.0-32B-AWQ | 없음 (베이스) | 도구 선택, 실행 계획 (네이티브 tool calling) |
-| 민원답변 초안 | EXAONE 4.0-32B-AWQ | **civil-adapter** (r16) | `draft_response` capability |
-| 법률 근거 인용 | EXAONE 4.0-32B-AWQ | [**legal-adapter**](https://huggingface.co/siwo/govon-legal-adapter) (r16) | `draft_response` 후속 근거 보강 |
-| 검색/조회 | EXAONE 4.0-32B-AWQ | 없음 | `rag_search`, `api_lookup` |
+베이스 LLM **EXAONE 4.0-32B-AWQ** 단일 모델이 사용자 쿼리의 의도를 분석하고 `tool_call`을 자율 결정한다. 어댑터 도구가 호출되면 해당 LoRA를 per-request로 attach하여 추론한다.
+
+| 구성 요소 | LoRA | tool_call 시 동작 |
+|---|---|---|
+| 베이스 모델 (EXAONE 4.0-32B-AWQ) | 없음 | 의도 분석 · `bind_tools()` · ReAct 루프 · Tier 0 도구 실행 |
+| [**civil-adapter**](https://huggingface.co/umyunsang/govon-civil-adapter) (r16) | 74K 민원-답변 쌍 학습 | `public_admin_adapter` tool_call 시 per-request attach |
+| [**legal-adapter**](https://huggingface.co/siwo/govon-legal-adapter) (r16) | 270K 법률 문서 학습 | `legal_adapter` tool_call 시 per-request attach |
 
 ## 데이터 파이프라인
 
@@ -96,42 +74,24 @@ flowchart LR
 
 ## LangGraph Agent Flow
 
-```mermaid
-stateDiagram-v2
-    [*] --> session_load : START
-    session_load --> planner : load context
-    planner --> approval_wait : ToolPlan
-
-    state approval_wait {
-        [*] --> waiting : interrupt()
-        waiting --> approved : approved
-        waiting --> rejected : rejected
-    }
-
-    approval_wait --> tool_execute : approved
-    approval_wait --> persist : rejected
-
-    state tool_execute {
-        [*] --> rag_search : Base Model
-        rag_search --> api_lookup : Base Model
-        api_lookup --> draft_response : LoRA civil
-        api_lookup --> draft_response : LoRA legal (근거 보강)
-    }
-
-    tool_execute --> synthesis
-    synthesis --> persist
-    persist --> [*] : END
+```
+START → session_load → agent → [route_agent]
+     ├── (no tool_calls)   → persist → END
+     ├── (all Tier 0)      → tools → agent → ...  (ReAct loop)
+     └── (needs approval)  → approval_wait → [route_after_approval]
+                                 ├── (approved) → tools → agent → ...
+                                 └── (rejected) → agent → ...  (suggest alternatives)
 ```
 
 ## 현재 제품 기준
 
 - 진입점은 웹이 아니라 `govon` 대화형 CLI 셸
 - 내부 runtime은 로컬 FastAPI daemon 또는 원격 서버 (`GOVON_RUNTIME_URL`)
-- LangGraph state graph 안에서 planner LLM이 의도 파악, 작업 계획, tool 선택 담당
-- 도구 선택은 EXAONE 4.0의 네이티브 tool calling으로 수행 (CI에서만 regex fallback)
-- 민원 답변 작성 시 civil-adapter LoRA, 근거 보강 시 legal-adapter LoRA를 per-request attach
-- tool 실행은 작업 단위 승인 후 진행
-- 근거/출처는 기본 출력이 아니라 후속 증강 작업으로 처리
+- LangGraph ReAct 루프에서 agent LLM이 자율적으로 도구 호출을 결정
+- 도구 선택은 EXAONE 4.0의 `bind_tools()` + 네이티브 tool calling으로 수행
+- Tier 0 도구(검색/분석)는 자동 실행, Tier 1 도구(어댑터)는 사용자 승인 후 실행
+- 민원 답변 작성 시 `public_admin_adapter`, 법률 근거 시 `legal_adapter` LoRA tool 사용
+- 거부 시 agent가 대안을 제시하는 루프 구조
 - 서빙은 HuggingFace Spaces ZeroGPU 또는 전용 GPU Space
 
 상세 기준 문서는 [docs/architecture/GovOn-shell-mvp-architecture.md](docs/architecture/GovOn-shell-mvp-architecture.md)다.
@@ -140,44 +100,40 @@ stateDiagram-v2
 
 포함:
 
-- 자연어 기반 CLI 셸
-- 로컬 daemon 자동 기동 및 재연결
-- 원격 서버 연결 (`GOVON_RUNTIME_URL`)
-- 민원 답변 작성 (civil-adapter LoRA)
-- 법적 근거 인용 (legal-adapter LoRA)
-- 외부 API lookup
-- 로컬 RAG 검색
-- 작업 단위 승인 UI
-- SQLite 기반 세션 resume
-- 후속 근거/출처 증강
+- 자연어 기반 CLI 셸 + 로컬 daemon / 원격 서버 연결
+- ReAct 루프 기반 LLM 자율 도구 선택 (`bind_tools`)
+- Tier 0 자동 실행 도구: `rag_search`, `api_lookup`, `stats_lookup`, `keyword_analyzer`, `demographics_lookup`, `issue_detector`
+- Tier 1 승인 필요 도구: `public_admin_adapter` (민원 답변 LoRA), `legal_adapter` (법률 근거 LoRA)
+- Human-in-the-loop 승인 게이트 (`interrupt()` + approve/reject)
+- 거부 시 agent 대안 제시 루프
+- `adapters.yaml` 기반 동적 도구 등록 (코드 변경 없이 어댑터 추가)
+- LangGraph checkpointer 기반 세션 resume
 
 제외:
 
 - 공문서 작성
-- 분류 기능
 - 웹/앱 제품화
 
 ## 사용자 흐름
 
-1. 사용자가 `govon`을 실행한다.
-2. CLI가 로컬 daemon을 자동 기동하거나 기존 daemon에 재연결한다.
-3. 사용자가 자연어로 업무를 요청한다.
-4. LangGraph planner node가 이번 턴의 한 작업과 필요한 tool 조합을 구조화한다.
-5. 시스템이 쉬운 설명과 함께 `승인 / 거절` UI를 보여준다.
-6. 승인되면 graph executor가 필요한 여러 tool과 adapter를 묶어서 실행한다.
-7. 결과는 `근거 요약 -> 최종 초안` 순서로 출력한다.
-8. 사용자가 후속으로 근거를 요청하면 RAG/API를 다시 사용해 기존 답변 아래에 근거 섹션을 추가한다.
-9. 종료 시 세션 ID를 보여주고, `govon --session <id>`로 재개한다.
+1. 사용자가 `govon`을 실행하면 CLI가 로컬 daemon에 연결한다.
+2. 사용자가 자연어로 업무를 요청한다.
+3. `session_load` 노드가 기존 대화 컨텍스트를 복원한다.
+4. `agent` 노드(LLM + `bind_tools`)가 요청을 분석하여 도구 호출 또는 직접 답변을 결정한다.
+5. Tier 0 도구(검색/분석)만 호출되면 `ToolNode`가 즉시 병렬 실행하고 결과를 agent에 반환한다 (ReAct loop).
+6. Tier 1 도구(어댑터)가 포함되면 `approval_wait`에서 `interrupt()` — 사용자에게 승인/거절 UI를 보여준다.
+7. 승인 시 `ToolNode`가 실행하고 agent로 재진입, 거절 시 agent가 대안을 제시한다.
+8. agent가 충분한 정보를 모으면 최종 답변을 직접 작성한다 (tool_calls 없음 → `persist` → END).
+9. `persist` 노드가 대화 턴과 evidence를 DB에 저장하고 세션 ID를 반환한다.
 
 ## 문서
 
-- 제품 아키텍처: [docs/architecture/GovOn-shell-mvp-architecture.md](docs/architecture/GovOn-shell-mvp-architecture.md)
-- 오케스트레이션 워크플로우: [docs/architecture/WORKFLOW-orchestrator-tool-calling.md](docs/architecture/WORKFLOW-orchestrator-tool-calling.md)
+- 아키텍처 다이어그램: [TO-BE Architecture SVG](https://govon-org.github.io/GovOn/govon-tobe-architecture.svg)
 - ADR: [docs/adr/README.md](docs/adr/README.md)
 - PRD: [docs/prd.md](docs/prd.md)
 - WBS: [docs/wbs.md](docs/wbs.md)
 - 공식 문서: [docs/official](docs/official)
-- 아키텍처 다이어그램: [GitHub Discussion #484](https://github.com/GovOn-Org/GovOn/discussions/484)
+- v3 아키텍처 아카이브: [docs/archive/v3-planner-era/](docs/archive/v3-planner-era/)
 
 ## GitHub 이슈 구조
 

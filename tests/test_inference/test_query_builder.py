@@ -1,10 +1,6 @@
 """context-aware query builder 단위 테스트."""
 
-from src.inference.query_builder import (
-    build_query_variants,
-    build_runtime_query_context,
-    resolve_tool_query,
-)
+from src.inference.query_builder import build_runtime_query_context
 from src.inference.session_context import SessionContext
 
 
@@ -26,50 +22,3 @@ class TestBuildRuntimeQueryContext:
         assert context["previous_assistant_response"] == "이전 초안 답변"
         assert "api_lookup" in context["recent_tool_summary"]
         assert "count 3" in context["recent_tool_summary"]
-
-
-class TestBuildQueryVariants:
-    def test_follow_up_queries_include_original_question_and_existing_draft(self):
-        context = {
-            "previous_user_query": "도로 포장이 파손되어 위험합니다",
-            "previous_assistant_response": "도로 보수 접수를 진행하겠습니다.",
-            "recent_tool_summary": "api_lookup 도로 포장 파손 count 2",
-        }
-
-        variants = build_query_variants(
-            "이 답변의 근거를 붙여줘",
-            tool_names=["api_lookup", "draft_response"],
-            context=context,
-        )
-
-        assert "도로 포장이 파손되어 위험합니다" in variants["api_lookup"]
-        assert "도로 보수 접수를 진행하겠습니다." in variants["api_lookup"]
-        assert "유사 민원 사례 통계 최근 이슈" in variants["api_lookup"]
-
-    def test_query_variants_clip_long_history(self):
-        long_assistant = "기존 초안 " + ("상세 설명 " * 80)
-        context = {
-            "previous_user_query": "원래 민원 요청",
-            "previous_assistant_response": long_assistant,
-            "recent_tool_summary": "",
-        }
-
-        variants = build_query_variants(
-            "좀 더 정중하게 수정해줘",
-            tool_names=["api_lookup", "draft_response"],
-            context=context,
-        )
-
-        assert len(variants["api_lookup"]) <= 480
-        assert long_assistant not in variants["api_lookup"]
-
-    def test_resolve_tool_query_uses_variant_only_for_registered_tool(self):
-        context = {
-            "query": "원본 요청",
-            "query_variants": {
-                "api_lookup": "원본 요청 유사 민원 사례",
-            },
-        }
-
-        assert resolve_tool_query("api_lookup", context) == "원본 요청 유사 민원 사례"
-        assert resolve_tool_query("draft_response", context) == "원본 요청"

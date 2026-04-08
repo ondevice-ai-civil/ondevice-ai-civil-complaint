@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'site/static/**'
+      - 'docs/architecture/*.svg'
       - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
 
@@ -28,6 +29,9 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v6
+
+      - name: Sync architecture SVGs to static site
+        run: cp -f docs/architecture/*.svg site/static/ 2>/dev/null || true
 
       - uses: actions/upload-pages-artifact@v3
         with:

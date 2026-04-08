@@ -43,8 +43,8 @@ GovOn MVP는 이 문제를 다음 방식으로 해결한다.
 - 민원 분류 기능
 - 웹 UI 기반 업무 수행
 - 승인 없는 완전 자율 에이전트
-- 정규식/패턴 기반 business tool router 유지
-- 분산형 복잡한 graph checkpoint 시스템
+- 정적 planner / executor / synthesis 노드 구조
+- 정규식/패턴 기반 business tool router
 
 ---
 
@@ -74,28 +74,26 @@ GovOn MVP는 다음 구조를 가진다.
    - FastAPI 기반 로컬 데몬
    - 모델, tool, 세션, RAG를 단일 ownership으로 관리
 
-3. **Approval-Gated Task Loop**
-   - LangGraph state graph 위에서 요청을 한 작업으로 정리
-   - planner LLM이 tool 선택과 실행 순서를 구조화
-   - 실행 전 승인 요청
-   - 승인된 경우에만 tool 실행
+3. **ReAct Agent Loop**
+   - LangGraph StateGraph 위에서 agent 노드가 자율적으로 도구 선택
+   - `bind_tools()`로 LLM에 도구 스키마 전달, 네이티브 tool_call로 결정
+   - Tier 0 도구(검색/분석)는 자동 실행, Tier 1 도구(어댑터)는 승인 후 실행
+   - 거부 시 agent가 대안을 제시하는 루프 구조
 
-4. **Execution Layer**
-   - base model
-   - civil-response adapter
-   - unified `api_lookup`
-   - local `rag_search`
-   - evidence augmentation (follow-up)
+4. **Tool Layer**
+   - Tier 0: `rag_search`, `api_lookup`, `stats_lookup`, `keyword_analyzer`, `demographics_lookup`, `issue_detector`
+   - Tier 1: `public_admin_adapter` (civil LoRA), `legal_adapter` (legal LoRA)
+   - `adapters.yaml` 기반 동적 도구 등록
 
 ---
 
 ## 6. Technical Considerations (기술적 고려사항)
 - **FastAPI Local Daemon**: CLI와 모델/도구 실행을 분리해 데몬 재사용과 세션 지속성을 확보한다.
-- **LangGraph Agent Runtime**: planner, approval interrupt, tool executor, synthesis를 bounded state graph로 고정한다.
-- **Model-Driven Tool Selection**: 업무 요청의 도구 선택은 LLM이 session context와 tool metadata를 읽고 결정하며, 정규식 라우터는 shell control 외 정본이 아니다.
+- **LangGraph Agent Runtime**: agent, approval_wait, ToolNode, persist를 StateGraph로 구성하고 ReAct 루프로 동작한다.
+- **Model-Driven Tool Selection**: 베이스 LLM이 `bind_tools()`로 전달받은 도구 스키마를 읽고 자율적으로 `tool_call`을 결정한다.
 - **Approval-Gated Orchestration**: 자동 tool 연쇄 실행보다 사용자 신뢰와 예측 가능성을 우선한다.
-- **Single Task Adapter Use**: 민원 답변 작성 단계에서만 adapter를 attach한다.
-- **SQLite Session Store**: transcript와 tool log를 단순하고 재개 가능한 형태로 보관한다.
+- **Per-Request LoRA Attach**: 어댑터 도구(`public_admin_adapter`, `legal_adapter`) tool_call 시에만 해당 LoRA를 attach한다.
+- **Checkpointer Session**: LangGraph checkpointer로 messages를 영속화하고, persist 노드에서 evidence를 DB에 저장한다.
 
 ---
 
@@ -107,6 +105,5 @@ GovOn MVP는 다음 구조를 가진다.
 ---
 
 ## 8. Appendix (부록)
-- [GovOn Shell MVP Architecture](architecture/GovOn-shell-mvp-architecture.md)
-- [ADR-006: GovOn CLI Shell + Local Daemon MVP Architecture](architecture/ADR-006-agentic-architecture.md)
-- [WORKFLOW: 에이전트 오케스트레이터 워크플로우](architecture/WORKFLOW-orchestrator-tool-calling.md)
+- [TO-BE Architecture SVG](https://govon-org.github.io/GovOn/govon-tobe-architecture.svg)
+- [v3 아키텍처 아카이브](archive/v3-planner-era/) — 이전 planner 기반 문서 보관

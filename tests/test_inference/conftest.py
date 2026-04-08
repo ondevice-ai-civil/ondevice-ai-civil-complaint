@@ -2,11 +2,56 @@
 테스트 공통 fixture.
 """
 
+import types
 import sys
 from unittest.mock import MagicMock
 
-# faiss 모듈이 설치되지 않은 환경에서도 테스트가 동작하도록 mock 등록
-# setdefault를 사용하여 실제 faiss를 덮어쓰지 않음
+# database.py 모듈 레벨의 PostgreSQL engine 생성을 우회
+_mock_database = types.ModuleType("src.inference.db.database")
+_mock_database.engine = MagicMock()
+_mock_database.SessionLocal = MagicMock()
+_mock_database.get_db = MagicMock()
+sys.modules["src.inference.db.database"] = _mock_database
+
+# rank_bm25, konlpy: bm25_indexer.py의 모듈 레벨 import(rank_bm25)와
+# KoreanTokenizer 초기화(konlpy)에 필요.
+# setdefault를 사용하여 실제 모듈이 있으면 덮어쓰지 않는다.
+_konlpy_mock = MagicMock()
+sys.modules.setdefault("konlpy", _konlpy_mock)
+sys.modules.setdefault("konlpy.tag", _konlpy_mock)
+sys.modules.setdefault("rank_bm25", MagicMock())
+
+# ---------------------------------------------------------------------------
+# vllm / sentence_transformers / retriever — E2E 테스트에서 공통 사용
+# ---------------------------------------------------------------------------
+_vllm_mock = MagicMock()
+_vllm_mock.AsyncLLM = MagicMock()
+_vllm_mock.SamplingParams = MagicMock()
+sys.modules.setdefault("vllm", _vllm_mock)
+sys.modules.setdefault("vllm.engine", _vllm_mock)
+sys.modules.setdefault("vllm.engine.arg_utils", _vllm_mock)
+sys.modules.setdefault("vllm.engine.async_llm_engine", _vllm_mock)
+sys.modules.setdefault("vllm.sampling_params", _vllm_mock)
+sys.modules.setdefault("sentence_transformers", MagicMock())
+
+_mock_stabilizer = types.ModuleType("src.inference.vllm_stabilizer")
+_mock_stabilizer.apply_transformers_patch = MagicMock()
+if "src.inference.vllm_stabilizer" not in sys.modules:
+    sys.modules["src.inference.vllm_stabilizer"] = _mock_stabilizer
+    # patch("src.inference.vllm_stabilizer.xxx")가 작동하려면
+    # 부모 모듈(src.inference)에도 속성으로 등록해야 한다.
+    import src.inference as _inf_pkg
+
+    if not hasattr(_inf_pkg, "vllm_stabilizer"):
+        _inf_pkg.vllm_stabilizer = _mock_stabilizer  # type: ignore[attr-defined]
+
+# NOTE: src.inference.retriever는 여기서 mock하지 않음.
+# retriever 단위 테스트(test_retriever.py)가 실제 모듈을 사용하므로,
+# retriever mock이 필요한 E2E 테스트에서 개별적으로 처리한다.
+
+# faiss 모듈이 설치되지 않은 환경에서도 DB 테스트가 동작하도록 mock 등록
+# 이미 실제 faiss가 로드된 경우에는 mock하지 않는다
+# setdefault를 사용하여 실제 faiss를 덮어쓰지 않음 (직접 대입 대신)
 _faiss_module = sys.modules.get("faiss")
 _faiss_is_real = _faiss_module is not None and not isinstance(_faiss_module, MagicMock)
 if not _faiss_is_real:

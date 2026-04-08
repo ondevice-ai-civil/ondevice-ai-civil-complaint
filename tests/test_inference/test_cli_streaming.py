@@ -339,15 +339,14 @@ class TestStreamingStatusDisplay:
     """StreamingStatusDisplay 및 노드 메시지 매핑 테스트."""
 
     def test_node_status_messages_cover_all_nodes(self):
-        """NODE_STATUS_MESSAGES에 6개 필수 노드가 모두 포함된다."""
+        """NODE_STATUS_MESSAGES에 필수 노드가 모두 포함된다."""
         from src.cli.renderer import NODE_STATUS_MESSAGES
 
         required_nodes = {
             "session_load",
-            "planner",
+            "agent",
             "approval_wait",
-            "tool_execute",
-            "synthesis",
+            "tools",
             "persist",
         }
         assert required_nodes.issubset(set(NODE_STATUS_MESSAGES.keys()))
@@ -356,9 +355,9 @@ class TestStreamingStatusDisplay:
         """알려진 노드 이름에 대해 올바른 메시지를 반환한다."""
         from src.cli.renderer import get_node_message
 
-        assert get_node_message("planner") == "계획 수립 중…"
-        assert get_node_message("tool_execute") == "도구 실행 중…"
-        assert get_node_message("synthesis") == "답변 생성 중…"
+        assert get_node_message("agent") == "에이전트 추론 중…"
+        assert get_node_message("tools") == "도구 실행 중…"
+        assert get_node_message("persist") == "저장 중…"
 
     def test_get_node_message_returns_fallback_for_unknown(self):
         """알 수 없는 노드 이름에 대해 기본 메시지를 반환한다."""

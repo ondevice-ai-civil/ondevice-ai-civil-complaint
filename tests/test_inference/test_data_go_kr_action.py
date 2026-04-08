@@ -8,7 +8,7 @@ import pytest
 from src.inference.actions.data_go_kr import MinwonAnalysisAction
 from src.inference.agent_loop import AgentLoop
 from src.inference.session_context import SessionContext
-from src.inference.tool_router import ToolRouter, ToolType
+from src.inference.tool_router import ToolType
 
 # 실제 API 응답 구조 (2026-04-06 테스트 기준 — 최상위 배열)
 _SAMPLE_ITEMS = [
@@ -112,19 +112,6 @@ class TestMinwonAnalysisAction:
         assert query == prepared
 
 
-class TestToolRouterApiLookup:
-    def setup_method(self):
-        self.router = ToolRouter()
-
-    def test_lookup_route_for_statistics(self):
-        plan = self.router.plan("민원 통계와 최근 이슈를 조회해줘")
-        assert plan.tool_names == ["api_lookup"]
-
-    def test_evidence_request_keeps_api_lookup_in_plan(self):
-        plan = self.router.plan("이 답변의 출처를 붙여줘")
-        assert ToolType.API_LOOKUP.value in plan.tool_names
-
-
 class TestAgentLoopApiLookupIntegration:
     @pytest.mark.asyncio
     async def test_agent_loop_with_api_lookup_and_draft(self):
@@ -141,7 +128,7 @@ class TestAgentLoopApiLookupIntegration:
         loop = AgentLoop(
             tool_registry={
                 ToolType.API_LOOKUP: mock_api_lookup,
-                ToolType.DRAFT_RESPONSE: mock_draft,
+                "draft_response": mock_draft,
             }
         )
         session = SessionContext()
@@ -149,6 +136,6 @@ class TestAgentLoopApiLookupIntegration:
         trace = await loop.run("민원 답변 작성", session)
 
         assert trace.error is None
-        assert trace.plan.tool_names == ["api_lookup", "draft_response"]
+        assert trace.plan_tools == ["api_lookup", "draft_response"]
         assert trace.tool_results[0].tool == ToolType.API_LOOKUP
         assert "최종 초안" in trace.final_text

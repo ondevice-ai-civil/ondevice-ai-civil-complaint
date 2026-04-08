@@ -128,13 +128,12 @@ START → session_load → agent → [route_agent]
 
 ## 문서
 
-- 제품 아키텍처: [docs/architecture/GovOn-shell-mvp-architecture.md](docs/architecture/GovOn-shell-mvp-architecture.md)
-- 오케스트레이션 워크플로우: [docs/architecture/WORKFLOW-orchestrator-tool-calling.md](docs/architecture/WORKFLOW-orchestrator-tool-calling.md)
+- 아키텍처 다이어그램: [TO-BE Architecture SVG](https://govon-org.github.io/GovOn/govon-tobe-architecture.svg)
 - ADR: [docs/adr/README.md](docs/adr/README.md)
 - PRD: [docs/prd.md](docs/prd.md)
 - WBS: [docs/wbs.md](docs/wbs.md)
 - 공식 문서: [docs/official](docs/official)
-- 아키텍처 다이어그램: [TO-BE Architecture SVG](https://govon-org.github.io/GovOn/govon-tobe-architecture.svg)
+- v3 아키텍처 아카이브: [docs/archive/v3-planner-era/](docs/archive/v3-planner-era/)
 
 ## GitHub 이슈 구조
 

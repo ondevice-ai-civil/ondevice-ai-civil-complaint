@@ -3,7 +3,7 @@
 
 **프로젝트 기간**: R1 기준 16주  
 **작성일**: 2026-04-03  
-**기준 문서**: `docs/architecture/GovOn-shell-mvp-architecture.md`
+**기준 문서**: [TO-BE Architecture SVG](https://govon-org.github.io/GovOn/govon-tobe-architecture.svg)
 
 ---
 
@@ -13,8 +13,8 @@
 |----------|-------------|
 | WS-1 | Civil-response adapter |
 | WS-2 | Local daemon runtime + SQLite session store |
-| WS-3 | LangGraph tool surface + `api_lookup` + local RAG + evidence augmentation |
-| WS-4 | LangGraph approval-gated agent runtime |
+| WS-3 | LangGraph ToolNode + Tier 0/1 도구 + local RAG |
+| WS-4 | LangGraph ReAct agent + approval gate runtime |
 | WS-5 | Interactive CLI shell |
 | WS-6 | 설치/패키징 |
 | WS-7 | 테스트 및 품질 검증 |
@@ -41,11 +41,11 @@
 
 ### 1.3 Tool 경계 정의
 
-- [ ] planner가 읽는 tool metadata / capability contract 정의
-- [ ] unified `api_lookup` capability contract 정의
-- [ ] local `rag_search` capability contract 정의
-- [ ] `draft_response` output contract 정의
-- [ ] approval payload / plan schema 정의
+- [ ] `adapters.yaml` 기반 동적 도구 등록 구조 정의
+- [ ] Tier 0 도구 (`rag_search`, `api_lookup`, `stats_lookup` 등) contract 정의
+- [ ] Tier 1 어댑터 도구 (`public_admin_adapter`, `legal_adapter`) contract 정의
+- [ ] `bind_tools()` 스키마 → LLM tool_call 연동 정의
+- [ ] approval_wait interrupt payload 정의
 
 ### Milestone 1 완료 기준
 
@@ -68,25 +68,24 @@
 
 ### 2.2 Tool layer
 
-- [ ] LangGraph에서 소비하는 tool metadata / executor binding 구현
-- [ ] external API wrapper 구현
+- [ ] StructuredTool 팩토리 (`build_search_tools`, `build_analysis_tools`, `build_adapter_tools`) 구현
+- [ ] `adapters.yaml`에서 어댑터 도구 자동 등록 구현
 - [ ] local RAG ingestion / retrieval 구현
-- [ ] mixed evidence normalization 구현
-- [ ] evidence summary -> final draft synthesis 구현
+- [ ] `get_tool_approval_map()` — requires_approval 메타데이터 기반 Tier 분류 구현
 
 ### 2.3 Runtime loop
 
-- [ ] planner LLM 기반 task planning 구현
-- [ ] 사람말 approval prompt 구현
-- [ ] approval interrupt 후 다중 tool 묶음 실행 구현
-- [ ] 거절 시 완전 idle 복귀 동작 구현
+- [ ] agent 노드: `bind_tools()` + ReAct 루프 구현
+- [ ] `route_agent()` — tool_calls 유무 및 Tier 분류 라우팅 구현
+- [ ] `approval_wait` 노드: `interrupt()` + approve/reject 구현
+- [ ] `route_after_approval()` — 승인 시 ToolNode, 거절 시 agent 재진입 구현
 
 ### Milestone 2 완료 기준
 
 - [ ] 민원 답변 초안 생성이 동작한다.
-- [ ] planner가 session context를 읽고 도구를 스스로 선택한다.
-- [ ] tool 실행 전 승인 절차가 동작한다.
-- [ ] adapter attach가 작성 task에서만 동작한다.
+- [ ] agent가 `bind_tools()`로 전달받은 스키마를 읽고 자율적으로 도구를 선택한다.
+- [ ] Tier 1 도구 실행 전 승인 절차가 동작한다.
+- [ ] 거절 시 agent가 대안을 제시한다.
 
 ---
 
@@ -99,11 +98,10 @@
 - [ ] 상태 표시 및 approval UI 구현
 - [ ] `govon --session <id>` 재개 구현
 
-### 3.2 Evidence augmentation
+### 3.2 Evidence 수집
 
-- [ ] 초안 작성 후 근거 추가 요청 처리 구현
-- [ ] 원 질문 + 생성 답변 기준 재검색 구현
-- [ ] 기존 답변 아래 `근거/출처` 섹션 추가 구현
+- [ ] ToolMessage에서 evidence 자동 추출 구현 (persist 노드)
+- [ ] 후속 질문 시 agent가 ReAct 루프로 검색 도구 재호출 구현
 - [ ] RAG provenance를 `파일경로 + 페이지`로 정규화
 
 ### 3.3 RAG validation
@@ -115,7 +113,7 @@
 ### Milestone 3 완료 기준
 
 - [ ] CLI에서 세션 시작/재개/종료가 가능하다.
-- [ ] 후속 근거 보강 요청이 동작한다.
+- [ ] 후속 질문 시 agent가 검색 도구를 재호출하여 근거를 보강한다.
 - [ ] 샘플 문서 기반 RAG가 mixed-format에서 동작한다.
 
 ---
@@ -132,7 +130,7 @@
 
 - [ ] approval-gated E2E 테스트
 - [ ] session resume 테스트
-- [ ] evidence augmentation 테스트
+- [ ] ReAct 루프 evidence 수집 테스트
 - [ ] latency / stability benchmark
 
 ### 4.3 Documentation and delivery
@@ -167,9 +165,9 @@ Architecture freeze
 |--------|------|------|
 | adapter 품질 불안정 | 초안 품질 편차 | 데이터 검증 범위를 민원 답변 중심으로 축소 |
 | RAG 원문 부족 | 근거 보강 품질 저하 | 샘플 문서로 parser/retrieval 먼저 검증 후 운영 문서로 확장 |
-| planner hallucination 또는 과도한 tool 선택 | 승인 설명 품질 저하 및 오동작 | 구조화된 plan schema, tool metadata, approval gate, E2E 회귀 테스트로 통제 |
+| agent의 불필요한 도구 호출 | 승인 설명 품질 저하 및 오동작 | Tier 0/1 분류, approval gate, 도구 description 정밀화, E2E 회귀 테스트로 통제 |
 | 승인 UX 미완성 | 사용자 신뢰 저하 | approval-gated E2E를 MVP 핵심 acceptance로 둠 |
-| daemon/session 불안정 | resume 실패 | SQLite 세션 복원 테스트를 필수화 |
+| daemon/session 불안정 | resume 실패 | LangGraph checkpointer 세션 복원 테스트를 필수화 |
 
 ---
 

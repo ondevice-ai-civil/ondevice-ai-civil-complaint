@@ -200,8 +200,11 @@ class TestRateLimit:
 class TestVerifyApiKey:
     @pytest.mark.asyncio
     async def test_skips_when_no_api_key_set(self):
-        """API_KEY 미설정 시 인증을 건너뛴다."""
-        with patch("src.inference.api_server._API_KEY", None):
+        """API_KEY 미설정 + ALLOW_NO_AUTH 시 인증을 건너뛴다."""
+        with (
+            patch("src.inference.api_server._API_KEY", None),
+            patch("src.inference.api_server._ALLOW_NO_AUTH", True),
+        ):
             result = await verify_api_key(api_key="anything")
             assert result is None
 

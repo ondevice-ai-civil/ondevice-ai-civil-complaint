@@ -22,9 +22,11 @@ from langgraph.prebuilt import ToolNode
 
 from .nodes import (
     make_agent_node,
+    make_agent_node_v3,
     make_approval_wait_node,
     make_persist_node,
     make_session_load_node,
+    make_tools_node_v3,
     route_after_approval,
 )
 from .state import ApprovalStatus, GovOnGraphState
@@ -130,6 +132,80 @@ def build_govon_graph(
     )
     graph.add_edge("tools", "agent")
     graph.add_edge("persist", END)
+
+    # --- 컴파일 ---
+    saver = checkpointer if checkpointer is not None else MemorySaver()
+    return graph.compile(checkpointer=saver)
+
+
+# ---------------------------------------------------------------------------
+# v3 ReAct graph builder
+# ---------------------------------------------------------------------------
+
+
+def _route_agent_v3(state: GovOnGraphState) -> str:
+    """v3 agent 노드 이후 라우팅.
+
+    1. pending_tool_calls 존재 → "tools" (자동 실행)
+    2. pending_tool_calls 비어있음 (final answer 또는 강제 종료) → "synthesize"
+
+    max_iterations 도달 시 강제 종료는 agent_node_v3 내부에서 처리한다.
+    agent가 pending_tool_calls=[]를 반환하면 synthesize로 이동한다.
+
+    현재 모든 도구가 low risk이므로 approval 분기 없음.
+    향후 고위험 도구 추가 시 여기에 분기 조건을 추가한다.
+    """
+    pending = state.get("pending_tool_calls", [])
+    if pending:
+        return "tools"
+    return "synthesize"
+
+
+def build_govon_graph_v3(
+    *,
+    llm,
+    tools: list,
+    session_store: "SessionStore",
+    checkpointer: Optional[object] = None,
+) -> "CompiledStateGraph":
+    """v3 ReAct StateGraph를 구성하고 컴파일한다.
+
+    v2와의 차이:
+    - agent 노드가 iteration_count를 추적하고 max_iterations에서 강제 종료
+    - tools 노드가 tool_call_history에 실행 메타데이터를 기록
+    - approval_wait 노드 없음 (모든 도구 자동 실행)
+    - synthesize 노드가 persist의 역할을 겸함
+
+    Graph topology:
+      START → session_load → agent → [route_agent_v3]
+           ├── (no tool_calls / max_iter)  → synthesize → END
+           └── (tool_calls 존재)            → tools → agent → ...
+    """
+    from langgraph.checkpoint.memory import MemorySaver
+
+    tool_node = ToolNode(tools)
+
+    graph = StateGraph(GovOnGraphState)
+
+    # --- 노드 등록 ---
+    graph.add_node("session_load", make_session_load_node(session_store))
+    graph.add_node("agent", make_agent_node_v3(llm, tools))
+    graph.add_node("tools", make_tools_node_v3(tool_node))
+    graph.add_node("synthesize", make_persist_node(session_store))
+
+    # --- 엣지 ---
+    graph.add_edge(START, "session_load")
+    graph.add_edge("session_load", "agent")
+    graph.add_conditional_edges(
+        "agent",
+        _route_agent_v3,
+        {
+            "tools": "tools",
+            "synthesize": "synthesize",
+        },
+    )
+    graph.add_edge("tools", "agent")  # ReAct 루프 백엣지
+    graph.add_edge("synthesize", END)
 
     # --- 컴파일 ---
     saver = checkpointer if checkpointer is not None else MemorySaver()

@@ -27,6 +27,11 @@ def _merge_dicts(a: Dict[str, Any], b: Dict[str, Any]) -> Dict[str, Any]:
     return merged
 
 
+def _append_list(a: List, b: List) -> List:
+    """리스트를 append하는 reducer (기존 항목 보존)."""
+    return (a or []) + (b or [])
+
+
 class ApprovalStatus(str, Enum):
     """human-in-the-loop 승인 상태."""
 
@@ -61,3 +66,14 @@ class GovOnGraphState(TypedDict, total=False):
 
     # --- 레이턴시 계측 ---
     node_latencies: Annotated[Dict[str, float], _merge_dicts]
+
+    # --- ReAct v3 루프 제어 ---
+    iteration_count: int  # 현재 agent→tools 사이클 횟수 (0부터 시작)
+    max_iterations: int  # 최대 허용 iteration 수 (기본 10)
+
+    # --- v3 도구 호출 메타데이터 ---
+    tool_call_history: Annotated[List[Dict[str, Any]], _append_list]
+    # 각 항목: {"iteration": int, "tool": str, "latency_ms": float, "success": bool, "timestamp": str}
+
+    # --- v3 위험도 기반 승인 정책 ---
+    pending_tool_calls: List[Dict[str, Any]]  # agent가 생성한 tool_calls (OpenAI format)

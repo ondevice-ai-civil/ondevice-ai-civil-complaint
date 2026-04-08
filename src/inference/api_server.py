@@ -62,9 +62,16 @@ _API_KEY = os.getenv("API_KEY")
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
+_ALLOW_NO_AUTH = os.getenv("ALLOW_NO_AUTH", "false").lower() in ("true", "1")
+
+
 async def verify_api_key(api_key: str = Security(_api_key_header)):
     if _API_KEY is None:
-        return
+        if _ALLOW_NO_AUTH:
+            return
+        raise HTTPException(
+            status_code=401, detail="API_KEY가 설정되지 않았습니다. 서버 관리자에게 문의하세요."
+        )
     if api_key != _API_KEY:
         raise HTTPException(status_code=401, detail="유효하지 않은 API 키입니다.")
 
@@ -106,6 +113,18 @@ class _VLLMOutputItem:
         self.text = text
         self.finish_reason = finish_reason
         self.token_ids = token_ids
+
+
+class _StreamChunk:
+    """SSE 스트리밍 청크를 /v1/stream 엔드포인트 인터페이스로 래핑.
+
+    /v1/stream 에서 ``request_output.outputs[0].text``,
+    ``request_output.finished``에 접근하므로 동일한 속성을 제공한다.
+    """
+
+    def __init__(self, text: str, finished: bool) -> None:
+        self.outputs = [type("Output", (), {"text": text})()]
+        self.finished = finished
 
 
 class _VLLMHttpResult:
@@ -295,19 +314,9 @@ class vLLMEngineManager:
             source_type = item.get("source_type", "")
             title = item.get("title", "")
             link = item.get("link_or_path", "")
-
-            if source_type == "api":
-                label = title or "외부 API 결과"
-                if link:
-                    lines.append(f"[{idx}] {label} - {link}")
-                else:
-                    lines.append(f"[{idx}] {label}")
-            else:
-                label = title or "생성 참조"
-                if link:
-                    lines.append(f"[{idx}] {label} - {link}")
-                else:
-                    lines.append(f"[{idx}] {label}")
+            # source_type에 따라 기본 label만 다르고 포맷은 동일
+            label = (title or "외부 API 결과") if source_type == "api" else (title or "생성 참조")
+            lines.append(f"[{idx}] {label} - {link}" if link else f"[{idx}] {label}")
 
         return "\n".join(lines)
 
@@ -557,6 +566,12 @@ class vLLMEngineManager:
             resp = await self._http_client.post("/v1/chat/completions", json=body)
             resp.raise_for_status()
             data = resp.json()
+        except _httpx.TimeoutException as exc:
+            logger.error(f"vLLM HTTP 타임아웃: {exc}")
+            return None
+        except _httpx.HTTPStatusError as exc:
+            logger.error(f"vLLM HTTP {exc.response.status_code}: {exc}")
+            return None
         except Exception as exc:
             logger.error(f"vLLM HTTP 호출 실패: {exc}")
             return None
@@ -571,7 +586,9 @@ class vLLMEngineManager:
         # [|system|]...[|endofturn|], [|user|]...[|endofturn|], [|assistant|]... 파싱
         import re as _re
 
-        parts = _re.split(r"\[\\?\|(\w+)\\?\|]", prompt)
+        # 이스케이프된 토큰은 _escape_special_tokens()에서 이미 처리되어
+        # 이 시점에는 원본 형태 [|role|]로 전달된다.
+        parts = _re.split(r"\[\|(\w+)\|\]", prompt)
         role = None
         for part in parts:
             if part in ("system", "user", "assistant"):
@@ -612,7 +629,12 @@ class vLLMEngineManager:
         request: GenerateRequest,
         request_id: str,
         flags: Optional[FeatureFlags] = None,
-    ) -> Any:
+    ) -> AsyncGenerator:
+        """SSE 스트리밍 응답을 파싱하여 _StreamChunk를 yield하는 async generator를 반환.
+
+        기존 코드가 ``async for request_output in results_stream:``으로 소비하므로
+        context manager가 아닌 async generator로 반환해야 한다.
+        """
         prepared = await self._prepare_civil_response_generation(request, flags)
         if self._http_client is None:
             raise RuntimeError("vLLM 서버에 연결되지 않았습니다.")
@@ -628,7 +650,36 @@ class vLLMEngineManager:
         if prepared.sampling_params.stop:
             body["stop"] = list(prepared.sampling_params.stop)
 
-        return self._http_client.stream("POST", "/v1/chat/completions", json=body)
+        return self._stream_vllm_response(body)
+
+    async def _stream_vllm_response(self, body: dict) -> AsyncGenerator:
+        """vLLM SSE 스트리밍을 파싱하여 _StreamChunk를 yield하는 async generator.
+
+        httpx .stream()은 context manager이므로 직접 ``async for``로 소비할 수 없다.
+        이 메서드가 내부에서 context manager를 관리하고 파싱된 청크를 yield한다.
+        """
+        accumulated_text = ""
+        async with self._http_client.stream("POST", "/v1/chat/completions", json=body) as resp:
+            if resp.status_code != 200:
+                logger.error(f"vLLM 스트리밍 HTTP {resp.status_code}")
+                return
+            async for line in resp.aiter_lines():
+                line = line.strip()
+                if not line.startswith("data:"):
+                    continue
+                data = line[len("data:") :].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data)
+                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    content = delta.get("content", "")
+                    if content:
+                        accumulated_text += content
+                    finish = chunk.get("choices", [{}])[0].get("finish_reason")
+                    yield _StreamChunk(text=accumulated_text, finished=finish is not None)
+                except json.JSONDecodeError:
+                    continue
 
     def _init_agent_loop(self) -> None:
         from src.inference.actions.data_go_kr import MinwonAnalysisAction
@@ -871,39 +922,48 @@ manager = vLLMEngineManager()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """FastAPI lifespan: 모델/인덱스 초기화 및 AsyncSqliteSaver 업그레이드.
+    """FastAPI lifespan: 모델/인덱스 초기화 및 graph 단일 초기화.
 
-    startup 단계에서 AsyncSqliteSaver가 사용 가능하면 graph를 재구성한다.
-    AsyncSqliteSaver는 async 컨텍스트 매니저로 관리하며, shutdown 시 정리한다.
-    AsyncSqliteSaver import 실패 시 _init_graph에서 이미 설정된
-    SqliteSaver(또는 MemorySaver fallback)를 그대로 유지한다.
+    AsyncSqliteSaver가 사용 가능하면 그것으로 한 번만 초기화한다.
+    import 실패 시 SqliteSaver(동기) 또는 MemorySaver로 fallback한다.
+    graph 이중 초기화를 방지하기 위해 _init_graph()를 한 번만 호출한다.
+    shutdown 시 httpx AsyncClient를 반드시 종료하여 leak을 방지한다.
     """
     await manager.initialize()
 
-    # vLLM 서버 연결 후 graph 초기화 (모듈 로드 시점이 아닌 lifespan에서 실행)
-    manager._init_graph()
+    # API_KEY 미설정 경고 (운영 프로필에서 명시적으로 알림)
+    if _API_KEY is None and runtime_config.profile.value not in ("local",):
+        logger.warning("API_KEY 미설정: 운영 환경에서는 반드시 API_KEY 환경변수를 설정하세요.")
 
-    # AsyncSqliteSaver로 graph 재구성 시도 (더 높은 async 성능)
+    # checkpointer 결정 후 graph를 한 번만 초기화 (이중 초기화 방지)
     async_cp_db = str(Path(manager.session_store.db_path).parent / "langgraph_checkpoints.db")
     try:
         from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
         async with AsyncSqliteSaver.from_conn_string(async_cp_db) as async_saver:
-            # 동기 SqliteSaver가 보유하던 connection을 닫아 leak을 방지한다.
-            if manager._sync_checkpointer_conn is not None:
-                try:
-                    manager._sync_checkpointer_conn.close()
-                except Exception:
-                    pass
-                manager._sync_checkpointer_conn = None
+            manager._init_graph(checkpointer=async_saver)
             manager._checkpointer_ctx = async_saver
-            manager._init_graph_with_async_checkpointer(async_saver)
-            logger.info(f"LangGraph checkpointer: AsyncSqliteSaver ({async_cp_db})")
-            yield
-        manager._checkpointer_ctx = None
+            logger.info(f"LangGraph: AsyncSqliteSaver ({async_cp_db})")
+            try:
+                yield
+            finally:
+                manager._checkpointer_ctx = None
+                if manager._http_client:
+                    await manager._http_client.aclose()
+                    logger.info("httpx AsyncClient 종료 완료")
+        return
     except ImportError:
-        logger.info("AsyncSqliteSaver 미설치 — SqliteSaver(동기) 또는 MemorySaver로 실행합니다.")
+        pass
+
+    # fallback: SqliteSaver(동기) 또는 MemorySaver
+    manager._init_graph()
+    logger.info("LangGraph: SqliteSaver(동기) 또는 MemorySaver로 실행합니다.")
+    try:
         yield
+    finally:
+        if manager._http_client:
+            await manager._http_client.aclose()
+            logger.info("httpx AsyncClient 종료 완료")
 
 
 app = FastAPI(
@@ -914,12 +974,15 @@ app = FastAPI(
 
 ALLOWED_ORIGINS = os.getenv("CORS_ORIGINS", "").split(",")
 if ALLOWED_ORIGINS and ALLOWED_ORIGINS[0]:
+    # wildcard(*)와 allow_credentials=True는 CORS 스펙상 공존 불가.
+    # wildcard가 포함된 경우 credentials를 비활성화한다.
+    allow_creds = "*" not in ALLOWED_ORIGINS
     app.add_middleware(
         CORSMiddleware,
         allow_origins=ALLOWED_ORIGINS,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_credentials=allow_creds,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["X-API-Key", "Content-Type", "Accept"],
     )
 
 if _RATE_LIMIT_AVAILABLE and limiter is not None:
@@ -929,17 +992,30 @@ if _RATE_LIMIT_AVAILABLE and limiter is not None:
 
 @app.get("/health")
 async def health():
+    """vLLM 연결 상태를 포함한 헬스 체크.
+
+    내부 경로(session_store.path 등)는 보안상 노출하지 않는다.
+    """
+    vllm_ok = False
+    if manager._http_client:
+        try:
+            resp = await manager._http_client.get("/health", timeout=3.0)
+            vllm_ok = resp.status_code == 200
+        except Exception as exc:
+            logger.debug(f"vLLM health check 실패: {exc}")
+    # SKIP_MODEL_LOAD 환경에서는 vLLM 없이도 healthy
+    status = "healthy" if (vllm_ok or SKIP_MODEL_LOAD) else "degraded"
     return {
-        "status": "healthy",
+        "status": status,
         "profile": runtime_config.profile.value,
         "model": runtime_config.model.model_path,
+        "vllm_connected": vllm_ok,
         "agents_loaded": manager.agent_manager.list_agents() if manager.agent_manager else [],
         "feature_flags": {
             "model_version": manager.feature_flags.model_version,
         },
         "session_store": {
             "driver": "sqlite",
-            "path": manager.session_store.db_path,
         },
     }
 
@@ -1031,6 +1107,15 @@ async def chat_completions(
     messages: list[dict] = body.get("messages", [])
     if not messages:
         raise HTTPException(status_code=422, detail="messages must not be empty.")
+
+    # 첫 번째 이후의 system role 메시지를 제거 (모델 제약 준수)
+    filtered_messages = []
+    for i, msg in enumerate(messages):
+        if msg.get("role") == "system" and i > 0:
+            logger.warning(f"chat_completions: 첫 번째 이후 system role 무시 (index={i})")
+            continue
+        filtered_messages.append(msg)
+    messages = filtered_messages
 
     try:
         max_tokens = int(body.get("max_tokens", 512))
@@ -1462,6 +1547,10 @@ async def v2_agent_approve(
         `/v2/agent/run`에서 반환된 thread_id.
     approved : bool
         True면 tool_execute로 진행, False면 graph가 END로 종료.
+
+    TODO(M7): thread_id, approved 파라미터를 query string에서 request body로 이동하는 것이
+    REST 관례에 부합하나, 기존 클라이언트 호환성을 유지하기 위해 현재 방식을 유지한다.
+    클라이언트 마이그레이션 이후 body 방식으로 전환한다.
     """
     if not manager.graph:
         raise HTTPException(status_code=503, detail="LangGraph graph가 초기화되지 않았습니다.")

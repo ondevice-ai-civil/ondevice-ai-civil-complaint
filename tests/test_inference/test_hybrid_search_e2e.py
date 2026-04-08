@@ -9,35 +9,19 @@ Issue: #154
 
 import sys
 from typing import Any, Dict, List, Optional, Tuple
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# 무거운 외부 의존성 mock (api_server import 전에 등록해야 함)
-# ---------------------------------------------------------------------------
+# heavy-deps mock은 conftest.py에서 처리
+# retriever mock: api_server import 시에만 필요하고, test_retriever.py와
+# 충돌하지 않도록 import 후 즉시 제거한다.
+_retriever_stub = MagicMock()
+with patch.dict(sys.modules, {"src.inference.retriever": _retriever_stub}):
+    from fastapi.testclient import TestClient
 
-_vllm_mock = MagicMock()
-_vllm_mock.AsyncLLM = MagicMock()
-_vllm_mock.SamplingParams = MagicMock()
-sys.modules.setdefault("vllm", _vllm_mock)
-sys.modules.setdefault("vllm.engine", _vllm_mock)
-sys.modules.setdefault("vllm.engine.arg_utils", _vllm_mock)
-sys.modules.setdefault("vllm.engine.async_llm_engine", _vllm_mock)
-sys.modules.setdefault("vllm.sampling_params", _vllm_mock)
-sys.modules.setdefault("sentence_transformers", MagicMock())
-
-_mock_stabilizer = MagicMock()
-_mock_stabilizer.apply_transformers_patch = MagicMock()
-sys.modules.setdefault("src.inference.vllm_stabilizer", _mock_stabilizer)
-
-_mock_retriever_module = MagicMock()
-sys.modules.setdefault("src.inference.retriever", _mock_retriever_module)
-
-from fastapi.testclient import TestClient
-
-from src.inference.api_server import app, manager
-from src.inference.hybrid_search import SearchMode
+    from src.inference.api_server import app, manager
+    from src.inference.hybrid_search import SearchMode
 
 # ---------------------------------------------------------------------------
 # 공통 Fixtures
@@ -96,28 +80,30 @@ def _make_fake_search_results(count: int = 5) -> List[Dict[str, Any]]:
     ]
 
 
+@pytest.fixture
+def setup_hybrid_engine() -> None:
+    """HybridSearchEngine mock 설정 — 여러 테스트 클래스에서 공통 사용."""
+
+    async def fake_search(
+        query: str,
+        index_type: Any,
+        top_k: int = 5,
+        mode: Optional[SearchMode] = None,
+    ) -> Tuple[List[Dict[str, Any]], SearchMode]:
+        return _make_fake_search_results(min(top_k, 5)), mode or SearchMode.HYBRID
+
+    manager.hybrid_engine = MagicMock()
+    manager.hybrid_engine.search = AsyncMock(side_effect=fake_search)
+
+
 # ---------------------------------------------------------------------------
 # 1. TestSearchModeEndpoint — search_mode별 정상 동작 검증
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("setup_hybrid_engine")
 class TestSearchModeEndpoint:
     """HybridSearchEngine을 mock하여 /v1/search의 search_mode별 동작을 검증한다."""
-
-    @pytest.fixture(autouse=True)
-    def _setup_hybrid_engine(self) -> None:
-        """HybridSearchEngine을 mock으로 설정한다."""
-
-        async def fake_search(
-            query: str,
-            index_type: Any,
-            top_k: int = 5,
-            mode: Optional[SearchMode] = None,
-        ) -> Tuple[List[Dict[str, Any]], SearchMode]:
-            return _make_fake_search_results(min(top_k, 5)), mode or SearchMode.HYBRID
-
-        manager.hybrid_engine = MagicMock()
-        manager.hybrid_engine.search = AsyncMock(side_effect=fake_search)
 
     def test_search_hybrid_mode_200(self, client: TestClient) -> None:
         """search_mode=hybrid 요청이 200을 반환한다."""
@@ -172,21 +158,9 @@ class TestSearchModeEndpoint:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("setup_hybrid_engine")
 class TestBackwardCompatibility:
     """레거시 /search 경로 및 search_mode 미지정 요청의 하위 호환성을 검증한다."""
-
-    @pytest.fixture(autouse=True)
-    def _setup_hybrid_engine(self) -> None:
-        async def fake_search(
-            query: str,
-            index_type: Any,
-            top_k: int = 5,
-            mode: Optional[SearchMode] = None,
-        ) -> Tuple[List[Dict[str, Any]], SearchMode]:
-            return _make_fake_search_results(min(top_k, 5)), mode or SearchMode.HYBRID
-
-        manager.hybrid_engine = MagicMock()
-        manager.hybrid_engine.search = AsyncMock(side_effect=fake_search)
 
     def test_legacy_search_endpoint_works(self, client: TestClient) -> None:
         """POST /search (v1 prefix 없이) 요청이 200을 반환한다."""
@@ -239,10 +213,11 @@ class TestFallbackBehavior:
     def test_fallback_returns_dense_mode(
         self, client: TestClient, _setup_legacy_only: None
     ) -> None:
-        """retriever 폴백 시 응답 search_mode가 dense이다."""
+        """retriever 폴백 시 search_mode는 요청값(hybrid) 유지, actual_search_mode가 dense."""
         response = client.post("/v1/search", json=_BASE_SEARCH_PAYLOAD)
         data = response.json()
-        assert data["search_mode"] == "dense"
+        assert data["search_mode"] == "hybrid"
+        assert data.get("actual_search_mode") == "dense"
 
     def test_503_when_no_engine_and_no_retriever(self, client: TestClient) -> None:
         """hybrid_engine=None, retriever=None 시 503을 반환한다."""
@@ -257,21 +232,9 @@ class TestFallbackBehavior:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("setup_hybrid_engine")
 class TestResponseStructure:
     """검색 응답의 데이터 구조와 필드 정합성을 검증한다."""
-
-    @pytest.fixture(autouse=True)
-    def _setup_hybrid_engine(self) -> None:
-        async def fake_search(
-            query: str,
-            index_type: Any,
-            top_k: int = 5,
-            mode: Optional[SearchMode] = None,
-        ) -> Tuple[List[Dict[str, Any]], SearchMode]:
-            return _make_fake_search_results(min(top_k, 5)), mode or SearchMode.HYBRID
-
-        manager.hybrid_engine = MagicMock()
-        manager.hybrid_engine.search = AsyncMock(side_effect=fake_search)
 
     def test_search_results_have_required_fields(self, client: TestClient) -> None:
         """각 결과에 doc_id, source_type, title, content, score가 포함된다."""
@@ -295,3 +258,48 @@ class TestResponseStructure:
         response = client.post("/v1/search", json=payload)
         data = response.json()
         assert len(data["results"]) <= 2
+
+
+# ---------------------------------------------------------------------------
+# 5. TestSearchQueryVariety — 다양한 쿼리/파라미터 시나리오
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.usefixtures("setup_hybrid_engine")
+class TestSearchQueryVariety:
+    """다양한 쿼리 패턴과 파라미터 조합의 검색 E2E 검증."""
+
+    def test_search_with_long_query(self, client: TestClient) -> None:
+        """100자 이상 긴 쿼리로 검색 시 정상 처리한다."""
+        long_query = "서울시 강남구에서 접수된 도로 파손 관련 민원으로 " * 5
+        payload = {**_BASE_SEARCH_PAYLOAD, "query": long_query}
+        response = client.post("/v1/search", json=payload)
+        assert response.status_code == 200, f"long query 실패: {response.text}"
+        data = response.json()
+        assert len(data["results"]) > 0, f"결과가 비어있음: {data}"
+
+    def test_search_with_doc_type_law(self, client: TestClient) -> None:
+        """doc_type=law 검색이 정상 동작한다."""
+        payload = {**_BASE_SEARCH_PAYLOAD, "doc_type": "law"}
+        response = client.post("/v1/search", json=payload)
+        assert response.status_code == 200, f"doc_type=law 실패: {response.text}"
+
+    def test_search_with_doc_type_manual(self, client: TestClient) -> None:
+        """doc_type=manual 검색이 정상 동작한다."""
+        payload = {**_BASE_SEARCH_PAYLOAD, "doc_type": "manual"}
+        response = client.post("/v1/search", json=payload)
+        assert response.status_code == 200, f"doc_type=manual 실패: {response.text}"
+
+    def test_search_with_top_k_1(self, client: TestClient) -> None:
+        """top_k=1 검색 시 결과가 최대 1개이다."""
+        payload = {**_BASE_SEARCH_PAYLOAD, "top_k": 1}
+        response = client.post("/v1/search", json=payload)
+        data = response.json()
+        assert response.status_code == 200, f"top_k=1 실패: {response.text}"
+        assert len(data["results"]) <= 1, f"top_k=1인데 결과 {len(data['results'])}개: {data}"
+
+    def test_search_with_max_top_k(self, client: TestClient) -> None:
+        """top_k=50 검색 시 정상 처리한다."""
+        payload = {**_BASE_SEARCH_PAYLOAD, "top_k": 50}
+        response = client.post("/v1/search", json=payload)
+        assert response.status_code == 200, f"top_k=50 실패: {response.text}"

@@ -157,7 +157,7 @@ def make_approval_wait_node(approval_map: dict[str, bool]):
     거부 시 HumanMessage를 추가하여 agent가 대안을 제시하도록 한다.
     """
 
-    def approval_wait_node(state: GovOnGraphState) -> dict:
+    async def approval_wait_node(state: GovOnGraphState) -> dict:
         messages = state.get("messages", [])
         if not messages:
             return {"approval_status": ApprovalStatus.REJECTED.value}

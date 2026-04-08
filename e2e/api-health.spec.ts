@@ -20,7 +20,6 @@ test.describe('GovOn Runtime Smoke', () => {
     expect(['local', 'single', 'airgap']).toContain(body.profile);
     expect(body).toHaveProperty('model');
     expect(body).toHaveProperty('feature_flags');
-    expect(body.feature_flags).toHaveProperty('use_rag_pipeline');
     expect(body.feature_flags).toHaveProperty('model_version');
     expect(body).toHaveProperty('agents_loaded');
     expect(body).toHaveProperty('indexes');

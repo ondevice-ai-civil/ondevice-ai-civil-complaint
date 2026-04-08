@@ -22,8 +22,6 @@ from .keyword_analyzer import KeywordAnalyzerCapability
 from .stats_lookup import StatsLookupCapability
 
 
-
-
 def get_all_metadata(
     registry: Dict[str, CapabilityBase],
 ) -> List[Dict[str, Any]]:

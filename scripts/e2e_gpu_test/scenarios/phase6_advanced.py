@@ -53,8 +53,13 @@ async def scenario14_full_pipeline_flow(logger: E2ELogger) -> dict:
         status = "passed" if has_key_nodes else "failed"
 
         return logger.scenario_result(
-            14, "Full Pipeline Flow Integrity", 6, status, elapsed,
-            assertions=assertions, warnings=warnings,
+            14,
+            "Full Pipeline Flow Integrity",
+            6,
+            status,
+            elapsed,
+            assertions=assertions,
+            warnings=warnings,
             error=err if not has_key_nodes else None,
             detail={"actual_nodes": actual_nodes, "flow": flow_text, "meta": meta},
         )
@@ -103,7 +108,11 @@ async def scenario15_node_latency_sla(logger: E2ELogger, aggregator: LatencyAggr
 
     status = "passed" if not violations else "failed"
     return logger.scenario_result(
-        15, "Node Latency SLA", 6, status, elapsed,
+        15,
+        "Node Latency SLA",
+        6,
+        status,
+        elapsed,
         assertions=assertions,
         warnings=violations if violations else None,
         error="; ".join(violations) if violations else None,
@@ -138,7 +147,11 @@ async def scenario16_planner_fallback_chain(logger: E2ELogger) -> dict:
 
         status = "passed" if planned and not invalid else "failed"
         return logger.scenario_result(
-            16, "Planner Fallback Chain", 6, status, elapsed,
+            16,
+            "Planner Fallback Chain",
+            6,
+            status,
+            elapsed,
             assertions=assertions,
             error=err if not planned else None,
             detail={"meta": meta},
@@ -162,8 +175,12 @@ async def scenario17_session_context_persistence(logger: E2ELogger) -> dict:
         )
         if not ok1:
             return logger.scenario_result(
-                17, "Session Context Persistence", 6, "failed",
-                time.monotonic() - t0, error=f"Turn 1 실패: {err1}"
+                17,
+                "Session Context Persistence",
+                6,
+                "failed",
+                time.monotonic() - t0,
+                error=f"Turn 1 실패: {err1}",
             )
 
         # Turn 2: 후속 질문 (이전 컨텍스트 참조)
@@ -172,8 +189,12 @@ async def scenario17_session_context_persistence(logger: E2ELogger) -> dict:
         )
         if not ok2:
             return logger.scenario_result(
-                17, "Session Context Persistence", 6, "failed",
-                time.monotonic() - t0, error=f"Turn 2 실패: {err2}"
+                17,
+                "Session Context Persistence",
+                6,
+                "failed",
+                time.monotonic() - t0,
+                error=f"Turn 2 실패: {err2}",
             )
 
         # Turn 3: 추가 후속 질문
@@ -185,13 +206,21 @@ async def scenario17_session_context_persistence(logger: E2ELogger) -> dict:
         assertions = [
             f"Turn 1: {len(text1)} chars",
             f"Turn 2: {len(text2)} chars",
-            f"Turn 3: {'성공' if ok3 else '실패'} ({len(text3)} chars)" if ok3 else f"Turn 3 실패: {err3}",
+            (
+                f"Turn 3: {'성공' if ok3 else '실패'} ({len(text3)} chars)"
+                if ok3
+                else f"Turn 3 실패: {err3}"
+            ),
         ]
 
         # 3턴 모두 성공이면 PASS
         status = "passed" if ok1 and ok2 and ok3 else "failed"
         return logger.scenario_result(
-            17, "Session Context Persistence", 6, status, elapsed,
+            17,
+            "Session Context Persistence",
+            6,
+            status,
+            elapsed,
             assertions=assertions,
             error=err3 if not ok3 else None,
             detail={"texts": [text1[:100], text2[:100], text3[:100] if text3 else ""]},
@@ -216,22 +245,28 @@ async def scenario18_lora_hot_switch(logger: E2ELogger) -> dict:
     ]
 
     for query, expected_domain in queries:
-        ok, text, meta, err = await call_agent_with_approval(
-            query, sid, approve=True, timeout=180
+        ok, text, meta, err = await call_agent_with_approval(query, sid, approve=True, timeout=180)
+        results.append(
+            {
+                "domain": expected_domain,
+                "ok": ok,
+                "text_len": len(text) if text else 0,
+                "error": err,
+            }
         )
-        results.append({
-            "domain": expected_domain,
-            "ok": ok,
-            "text_len": len(text) if text else 0,
-            "error": err,
-        })
 
     elapsed = time.monotonic() - t0
     all_ok = all(r["ok"] for r in results)
-    assertions = [f"{r['domain']}: {'OK' if r['ok'] else 'FAIL'} ({r['text_len']} chars)" for r in results]
+    assertions = [
+        f"{r['domain']}: {'OK' if r['ok'] else 'FAIL'} ({r['text_len']} chars)" for r in results
+    ]
 
     return logger.scenario_result(
-        18, "LoRA Adapter Hot-Switch", 6, "passed" if all_ok else "failed", elapsed,
+        18,
+        "LoRA Adapter Hot-Switch",
+        6,
+        "passed" if all_ok else "failed",
+        elapsed,
         assertions=assertions,
         error="; ".join(r["error"] or "" for r in results if not r["ok"]) or None,
         detail={"results": results},
@@ -261,7 +296,11 @@ async def scenario19_graceful_error_propagation(logger: E2ELogger) -> dict:
     no_500 = all("FAIL (500)" not in a for a in assertions)
 
     return logger.scenario_result(
-        19, "Graceful Error Propagation", 6, "passed" if no_500 else "failed", elapsed,
+        19,
+        "Graceful Error Propagation",
+        6,
+        "passed" if no_500 else "failed",
+        elapsed,
         assertions=assertions,
         error="500 응답 감지" if not no_500 else None,
     )
@@ -293,7 +332,9 @@ async def scenario20_evidence_envelope(logger: E2ELogger) -> dict:
                 if isinstance(evidence, dict):
                     items = evidence.get("items", [])
                     status_val = evidence.get("status", "")
-                    assertions.append(f"{tool_name}: evidence.status={status_val}, items={len(items)}")
+                    assertions.append(
+                        f"{tool_name}: evidence.status={status_val}, items={len(items)}"
+                    )
                 else:
                     assertions.append(f"{tool_name}: evidence가 dict가 아님")
 
@@ -303,7 +344,11 @@ async def scenario20_evidence_envelope(logger: E2ELogger) -> dict:
         # text가 있으면 기본적으로 PASS
         status = "passed" if ok and text else "failed"
         return logger.scenario_result(
-            20, "Evidence Envelope", 6, status, elapsed,
+            20,
+            "Evidence Envelope",
+            6,
+            status,
+            elapsed,
             assertions=assertions,
             error=err if not ok else None,
             detail={"tool_results_keys": list(tool_results.keys())},

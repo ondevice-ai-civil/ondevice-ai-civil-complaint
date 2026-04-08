@@ -82,41 +82,73 @@ async def run_phase1_infra(logger: E2ELogger) -> list[dict]:
         code, body = await http_get("/health", timeout=10)
         elapsed = time.monotonic() - t0
         if code == 200 and body.get("status") in ("ok", "healthy"):
-            results.append(logger.scenario_result(
-                1, "Health & Profile", 1, "passed", elapsed,
-                assertions=[f"HTTP 200, status={body.get('status')}"],
-                detail={"model": body.get("model"), "profile": body.get("profile")},
-            ))
+            results.append(
+                logger.scenario_result(
+                    1,
+                    "Health & Profile",
+                    1,
+                    "passed",
+                    elapsed,
+                    assertions=[f"HTTP 200, status={body.get('status')}"],
+                    detail={"model": body.get("model"), "profile": body.get("profile")},
+                )
+            )
         else:
-            results.append(logger.scenario_result(
-                1, "Health & Profile", 1, "failed", elapsed,
-                error=f"HTTP {code}, status={body.get('status')}",
-            ))
+            results.append(
+                logger.scenario_result(
+                    1,
+                    "Health & Profile",
+                    1,
+                    "failed",
+                    elapsed,
+                    error=f"HTTP {code}, status={body.get('status')}",
+                )
+            )
             return results  # hard gate
     except Exception as exc:
-        results.append(logger.scenario_result(
-            1, "Health & Profile", 1, "failed", time.monotonic() - t0, error=str(exc),
-        ))
+        results.append(
+            logger.scenario_result(
+                1,
+                "Health & Profile",
+                1,
+                "failed",
+                time.monotonic() - t0,
+                error=str(exc),
+            )
+        )
         return results
 
     # S2: Base Model Generation
     logger.set_context(phase=1, scenario_id=2)
     from .http_client import http_post
+
     t0 = time.monotonic()
     try:
         from .config import BASE_MODEL
+
         code, resp = await http_post(
             "/v1/completions",
-            {"model": BASE_MODEL, "prompt": "대한민국의 수도는", "max_tokens": 32, "temperature": 0.0},
+            {
+                "model": BASE_MODEL,
+                "prompt": "대한민국의 수도는",
+                "max_tokens": 32,
+                "temperature": 0.0,
+            },
             timeout=60,
         )
         elapsed = time.monotonic() - t0
         choices = resp.get("choices", [])
         if code == 200 and choices and choices[0].get("text", "").strip():
-            results.append(logger.scenario_result(
-                2, "Base Model Generation", 1, "passed", elapsed,
-                assertions=["HTTP 200", "non-empty text"],
-            ))
+            results.append(
+                logger.scenario_result(
+                    2,
+                    "Base Model Generation",
+                    1,
+                    "passed",
+                    elapsed,
+                    assertions=["HTTP 200", "non-empty text"],
+                )
+            )
         else:
             # fallback: /v1/generate
             code2, resp2 = await http_post(
@@ -126,20 +158,39 @@ async def run_phase1_infra(logger: E2ELogger) -> list[dict]:
             )
             elapsed2 = time.monotonic() - t0
             if code2 == 200 and resp2.get("text", "").strip():
-                results.append(logger.scenario_result(
-                    2, "Base Model Generation", 1, "passed", elapsed2,
-                    assertions=["HTTP 200 (fallback /v1/generate)"],
-                ))
+                results.append(
+                    logger.scenario_result(
+                        2,
+                        "Base Model Generation",
+                        1,
+                        "passed",
+                        elapsed2,
+                        assertions=["HTTP 200 (fallback /v1/generate)"],
+                    )
+                )
             else:
-                results.append(logger.scenario_result(
-                    2, "Base Model Generation", 1, "failed", elapsed2,
-                    error=f"/v1/completions={code}, /v1/generate={code2}",
-                ))
+                results.append(
+                    logger.scenario_result(
+                        2,
+                        "Base Model Generation",
+                        1,
+                        "failed",
+                        elapsed2,
+                        error=f"/v1/completions={code}, /v1/generate={code2}",
+                    )
+                )
                 return results
     except Exception as exc:
-        results.append(logger.scenario_result(
-            2, "Base Model Generation", 1, "failed", time.monotonic() - t0, error=str(exc),
-        ))
+        results.append(
+            logger.scenario_result(
+                2,
+                "Base Model Generation",
+                1,
+                "failed",
+                time.monotonic() - t0,
+                error=str(exc),
+            )
+        )
         return results
 
     # S3: Adapter Registry
@@ -149,21 +200,42 @@ async def run_phase1_infra(logger: E2ELogger) -> list[dict]:
         code, resp = await http_get("/v1/models", timeout=10)
         elapsed = time.monotonic() - t0
         if code != 200:
-            results.append(logger.scenario_result(
-                3, "Adapter Registry", 1, "passed", elapsed,
-                warnings=[f"/v1/models HTTP {code} -- 엔드포인트 미노출 (vLLM 설정에 따라 정상)"],
-            ))
+            results.append(
+                logger.scenario_result(
+                    3,
+                    "Adapter Registry",
+                    1,
+                    "passed",
+                    elapsed,
+                    warnings=[
+                        f"/v1/models HTTP {code} -- 엔드포인트 미노출 (vLLM 설정에 따라 정상)"
+                    ],
+                )
+            )
         else:
             model_ids = [m.get("id", "") for m in resp.get("data", [])]
-            results.append(logger.scenario_result(
-                3, "Adapter Registry", 1, "passed", elapsed,
-                assertions=[f"{len(model_ids)} models found"],
-                detail={"model_ids": model_ids},
-            ))
+            results.append(
+                logger.scenario_result(
+                    3,
+                    "Adapter Registry",
+                    1,
+                    "passed",
+                    elapsed,
+                    assertions=[f"{len(model_ids)} models found"],
+                    detail={"model_ids": model_ids},
+                )
+            )
     except Exception as exc:
-        results.append(logger.scenario_result(
-            3, "Adapter Registry", 1, "failed", time.monotonic() - t0, error=str(exc),
-        ))
+        results.append(
+            logger.scenario_result(
+                3,
+                "Adapter Registry",
+                1,
+                "failed",
+                time.monotonic() - t0,
+                error=str(exc),
+            )
+        )
 
     return results
 
@@ -220,7 +292,9 @@ async def main() -> int:
 
     # 요약
     print_summary(all_results, logger, _observed_tools)
-    write_json_report(all_results, RESULTS_PATH, _run_id, cold_start_wait, _observed_tools, aggregator)
+    write_json_report(
+        all_results, RESULTS_PATH, _run_id, cold_start_wait, _observed_tools, aggregator
+    )
     logger.info(f"\n결과 저장: {RESULTS_PATH}")
     logger.info(f"로그 저장: {LOG_PATH}")
 

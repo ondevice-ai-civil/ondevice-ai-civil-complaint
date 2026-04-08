@@ -55,7 +55,7 @@ try:
                     line = line.strip()
                     if not line.startswith("data:"):
                         continue
-                    payload = line[len("data:"):].strip()
+                    payload = line[len("data:") :].strip()
                     if not payload:
                         continue
                     try:
@@ -118,7 +118,7 @@ except ImportError:
                     line = raw_line.decode("utf-8", errors="replace").strip()
                     if not line.startswith("data:"):
                         continue
-                    payload = line[len("data:"):].strip()
+                    payload = line[len("data:") :].strip()
                     if not payload:
                         continue
                     try:

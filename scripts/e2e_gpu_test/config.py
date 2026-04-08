@@ -7,7 +7,6 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict
 
-
 BASE_URL = os.environ.get("GOVON_RUNTIME_URL", "http://localhost:7860").rstrip("/")
 API_KEY = os.environ.get("API_KEY")
 TIMEOUT = int(os.environ.get("E2E_TIMEOUT", "300"))

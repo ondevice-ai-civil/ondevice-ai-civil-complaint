@@ -155,7 +155,7 @@ class ModelConfig:
     - legal-adapter (LoRA #2): draft_response 용도
       학습 데이터: umyunsang/govon-legal-response-data (243K건), QLoRA on AWQ base
       HuggingFace: siwo/govon-legal-adapter
-    - 나머지 capability (rag_search, api_lookup, synthesis 등)는 LoRA 없이 base model 사용
+    - 나머지 capability (api_lookup, synthesis 등)는 LoRA 없이 base model 사용
 
     adapter_paths: Dict[str, str] 형식의 어댑터 이름-경로 매핑.
       환경변수 ADAPTER_PATHS="public_admin=/path/to/public_admin,legal=/path/to/legal" 형식으로 설정.

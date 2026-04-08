@@ -164,19 +164,11 @@ class TestLoraEngineConfig:
 
         manager = vLLMEngineManager.__new__(vLLMEngineManager)
         manager.engine = None
-        manager.retriever = None
-        manager.index_manager = None
-        manager.hybrid_engine = None
-        manager.bm25_indexers = {}
-        manager.embed_model = None
         manager.feature_flags = MagicMock()
         manager.session_store = MagicMock()
         manager.agent_manager = MagicMock()
         manager.agent_loop = None
         manager.graph = None
-        manager.local_document_indexer = None
-        manager.local_document_sync_status = None
-        manager._local_document_sync_task = None
         manager._checkpointer_ctx = None
         manager._sync_checkpointer_conn = None
 
@@ -195,7 +187,7 @@ class TestLoraEngineConfig:
                 "src.inference.api_server.runtime_config.model.adapter_paths",
                 {},
             ),
-            patch("src.inference.api_server.CivilComplaintRetriever", MagicMock()),
+            # CivilComplaintRetriever removed (RAG 제거)
         ):
             await manager.initialize()
 
@@ -210,19 +202,11 @@ class TestLoraEngineConfig:
 
         manager = vLLMEngineManager.__new__(vLLMEngineManager)
         manager.engine = None
-        manager.retriever = None
-        manager.index_manager = None
-        manager.hybrid_engine = None
-        manager.bm25_indexers = {}
-        manager.embed_model = None
         manager.feature_flags = MagicMock()
         manager.session_store = MagicMock()
         manager.agent_manager = MagicMock()
         manager.agent_loop = None
         manager.graph = None
-        manager.local_document_indexer = None
-        manager.local_document_sync_status = None
-        manager._local_document_sync_task = None
         manager._checkpointer_ctx = None
         manager._sync_checkpointer_conn = None
 
@@ -241,7 +225,7 @@ class TestLoraEngineConfig:
                 "src.inference.api_server.runtime_config.model.adapter_paths",
                 {"public_admin": "/path/to/public_admin"},
             ),
-            patch("src.inference.api_server.CivilComplaintRetriever", MagicMock()),
+            # CivilComplaintRetriever removed (RAG 제거)
         ):
             await manager.initialize()
 
@@ -265,19 +249,11 @@ class TestSkipModelLoadLora:
 
         manager = vLLMEngineManager.__new__(vLLMEngineManager)
         manager.engine = None
-        manager.retriever = None
-        manager.index_manager = None
-        manager.hybrid_engine = None
-        manager.bm25_indexers = {}
-        manager.embed_model = None
         manager.feature_flags = MagicMock()
         manager.session_store = MagicMock()
         manager.agent_manager = MagicMock()
         manager.agent_loop = None
         manager.graph = None
-        manager.local_document_indexer = None
-        manager.local_document_sync_status = None
-        manager._local_document_sync_task = None
         manager._checkpointer_ctx = None
         manager._sync_checkpointer_conn = None
 

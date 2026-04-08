@@ -333,15 +333,6 @@ class AgentLoop:
 
         parts: List[str] = []
 
-        rag_data = accumulated.get(ToolType.RAG_SEARCH.value, {})
-        if rag_data.get("results"):
-            lines = ["[로컬 문서 근거]"]
-            for item in rag_data["results"][:3]:
-                title = item.get("title", "")
-                content = item.get("content", "")[:120]
-                lines.append(f"- {title}: {content}")
-            parts.append("\n".join(lines))
-
         api_data = accumulated.get(ToolType.API_LOOKUP.value, {})
         if api_data.get("context_text"):
             parts.append(api_data["context_text"])

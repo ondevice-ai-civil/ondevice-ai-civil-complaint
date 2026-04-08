@@ -37,7 +37,7 @@ def _make_graph_state_interrupted(session_id: str = "sess-1", request_id: str = 
         "type": "approval_request",
         "goal": "테스트 작업",
         "reason": "테스트 이유",
-        "planned_tools": ["rag_search"],
+        "planned_tools": ["api_lookup"],
         "prompt": "승인하시겠습니까?",
     }
     task_mock = MagicMock()
@@ -143,7 +143,7 @@ async def test_approve_approved_returns_completed_status(patched_app):
         "session_id": "sess-1",
         "request_id": "req-1",
         "final_text": "결과 텍스트",
-        "tool_results": {"rag_search": {"success": True}},
+        "tool_results": {"api_lookup": {"success": True}},
         "approval_status": "approved",
     }
 

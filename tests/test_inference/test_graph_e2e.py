@@ -330,7 +330,7 @@ class TestGraphBasicFlow:
         """
         plain_response = AIMessage(content="도구 없이 직접 답변합니다.")
         llm = StubLLM(responses=[plain_response])
-        tools = [make_test_tool("rag_search", requires_approval=False)]
+        tools = [make_test_tool("api_lookup", requires_approval=False)]
 
         graph = _make_graph(llm, tools, session_store)
         config = _make_config()
@@ -353,11 +353,11 @@ class TestGraphBasicFlow:
         """
         tool_call_response = AIMessage(
             content="",
-            tool_calls=[{"name": "rag_search", "args": {"query": "민원 검색"}, "id": "call_t0_1"}],
+            tool_calls=[{"name": "api_lookup", "args": {"query": "민원 검색"}, "id": "call_t0_1"}],
         )
         final_response = AIMessage(content="검색 결과를 기반으로 답변합니다.")
         llm = StubLLM(responses=[tool_call_response, final_response])
-        tools = [make_test_tool("rag_search", requires_approval=False)]
+        tools = [make_test_tool("api_lookup", requires_approval=False)]
 
         graph = _make_graph(llm, tools, session_store)
         config = _make_config()
@@ -370,7 +370,7 @@ class TestGraphBasicFlow:
         # ToolMessage가 messages에 포함되어 있어야 한다
         tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
         assert len(tool_messages) >= 1
-        assert tool_messages[0].name == "rag_search"
+        assert tool_messages[0].name == "api_lookup"
 
     @pytest.mark.asyncio
     async def test_approval_required_tool_interrupts(self, session_store):
@@ -537,7 +537,7 @@ class TestGraphMultiTool:
             content="",
             tool_calls=[
                 {
-                    "name": "rag_search",
+                    "name": "api_lookup",
                     "args": {"query": "첫 번째 검색"},
                     "id": "call_multi_1",
                 },
@@ -551,7 +551,7 @@ class TestGraphMultiTool:
         final_response = AIMessage(content="두 도구 결과를 합산하여 답변합니다.")
         llm = StubLLM(responses=[tool_call_response, final_response])
         tools = [
-            make_test_tool("rag_search", requires_approval=False),
+            make_test_tool("api_lookup", requires_approval=False),
             make_test_tool("analysis_tool", requires_approval=False),
         ]
 
@@ -563,9 +563,9 @@ class TestGraphMultiTool:
 
         assert result["final_text"] == "두 도구 결과를 합산하여 답변합니다."
         tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
-        # rag_search와 analysis_tool 모두 실행되어야 한다
+        # api_lookup와 analysis_tool 모두 실행되어야 한다
         executed_tools = {m.name for m in tool_messages}
-        assert "rag_search" in executed_tools
+        assert "api_lookup" in executed_tools
         assert "analysis_tool" in executed_tools
 
     @pytest.mark.asyncio
@@ -578,7 +578,7 @@ class TestGraphMultiTool:
             content="",
             tool_calls=[
                 {
-                    "name": "rag_search",
+                    "name": "api_lookup",
                     "args": {"query": "공개 검색"},
                     "id": "call_mix_1",
                 },
@@ -591,7 +591,7 @@ class TestGraphMultiTool:
         )
         llm = StubLLM(responses=[mixed_tool_call_response])
         tools = [
-            make_test_tool("rag_search", requires_approval=False),
+            make_test_tool("api_lookup", requires_approval=False),
             make_test_tool("sensitive_tool", requires_approval=True),
         ]
 
@@ -678,7 +678,7 @@ class TestGraphEdgeCases:
         expected_text = "최종 답변 텍스트입니다."
         plain_response = AIMessage(content=expected_text)
         llm = StubLLM(responses=[plain_response])
-        tools = [make_test_tool("rag_search", requires_approval=False)]
+        tools = [make_test_tool("api_lookup", requires_approval=False)]
 
         graph = _make_graph(llm, tools, session_store)
         config = _make_config()
@@ -704,7 +704,7 @@ class TestGraphEdgeCases:
             content="",
             tool_calls=[
                 {
-                    "name": "rag_search",
+                    "name": "api_lookup",
                     "args": {"query": "근거 수집 테스트"},
                     "id": "call_ev_1",
                 }
@@ -712,7 +712,7 @@ class TestGraphEdgeCases:
         )
         final_response = AIMessage(content="근거를 포함하여 답변합니다.")
         llm = StubLLM(responses=[tool_call_response, final_response])
-        tools = [make_test_tool("rag_search", requires_approval=False)]
+        tools = [make_test_tool("api_lookup", requires_approval=False)]
 
         graph = _make_graph(llm, tools, session_store)
         config = _make_config()
@@ -724,5 +724,5 @@ class TestGraphEdgeCases:
         evidence = result.get("evidence_items", [])
         assert len(evidence) >= 1
         # 각 item에 source 필드가 있어야 한다
-        assert evidence[0].get("source") == "rag_search"
-        assert evidence[0].get("text") == "rag_search 근거 텍스트"
+        assert evidence[0].get("source") == "api_lookup"
+        assert evidence[0].get("text") == "api_lookup 근거 텍스트"

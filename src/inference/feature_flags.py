@@ -14,14 +14,12 @@ from loguru import logger
 class FeatureFlags:
     """런타임 Feature Flag 설정."""
 
-    use_rag_pipeline: bool = True
     model_version: str = "v2_lora"  # v1_lora | v2_lora
 
     @classmethod
     def from_env(cls) -> "FeatureFlags":
         """환경변수에서 Feature Flag를 로드한다."""
         flags = cls(
-            use_rag_pipeline=os.getenv("USE_RAG_PIPELINE", "true").lower() in ("true", "1", "yes"),
             model_version=os.getenv("MODEL_VERSION", "v2_lora"),
         )
         logger.info(f"Feature Flags 로드: {flags}")
@@ -30,7 +28,7 @@ class FeatureFlags:
     def override_from_header(self, header_value: Optional[str]) -> "FeatureFlags":
         """X-Feature-Flag 헤더에서 런타임 오버라이드.
 
-        형식: 'USE_RAG_PIPELINE=false,MODEL_VERSION=v1_lora'
+        형식: 'MODEL_VERSION=v1_lora'
         원본 인스턴스는 변경되지 않으며 새 인스턴스를 반환한다.
         """
         if not header_value:
@@ -45,9 +43,7 @@ class FeatureFlags:
             key = key.strip().upper()
             value = value.strip()
 
-            if key == "USE_RAG_PIPELINE":
-                overrides["use_rag_pipeline"] = value.lower() in ("true", "1", "yes")
-            elif key == "MODEL_VERSION":
+            if key == "MODEL_VERSION":
                 if value in ("v1_lora", "v2_lora"):
                     overrides["model_version"] = value
 

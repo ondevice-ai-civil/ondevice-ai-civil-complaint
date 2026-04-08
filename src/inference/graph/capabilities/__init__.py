@@ -6,7 +6,6 @@ from .defaults import get_all_defaults, get_max_retries, get_timeout
 from .demographics_lookup import DemographicsLookupCapability
 from .issue_detector import IssueDetectorCapability
 from .keyword_analyzer import KeywordAnalyzerCapability
-from .rag_search import RagSearchCapability, RagSearchParams
 from .registry import (
     get_all_metadata,
     is_mvp_capability,
@@ -19,8 +18,6 @@ __all__ = [
     "LookupResult",
     "ApiLookupCapability",
     "ApiLookupParams",
-    "RagSearchCapability",
-    "RagSearchParams",
     "IssueDetectorCapability",
     "StatsLookupCapability",
     "KeywordAnalyzerCapability",

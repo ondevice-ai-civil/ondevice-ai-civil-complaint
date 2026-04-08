@@ -19,7 +19,6 @@ from .base import CapabilityBase, CapabilityMetadata
 from .demographics_lookup import DemographicsLookupCapability
 from .issue_detector import IssueDetectorCapability
 from .keyword_analyzer import KeywordAnalyzerCapability
-from .rag_search import RagSearchCapability
 from .stats_lookup import StatsLookupCapability
 
 

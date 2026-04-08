@@ -54,7 +54,6 @@ LOG_PATH = f"verify_e2e_tool_calling_{_TIMESTAMP}.log"
 
 VALID_TOOLS = frozenset(
     {
-        "rag_search",
         "api_lookup",
         "draft_response",
         "issue_detector",

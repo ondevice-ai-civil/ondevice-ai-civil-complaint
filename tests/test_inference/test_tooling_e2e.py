@@ -23,7 +23,6 @@ from src.inference.graph.capabilities.base import (
 from src.inference.graph.capabilities.demographics_lookup import DemographicsLookupCapability
 from src.inference.graph.capabilities.issue_detector import IssueDetectorCapability
 from src.inference.graph.capabilities.keyword_analyzer import KeywordAnalyzerCapability
-from src.inference.graph.capabilities.rag_search import RagSearchCapability
 from src.inference.graph.capabilities.stats_lookup import StatsLookupCapability
 
 # ---------------------------------------------------------------------------
@@ -46,127 +45,6 @@ def _assert_to_dict_schema(d: dict) -> None:
         "latency_ms",
     }
     assert required_keys.issubset(d.keys()), f"누락된 키: {required_keys - d.keys()}"
-
-
-# ===========================================================================
-# TestRagSearchPipeline
-# ===========================================================================
-
-
-class TestRagSearchPipeline:
-    """RagSearchCapability execute → LookupResult → to_dict() 파이프라인 검증."""
-
-    @pytest.mark.asyncio
-    async def test_rag_search_returns_lookup_result(self):
-        """정상 검색 결과가 LookupResult와 evidence를 올바르게 구성하는지 검증한다."""
-        raw_results = [
-            {
-                "doc_id": "case-001",
-                "title": "도로 파손",
-                "content": "도로 파손 민원 처리 사례입니다.",
-                "score": 0.9,
-                "source_type": "case",
-                "metadata": {"file_path": "/data/cases/case001.json", "page": 1},
-                "chunk_index": 0,
-                "total_chunks": 1,
-            }
-        ]
-
-        async def execute_fn(query, context, session):
-            return {
-                "results": raw_results,
-                "context_text": "검색 결과",
-                "query": "도로 파손",
-            }
-
-        cap = RagSearchCapability(execute_fn=execute_fn)
-        result = await cap.execute("도로 파손", {}, None)
-
-        # LookupResult 필드 검증
-        assert result.success is True
-        assert len(result.results) > 0
-        assert result.context_text == "검색 결과"
-        assert result.evidence is not None
-        assert len(result.evidence.items) > 0
-        assert result.evidence.items[0].source_type == "rag"
-        assert result.evidence.status == "ok"
-
-        # to_dict() 스키마 검증
-        d = result.to_dict()
-        _assert_to_dict_schema(d)
-        assert d["success"] is True
-        assert d["count"] == 1
-        assert "evidence" in d
-        assert d["evidence"]["status"] == "ok"
-
-    @pytest.mark.asyncio
-    async def test_rag_search_with_source_types(self):
-        """source_types context가 파라미터로 올바르게 전달되는지 검증한다."""
-        received_context: dict = {}
-
-        async def execute_fn(query, context, session):
-            received_context.update(context)
-            return {
-                "results": [
-                    {
-                        "doc_id": "law-001",
-                        "title": "법령 조항",
-                        "content": "법령 내용",
-                        "score": 0.8,
-                        "source_type": "law",
-                        "metadata": {},
-                        "chunk_index": 0,
-                        "total_chunks": 1,
-                    }
-                ],
-                "context_text": "법령 검색",
-                "query": query,
-            }
-
-        context = {"source_types": ["law"]}
-        cap = RagSearchCapability(execute_fn=execute_fn)
-        result = await cap.execute("법령 조항 검색", context, None)
-
-        # context가 그대로 전달되어 파라미터가 반영되었는지 확인
-        assert received_context.get("source_types") == ["law"]
-        assert result.success is True
-        assert len(result.results) > 0
-
-        d = result.to_dict()
-        _assert_to_dict_schema(d)
-        assert d["count"] >= 1
-
-    @pytest.mark.asyncio
-    async def test_rag_search_timeout_returns_error(self):
-        """execute_fn이 타임아웃되면 success=False, error에 '타임아웃' 포함을 검증한다."""
-        from src.inference.graph.capabilities.base import CapabilityMetadata
-
-        async def slow_execute_fn(query, context, session):
-            await asyncio.sleep(5.0)
-            return {"results": [], "context_text": "", "query": query}
-
-        class _ShortTimeoutRag(RagSearchCapability):
-            @property
-            def metadata(self) -> CapabilityMetadata:
-                return CapabilityMetadata(
-                    name="rag_search",
-                    description="test",
-                    approval_summary="test",
-                    provider="local_vectordb",
-                    timeout_sec=0.2,
-                )
-
-        cap = _ShortTimeoutRag(execute_fn=slow_execute_fn)
-        result = await cap.execute("타임아웃 테스트", {}, None)
-
-        assert result.success is False
-        assert result.error is not None
-        assert "타임아웃" in result.error
-
-        d = result.to_dict()
-        _assert_to_dict_schema(d)
-        assert d["success"] is False
-        assert "타임아웃" in (d["error"] or "")
 
 
 # ===========================================================================

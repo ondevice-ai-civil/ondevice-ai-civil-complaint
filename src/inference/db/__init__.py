@@ -1,15 +1,10 @@
 """
-GovOn RAG 데이터베이스 모듈.
+GovOn 데이터베이스 모듈.
 
-SQLAlchemy 2.0 기반 ORM 모델, CRUD 레이어, 변환 헬퍼를 제공한다.
+SQLAlchemy 2.0 기반 ORM 모델, CRUD 레이어를 제공한다.
 """
 
-from src.inference.db.converters import (
-    dataclass_to_orm,
-    orm_to_dataclass,
-    orm_to_pydantic,
-)
-from src.inference.db.crud import (  # DocumentSource; IndexingQueue; IndexVersion
+from src.inference.db.crud import (
     activate_version,
     create_document_source,
     create_index_version,
@@ -60,8 +55,4 @@ __all__ = [
     "get_active_version",
     "deactivate_versions",
     "activate_version",
-    # 변환 헬퍼
-    "orm_to_dataclass",
-    "dataclass_to_orm",
-    "orm_to_pydantic",
 ]

@@ -52,7 +52,7 @@ RUN chown -R user:user /app
 USER user
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=600s --retries=3 \
-    CMD python3.10 -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT}/health')"
+    CMD CUDA_VISIBLE_DEVICES="" python3.10 -c "import urllib.request; r = urllib.request.urlopen('http://localhost:${PORT}/health'); exit(0 if r.status == 200 else 1)"
 
 EXPOSE ${PORT}
 

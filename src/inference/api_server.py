@@ -16,14 +16,6 @@ from fastapi.security import APIKeyHeader
 from loguru import logger
 
 try:
-    from vllm import SamplingParams
-except ImportError:
-    try:
-        from vllm.sampling_params import SamplingParams
-    except ImportError:
-        SamplingParams = None
-
-try:
     import httpx as _httpx
 except ImportError:
     _httpx = None
@@ -54,12 +46,6 @@ async def _noop_tool(query: str, context: dict, session: Any) -> dict:
     """build_all_tools fallback용 no-op tool."""
     return {"success": False, "error": "tool이 초기화되지 않았습니다"}
 
-
-if not SKIP_MODEL_LOAD:
-    try:
-        from .vllm_stabilizer import apply_transformers_patch
-    except ImportError:
-        apply_transformers_patch = lambda: None
 
 try:
     from slowapi import Limiter
@@ -97,13 +83,20 @@ AGENTS_DIR = runtime_config.paths.agents_dir
 
 
 @dataclass
+class SamplingParams:
+    """vLLM HTTP API용 샘플링 파라미터. vLLM 직접 import 없이 동작."""
+
+    max_tokens: int = 512
+    temperature: float = 0.7
+    top_p: float = 1.0
+    stop: Optional[list] = None
+    repetition_penalty: float = 1.0
+
+
+@dataclass
 class PreparedGeneration:
     prompt: str
     sampling_params: SamplingParams
-
-
-if not SKIP_MODEL_LOAD:
-    apply_transformers_patch()
 
 
 class _VLLMOutputItem:

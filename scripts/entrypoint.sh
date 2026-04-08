@@ -2,7 +2,7 @@
 # GovOn Runtime Entrypoint
 # 1) vLLM OpenAI-compatible 서버를 백그라운드로 기동
 # 2) health check로 준비 완료 대기
-# 3) FastAPI 서버 실행 (foreground)
+# 3) FastAPI 서버 실행 (foreground, GPU 접근 차단)
 set -euo pipefail
 
 VLLM_PORT="${VLLM_PORT:-8000}"
@@ -55,21 +55,27 @@ echo "[entrypoint] args: ${VLLM_ARGS[*]}"
 python3.10 -m vllm.entrypoints.openai.api_server "${VLLM_ARGS[@]}" &
 VLLM_PID=$!
 
-# --- vLLM health check (curl 미설치 → python urllib 사용) ---
+# --- vLLM health check ---
+# CUDA_VISIBLE_DEVICES="": health check python 프로세스에서 GPU 접근 차단
+#   → torch/vllm import 시 CUDA 초기화 hang 방지
+# except Exception: bare except(except:) 사용 금지
+#   → sys.exit()이 raise하는 SystemExit을 잡아버려 항상 실패 반환
+# timeout 10: 프로세스-레벨 타임아웃 (urllib timeout과 별개)
 echo "[entrypoint] vLLM 서버 준비 대기 중..."
 MAX_WAIT=900
 WAITED=0
 INTERVAL=5
 
 _health_check() {
-    python3.10 -c "
+    CUDA_VISIBLE_DEVICES="" timeout 10 python3.10 -c "
 import urllib.request, sys
 try:
-    r = urllib.request.urlopen('http://localhost:${VLLM_PORT}/health', timeout=3)
+    r = urllib.request.urlopen('http://localhost:${VLLM_PORT}/health', timeout=5)
     sys.exit(0 if r.status == 200 else 1)
-except:
+except Exception:
     sys.exit(1)
-"
+" 2>&1
+    return $?
 }
 
 while [ $WAITED -lt $MAX_WAIT ]; do
@@ -93,5 +99,7 @@ if [ $WAITED -ge $MAX_WAIT ]; then
 fi
 
 # --- FastAPI 서버 실행 (foreground) ---
+# CUDA_VISIBLE_DEVICES="": FastAPI는 httpx로 vLLM API만 호출하므로 GPU 불필요
+#   → vLLM import 시 CUDA context 생성 방지, GPU 메모리 절약
 echo "[entrypoint] FastAPI 서버 기동: port=$FASTAPI_PORT"
-exec python3.10 -m src.inference.api_server
+CUDA_VISIBLE_DEVICES="" exec python3.10 -m src.inference.api_server

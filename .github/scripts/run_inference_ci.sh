@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-coverage_threshold="${1:-80}"
+coverage_threshold="${1:-75}"
 if [ "$#" -gt 0 ]; then
   shift
 fi

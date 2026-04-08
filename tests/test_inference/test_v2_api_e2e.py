@@ -96,7 +96,9 @@ def _make_interrupted_graph(approval_payload: dict | None = None) -> AsyncMock:
     return mock_graph
 
 
-def _make_completed_graph(final_text: str = "답변입니다.", evidence: list | None = None) -> AsyncMock:
+def _make_completed_graph(
+    final_text: str = "답변입니다.", evidence: list | None = None
+) -> AsyncMock:
     """interrupt 없이 완료된 그래프 스텁을 반환한다."""
     if evidence is None:
         evidence = []
@@ -307,7 +309,9 @@ class TestV2DiverseQueries:
             "args": {"query": "건축법 위반"},
         }
         run_graph = _make_interrupted_graph(approval_payload=approval_payload)
-        approve_graph = _make_approve_graph(approved=True, final_text="건축법 위반 회신문 작성 완료.")
+        approve_graph = _make_approve_graph(
+            approved=True, final_text="건축법 위반 회신문 작성 완료."
+        )
 
         # 1단계: run → interrupt
         manager.graph = run_graph

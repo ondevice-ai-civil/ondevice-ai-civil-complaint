@@ -52,7 +52,6 @@ from langchain_core.tools import StructuredTool
 from langgraph.checkpoint.memory import MemorySaver
 from pydantic import BaseModel, Field
 
-
 # ---------------------------------------------------------------------------
 # SimpleToolNode — 환경 호환성 문제를 우회하는 경량 ToolNode 대체 구현
 #
@@ -204,11 +203,7 @@ def make_test_tool(name: str, requires_approval: bool = False) -> StructuredTool
         result = {
             "success": True,
             "context_text": f"{name} result for: {query}",
-            "evidence": {
-                "items": [
-                    {"source": name, "text": f"{name} 근거 텍스트", "score": 0.9}
-                ]
-            },
+            "evidence": {"items": [{"source": name, "text": f"{name} 근거 텍스트", "score": 0.9}]},
         }
         return json.dumps(result, ensure_ascii=False)
 
@@ -486,9 +481,7 @@ class TestGraphBasicFlow:
         assert result["final_text"] == "도구 없이 직접 답변드립니다."
         # 거절 메시지가 messages에 포함되어 있어야 한다
         human_messages = [m for m in result["messages"] if isinstance(m, HumanMessage)]
-        rejection_msgs = [
-            m for m in human_messages if "거부했습니다" in (m.content or "")
-        ]
+        rejection_msgs = [m for m in human_messages if "거부했습니다" in (m.content or "")]
         assert len(rejection_msgs) >= 1
 
     @pytest.mark.asyncio

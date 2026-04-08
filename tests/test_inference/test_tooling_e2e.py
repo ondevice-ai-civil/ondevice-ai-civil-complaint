@@ -44,8 +44,18 @@ requires_capabilities = pytest.mark.skipif(
 
 def _assert_to_dict_schema(d: dict) -> None:
     """to_dict() 결과가 공통 필수 키를 보유하는지 확인한다."""
-    required_keys = {"success", "query", "count", "results", "context_text", "citations",
-                     "provider", "error", "empty_reason", "latency_ms"}
+    required_keys = {
+        "success",
+        "query",
+        "count",
+        "results",
+        "context_text",
+        "citations",
+        "provider",
+        "error",
+        "empty_reason",
+        "latency_ms",
+    }
     assert required_keys.issubset(d.keys()), f"누락된 키: {required_keys - d.keys()}"
 
 
@@ -341,9 +351,7 @@ class TestStatsLookupPipeline:
         """searchword가 있으면 doc_count + trend API를 사용하여 결과를 반환한다."""
         mock_action = MagicMock()
         mock_action.get_doc_count = AsyncMock(
-            return_value=[
-                {"pttn": 150, "dfpt": 80, "saeol": 30, "label": "도로파손"}
-            ]
+            return_value=[{"pttn": 150, "dfpt": 80, "saeol": 30, "label": "도로파손"}]
         )
         mock_action.get_trend = AsyncMock(
             return_value=[

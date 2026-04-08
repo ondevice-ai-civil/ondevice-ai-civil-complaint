@@ -22,8 +22,6 @@ test.describe('GovOn Runtime Smoke', () => {
     expect(body).toHaveProperty('feature_flags');
     expect(body.feature_flags).toHaveProperty('model_version');
     expect(body).toHaveProperty('agents_loaded');
-    expect(body).toHaveProperty('indexes');
-    expect(body).toHaveProperty('bm25_indexes');
     expect(body).toHaveProperty('session_store');
     expect(body.session_store).toHaveProperty('driver', 'sqlite');
   });

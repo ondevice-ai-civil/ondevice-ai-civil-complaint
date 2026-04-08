@@ -146,23 +146,19 @@ def build_govon_graph(
 def _route_agent_v3(state: GovOnGraphState) -> str:
     """v3 agent 노드 이후 라우팅.
 
-    1. pending_tool_calls 비어있음 (final answer) → "synthesize"
-    2. iteration_count >= max_iterations → "synthesize" (강제 종료)
-    3. pending_tool_calls 존재 → "tools" (자동 실행)
+    1. pending_tool_calls 존재 → "tools" (자동 실행)
+    2. pending_tool_calls 비어있음 (final answer 또는 강제 종료) → "synthesize"
+
+    max_iterations 도달 시 강제 종료는 agent_node_v3 내부에서 처리한다.
+    agent가 pending_tool_calls=[]를 반환하면 synthesize로 이동한다.
 
     현재 모든 도구가 low risk이므로 approval 분기 없음.
     향후 고위험 도구 추가 시 여기에 분기 조건을 추가한다.
     """
     pending = state.get("pending_tool_calls", [])
-    if not pending:
-        return "synthesize"
-
-    iteration = state.get("iteration_count", 0)
-    max_iter = state.get("max_iterations", 10)
-    if iteration >= max_iter:
-        return "synthesize"
-
-    return "tools"
+    if pending:
+        return "tools"
+    return "synthesize"
 
 
 def build_govon_graph_v3(

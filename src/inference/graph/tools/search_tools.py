@@ -58,8 +58,8 @@ def build_search_tools(
     list[StructuredTool]
         [rag_search_tool, api_lookup_tool]
     """
-    from src.inference.graph.capabilities.rag_search import RagSearchCapability
     from src.inference.graph.capabilities.api_lookup import ApiLookupCapability
+    from src.inference.graph.capabilities.rag_search import RagSearchCapability
 
     # -- rag_search 클로저 캡처 --
     _rag_cap = RagSearchCapability(execute_fn=rag_search_fn)

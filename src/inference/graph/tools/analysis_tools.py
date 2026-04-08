@@ -83,10 +83,10 @@ def build_analysis_tools(
     list[StructuredTool]
         [issue_detector_tool, stats_lookup_tool, keyword_analyzer_tool, demographics_lookup_tool]
     """
-    from src.inference.graph.capabilities.issue_detector import IssueDetectorCapability
-    from src.inference.graph.capabilities.stats_lookup import StatsLookupCapability
-    from src.inference.graph.capabilities.keyword_analyzer import KeywordAnalyzerCapability
     from src.inference.graph.capabilities.demographics_lookup import DemographicsLookupCapability
+    from src.inference.graph.capabilities.issue_detector import IssueDetectorCapability
+    from src.inference.graph.capabilities.keyword_analyzer import KeywordAnalyzerCapability
+    from src.inference.graph.capabilities.stats_lookup import StatsLookupCapability
 
     # -- issue_detector --
     _issue_cap = IssueDetectorCapability(action=api_lookup_action)

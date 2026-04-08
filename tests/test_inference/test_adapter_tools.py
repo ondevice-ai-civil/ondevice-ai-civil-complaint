@@ -1,71 +1,14 @@
-"""adapter_tools 팩토리 함수 단위 테스트.
-
-graph 패키지의 import chain(faiss, vllm 등)을 우회하기 위해
-importlib를 사용하여 adapter_tools 모듈만 직접 로드한다.
-"""
+"""adapter_tools 팩토리 함수 단위 테스트."""
 
 from __future__ import annotations
 
-import importlib
 import json
-import sys
-import types
 from unittest.mock import AsyncMock
 
 import pytest
 
 from src.inference.adapter_registry import AdapterMeta, AdapterRegistry
-
-
-def _import_adapter_tools():
-    """graph 패키지 초기화를 우회하여 adapter_tools만 로드한다."""
-    # graph.tools 패키지가 아직 로드되지 않았으면
-    # graph.__init__.py의 무거운 import chain을 건너뛰기 위해
-    # 상위 패키지를 stub으로 등록한다.
-    stubs_needed = [
-        "src.inference.graph",
-        "src.inference.graph.tools",
-    ]
-    saved = {}
-    for mod_name in stubs_needed:
-        if mod_name not in sys.modules:
-            stub = types.ModuleType(mod_name)
-            stub.__path__ = []  # 패키지로 인식되도록
-            sys.modules[mod_name] = stub
-            saved[mod_name] = None
-        else:
-            saved[mod_name] = sys.modules[mod_name]
-
-    # adapter_tools 모듈을 직접 로드
-    mod_name = "src.inference.graph.tools.adapter_tools"
-    if mod_name in sys.modules:
-        return sys.modules[mod_name]
-
-    # __file__ 기반 상대 경로로 adapter_tools.py 위치 계산
-    import pathlib
-
-    _adapter_tools_path = str(
-        pathlib.Path(__file__).resolve().parents[2]
-        / "src"
-        / "inference"
-        / "graph"
-        / "tools"
-        / "adapter_tools.py"
-    )
-
-    spec = importlib.util.spec_from_file_location(
-        mod_name,
-        _adapter_tools_path,
-    )
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[mod_name] = mod
-    spec.loader.exec_module(mod)
-    return mod
-
-
-# 모듈 로드
-_adapter_tools_mod = _import_adapter_tools()
-build_adapter_tools = _adapter_tools_mod.build_adapter_tools
+from src.inference.graph.tools.adapter_tools import build_adapter_tools
 
 
 @pytest.fixture(autouse=True)

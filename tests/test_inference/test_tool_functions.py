@@ -7,7 +7,9 @@ JSON 문자열을 반환하는지 검증한다.
 
 from __future__ import annotations
 
+import importlib
 import json
+import pathlib
 import sys
 import types
 from typing import Any, Dict
@@ -21,8 +23,6 @@ import pytest
 # graph 패키지를 stub으로 등록하여 tools 하위 모듈만 독립 테스트한다.
 # ---------------------------------------------------------------------------
 
-import importlib
-import pathlib
 
 _graph_pkg_path = str(pathlib.Path(__file__).resolve().parents[2] / "src" / "inference" / "graph")
 
@@ -34,10 +34,11 @@ else:
     # 이미 로드되었으면 그대로 사용
     pass
 
+from src.inference.graph.tools import build_all_tools, get_tool_approval_map
+from src.inference.graph.tools.analysis_tools import build_analysis_tools
+
 # tools 패키지를 정상 로드
 from src.inference.graph.tools.search_tools import build_search_tools
-from src.inference.graph.tools.analysis_tools import build_analysis_tools
-from src.inference.graph.tools import build_all_tools, get_tool_approval_map
 
 # ---------------------------------------------------------------------------
 # Fixtures

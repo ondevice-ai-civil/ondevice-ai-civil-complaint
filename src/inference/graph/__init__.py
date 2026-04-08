@@ -8,8 +8,17 @@ v4 아키텍처: ReAct + ToolNode 기반.
 - `ApprovalStatus`: 승인 상태 enum
 """
 
-from .builder import build_govon_graph
 from .state import ApprovalStatus, GovOnGraphState
+
+try:
+    from .builder import build_govon_graph
+except ImportError:
+    import logging
+
+    logging.getLogger(__name__).warning(
+        "builder 모듈 로드 실패 (langgraph 미설치 가능), " "build_govon_graph를 사용할 수 없습니다."
+    )
+    build_govon_graph = None  # type: ignore[assignment]
 
 __all__ = [
     "build_govon_graph",

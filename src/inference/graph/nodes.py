@@ -82,23 +82,30 @@ def make_agent_node(llm, tools: list):
 
     LLM에 도구를 바인딩하고, 매 호출마다 system prompt + messages를
     전달하여 도구 호출 또는 최종 응답을 생성한다.
+
+    연속 거부 감지 시 도구 바인딩 없이 LLM을 호출하여
+    tool_calls가 포함되지 않는 순수 텍스트 응답을 보장한다.
     """
+    llm_without_tools = llm  # 원본 LLM (도구 바인딩 없음)
     llm_with_tools = llm.bind_tools(tools)
 
     def _count_consecutive_rejections(messages: list) -> int:
-        """messages를 역순 순회하여 연속 거부 피드백 메시지 수를 카운트한다."""
+        """messages를 역순 순회하여 연속 거부 피드백 메시지 수를 카운트한다.
+
+        거부 사이클: AIMessage(tool_calls) → 거부 HumanMessage 가 반복된다.
+        tool_calls가 있는 AIMessage는 거부 사이클의 일부이므로 건너뛰고,
+        tool_calls가 없는 AIMessage(최종 응답)를 만나면 이전 사이클이므로 중단한다.
+        """
         count = 0
         for msg in reversed(messages):
-            if (
-                isinstance(msg, HumanMessage)
-                and "사용자가 도구 실행을 거부했습니다" in (msg.content or "")
+            if isinstance(msg, HumanMessage) and "사용자가 도구 실행을 거부했습니다" in (
+                msg.content or ""
             ):
                 count += 1
-            elif isinstance(msg, AIMessage):
-                # AI 응답을 만나면 그 이전의 거부는 이전 사이클이므로 중단
+            elif isinstance(msg, AIMessage) and not getattr(msg, "tool_calls", None):
+                # tool_calls 없는 AI 응답 = 이전 사이클 완료, 중단
                 break
-            else:
-                break
+            # tool_calls 있는 AIMessage는 거부 사이클의 일부 → 건너뜀
         return count
 
     async def agent_node(state: GovOnGraphState) -> dict:
@@ -118,7 +125,12 @@ def make_agent_node(llm, tools: list):
             )
 
         system = SystemMessage(content=system_content)
-        response = await llm_with_tools.ainvoke([system] + list(messages))
+
+        # 연속 거부 시 도구 바인딩 없이 호출하여 순수 텍스트 응답 보장
+        active_llm = (
+            llm_without_tools if rejection_count >= _MAX_CONSECUTIVE_REJECTIONS else llm_with_tools
+        )
+        response = await active_llm.ainvoke([system] + list(messages))
         latency = round((time.monotonic() - t0) * 1000, 2)
         logger.debug(
             f"[agent] tool_calls={len(getattr(response, 'tool_calls', []))} "
@@ -153,26 +165,22 @@ def make_approval_wait_node(approval_map: dict[str, bool]):
         tool_calls = getattr(last, "tool_calls", [])
         tool_names = [tc["name"] for tc in tool_calls]
 
-        approval_required = [
-            name for name in tool_names if approval_map.get(name, False)
-        ]
+        approval_required = [name for name in tool_names if approval_map.get(name, False)]
 
         logger.info(
             f"[approval_wait] interrupt: tools={tool_names} "
             f"approval_required={approval_required}"
         )
 
-        response = interrupt({
-            "tools": tool_names,
-            "message": f"다음 도구를 실행합니다: {', '.join(tool_names)}",
-            "approval_required": approval_required,
-        })
-
-        approved = (
-            response.get("approved", False)
-            if isinstance(response, dict)
-            else bool(response)
+        response = interrupt(
+            {
+                "tools": tool_names,
+                "message": f"다음 도구를 실행합니다: {', '.join(tool_names)}",
+                "approval_required": approval_required,
+            }
         )
+
+        approved = response.get("approved", False) if isinstance(response, dict) else bool(response)
 
         if approved:
             logger.info("[approval_wait] 승인됨")
@@ -237,11 +245,7 @@ def make_persist_node(session_store: "SessionStore"):
         for msg in messages:
             if hasattr(msg, "type") and msg.type == "tool":
                 try:
-                    data = (
-                        json.loads(msg.content)
-                        if isinstance(msg.content, str)
-                        else msg.content
-                    )
+                    data = json.loads(msg.content) if isinstance(msg.content, str) else msg.content
                     if isinstance(data, dict):
                         ev = data.get("evidence", {})
                         if isinstance(ev, dict) and ev.get("items"):
@@ -268,6 +272,7 @@ def make_persist_node(session_store: "SessionStore"):
                     last_human is None
                     and hasattr(msg, "type")
                     and msg.type == "human"
+                    and "사용자가 도구 실행을 거부했습니다" not in (msg.content or "")
                 ):
                     last_human = msg
                 if last_human and last_ai:

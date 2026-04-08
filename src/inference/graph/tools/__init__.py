@@ -43,7 +43,9 @@ def build_all_tools(
 
             tools.extend(build_adapter_tools(draft_response_fn))
         except ImportError:
-            pass
+            import logging
+
+            logging.getLogger(__name__).warning("adapter_tools 모듈 로드 실패, 어댑터 도구 생략")
     return tools
 
 

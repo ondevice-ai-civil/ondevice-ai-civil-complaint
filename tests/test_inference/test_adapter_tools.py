@@ -41,9 +41,21 @@ def _import_adapter_tools():
     if mod_name in sys.modules:
         return sys.modules[mod_name]
 
+    # __file__ 기반 상대 경로로 adapter_tools.py 위치 계산
+    import pathlib
+
+    _adapter_tools_path = str(
+        pathlib.Path(__file__).resolve().parents[2]
+        / "src"
+        / "inference"
+        / "graph"
+        / "tools"
+        / "adapter_tools.py"
+    )
+
     spec = importlib.util.spec_from_file_location(
         mod_name,
-        "/Users/um-yunsang/GovOn/src/inference/graph/tools/adapter_tools.py",
+        _adapter_tools_path,
     )
     mod = importlib.util.module_from_spec(spec)
     sys.modules[mod_name] = mod

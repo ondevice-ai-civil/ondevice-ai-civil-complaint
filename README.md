@@ -99,34 +99,31 @@ START → session_load → agent → [route_agent]
 
 포함:
 
-- 자연어 기반 CLI 셸
-- 로컬 daemon 자동 기동 및 재연결
-- 원격 서버 연결 (`GOVON_RUNTIME_URL`)
-- 민원 답변 작성 (civil-adapter LoRA)
-- 법적 근거 인용 (legal-adapter LoRA)
-- 외부 API lookup
-- 로컬 RAG 검색
-- 작업 단위 승인 UI
-- SQLite 기반 세션 resume
-- 후속 근거/출처 증강
+- 자연어 기반 CLI 셸 + 로컬 daemon / 원격 서버 연결
+- ReAct 루프 기반 LLM 자율 도구 선택 (`bind_tools`)
+- Tier 0 자동 실행 도구: `rag_search`, `api_lookup`, `stats_lookup`, `keyword_analyzer`, `demographics_lookup`, `issue_detector`
+- Tier 1 승인 필요 도구: `public_admin_adapter` (민원 답변 LoRA), `legal_adapter` (법률 근거 LoRA)
+- Human-in-the-loop 승인 게이트 (`interrupt()` + approve/reject)
+- 거부 시 agent 대안 제시 루프
+- `adapters.yaml` 기반 동적 도구 등록 (코드 변경 없이 어댑터 추가)
+- LangGraph checkpointer 기반 세션 resume
 
 제외:
 
 - 공문서 작성
-- 분류 기능
 - 웹/앱 제품화
 
 ## 사용자 흐름
 
-1. 사용자가 `govon`을 실행한다.
-2. CLI가 로컬 daemon을 자동 기동하거나 기존 daemon에 재연결한다.
-3. 사용자가 자연어로 업무를 요청한다.
-4. LangGraph agent 노드가 자율적으로 필요한 도구를 선택한다.
-5. Tier 1 도구가 포함되면 `승인 / 거절` UI를 보여준다.
-6. 승인되면 ToolNode가 도구를 병렬 실행하고, 결과를 agent에 반환한다 (ReAct loop).
-7. agent가 충분한 정보가 모이면 최종 답변을 직접 작성한다.
-8. 거절 시 agent가 대안을 제시하고, 사용자가 후속 요청을 할 수 있다.
-9. 종료 시 세션 ID를 보여주고, `govon --session <id>`로 재개한다.
+1. 사용자가 `govon`을 실행하면 CLI가 로컬 daemon에 연결한다.
+2. 사용자가 자연어로 업무를 요청한다.
+3. `session_load` 노드가 기존 대화 컨텍스트를 복원한다.
+4. `agent` 노드(LLM + `bind_tools`)가 요청을 분석하여 도구 호출 또는 직접 답변을 결정한다.
+5. Tier 0 도구(검색/분석)만 호출되면 `ToolNode`가 즉시 병렬 실행하고 결과를 agent에 반환한다 (ReAct loop).
+6. Tier 1 도구(어댑터)가 포함되면 `approval_wait`에서 `interrupt()` — 사용자에게 승인/거절 UI를 보여준다.
+7. 승인 시 `ToolNode`가 실행하고 agent로 재진입, 거절 시 agent가 대안을 제시한다.
+8. agent가 충분한 정보를 모으면 최종 답변을 직접 작성한다 (tool_calls 없음 → `persist` → END).
+9. `persist` 노드가 대화 턴과 evidence를 DB에 저장하고 세션 ID를 반환한다.
 
 ## 문서
 

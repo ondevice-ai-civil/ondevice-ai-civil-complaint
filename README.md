@@ -25,12 +25,13 @@ GovOn은 행정 업무를 보조하는 **에이전틱 CLI 셸**이다. 사용자
 
 ### 모델 구성
 
-| 역할 | 모델 | LoRA | 용도 |
-|---|---|---|---|
-| Agent | EXAONE 4.0-32B-AWQ | 없음 (베이스) | 자율 도구 선택 (bind_tools + ReAct loop) |
-| 민원답변 초안 | EXAONE 4.0-32B-AWQ | **civil-adapter** (r16) | `public_admin_adapter` tool |
-| 법률 근거 인용 | EXAONE 4.0-32B-AWQ | [**legal-adapter**](https://huggingface.co/siwo/govon-legal-adapter) (r16) | `legal_adapter` tool |
-| 검색/분석 | EXAONE 4.0-32B-AWQ | 없음 | `rag_search`, `api_lookup`, `stats_lookup` 등 |
+베이스 LLM **EXAONE 4.0-32B-AWQ** 단일 모델이 사용자 쿼리의 의도를 분석하고 `tool_call`을 자율 결정한다. 어댑터 도구가 호출되면 해당 LoRA를 per-request로 attach하여 추론한다.
+
+| 구성 요소 | LoRA | tool_call 시 동작 |
+|---|---|---|
+| 베이스 모델 (EXAONE 4.0-32B-AWQ) | 없음 | 의도 분석 · `bind_tools()` · ReAct 루프 · Tier 0 도구 실행 |
+| [**civil-adapter**](https://huggingface.co/umyunsang/govon-civil-adapter) (r16) | 74K 민원-답변 쌍 학습 | `public_admin_adapter` tool_call 시 per-request attach |
+| [**legal-adapter**](https://huggingface.co/siwo/govon-legal-adapter) (r16) | 270K 법률 문서 학습 | `legal_adapter` tool_call 시 per-request attach |
 
 ## 데이터 파이프라인
 

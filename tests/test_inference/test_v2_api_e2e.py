@@ -82,18 +82,22 @@ def _make_interrupted_graph(approval_payload: dict | None = None) -> AsyncMock:
     )
 
     mock_graph = AsyncMock()
-    # [IMPORTANT] side_effect 순서 의존성:
-    # api_server.py의 v2_agent_run은 aget_state를 정확히 2회 호출한다.
-    #   1차 호출: ainvoke 전, 기존 interrupt 여부를 확인 (→ completed_state 반환, 즉 "없음")
-    #   2차 호출: ainvoke 후,  최종 그래프 상태를 확인 (→ interrupted_state 반환)
-    # 이 순서는 api_server.py 구현 흐름에 강하게 결합되어 있으므로,
-    # v2_agent_run 내부 aget_state 호출 횟수/순서가 바뀌면 이 스텁도 함께 수정해야 한다.
-    mock_graph.aget_state = AsyncMock(
-        side_effect=[
-            completed_state,  # 1차: "기존 interrupt 확인" 호출 → 없음
-            interrupted_state,  # 2차: ainvoke 이후 상태 확인 → interrupted
-        ]
-    )
+
+    # [IMPORTANT] aget_state 호출 패턴:
+    # api_server.py의 v2_agent_run은 aget_state를 2회 호출한다.
+    #   1차: ainvoke 전, 기존 interrupt 여부를 확인
+    #   2차: ainvoke 후, 최종 그래프 상태를 확인
+    # callable side_effect로 호출 횟수 기반 상태 전환을 구현하여
+    # 리스트 기반 side_effect보다 robust하게 동작한다.
+    _call_count = {"n": 0}
+
+    async def _stateful_aget_state(config):
+        _call_count["n"] += 1
+        if _call_count["n"] <= 1:
+            return completed_state  # 1차: 기존 interrupt 없음
+        return interrupted_state  # 2차 이후: interrupted
+
+    mock_graph.aget_state = AsyncMock(side_effect=_stateful_aget_state)
     mock_graph.ainvoke = AsyncMock(return_value={})
     return mock_graph
 
@@ -217,10 +221,10 @@ class TestV2RunEndpoint:
         resp = client.post("/v2/agent/run", json=_BASE_QUERY)
         assert resp.status_code == 200
         body = resp.json()
-        assert body["status"] == "awaiting_approval"
-        assert "thread_id" in body
-        assert "session_id" in body
-        assert "approval_request" in body
+        assert body["status"] == "awaiting_approval", f"expected awaiting_approval: {body}"
+        assert "thread_id" in body, f"thread_id 누락: {body}"
+        assert "session_id" in body, f"session_id 누락: {body}"
+        assert "approval_request" in body, f"approval_request 누락: {body}"
 
     def test_run_returns_completed(self, client):
         """interrupt 없이 완료된 경우 status=completed와 text를 반환해야 한다."""
@@ -228,7 +232,7 @@ class TestV2RunEndpoint:
         resp = client.post("/v2/agent/run", json=_BASE_QUERY)
         assert resp.status_code == 200
         body = resp.json()
-        assert body["status"] == "completed"
+        assert body["status"] == "completed", f"expected completed: {body}"
         assert "text" in body
         assert body["text"] == "민원 처리 완료되었습니다."
 
@@ -268,7 +272,7 @@ class TestV2ApproveEndpoint:
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert body["status"] == "completed"
+        assert body["status"] == "completed", f"expected completed: {body}"
         assert body["thread_id"] == "thread-abc"
 
     def test_approve_false_returns_rejected(self, client):

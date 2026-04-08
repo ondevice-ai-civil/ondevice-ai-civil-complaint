@@ -80,28 +80,30 @@ def _make_fake_search_results(count: int = 5) -> List[Dict[str, Any]]:
     ]
 
 
+@pytest.fixture
+def setup_hybrid_engine() -> None:
+    """HybridSearchEngine mock 설정 — 여러 테스트 클래스에서 공통 사용."""
+
+    async def fake_search(
+        query: str,
+        index_type: Any,
+        top_k: int = 5,
+        mode: Optional[SearchMode] = None,
+    ) -> Tuple[List[Dict[str, Any]], SearchMode]:
+        return _make_fake_search_results(min(top_k, 5)), mode or SearchMode.HYBRID
+
+    manager.hybrid_engine = MagicMock()
+    manager.hybrid_engine.search = AsyncMock(side_effect=fake_search)
+
+
 # ---------------------------------------------------------------------------
 # 1. TestSearchModeEndpoint — search_mode별 정상 동작 검증
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("setup_hybrid_engine")
 class TestSearchModeEndpoint:
     """HybridSearchEngine을 mock하여 /v1/search의 search_mode별 동작을 검증한다."""
-
-    @pytest.fixture(autouse=True)
-    def _setup_hybrid_engine(self) -> None:
-        """HybridSearchEngine을 mock으로 설정한다."""
-
-        async def fake_search(
-            query: str,
-            index_type: Any,
-            top_k: int = 5,
-            mode: Optional[SearchMode] = None,
-        ) -> Tuple[List[Dict[str, Any]], SearchMode]:
-            return _make_fake_search_results(min(top_k, 5)), mode or SearchMode.HYBRID
-
-        manager.hybrid_engine = MagicMock()
-        manager.hybrid_engine.search = AsyncMock(side_effect=fake_search)
 
     def test_search_hybrid_mode_200(self, client: TestClient) -> None:
         """search_mode=hybrid 요청이 200을 반환한다."""
@@ -156,21 +158,9 @@ class TestSearchModeEndpoint:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("setup_hybrid_engine")
 class TestBackwardCompatibility:
     """레거시 /search 경로 및 search_mode 미지정 요청의 하위 호환성을 검증한다."""
-
-    @pytest.fixture(autouse=True)
-    def _setup_hybrid_engine(self) -> None:
-        async def fake_search(
-            query: str,
-            index_type: Any,
-            top_k: int = 5,
-            mode: Optional[SearchMode] = None,
-        ) -> Tuple[List[Dict[str, Any]], SearchMode]:
-            return _make_fake_search_results(min(top_k, 5)), mode or SearchMode.HYBRID
-
-        manager.hybrid_engine = MagicMock()
-        manager.hybrid_engine.search = AsyncMock(side_effect=fake_search)
 
     def test_legacy_search_endpoint_works(self, client: TestClient) -> None:
         """POST /search (v1 prefix 없이) 요청이 200을 반환한다."""
@@ -242,21 +232,9 @@ class TestFallbackBehavior:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("setup_hybrid_engine")
 class TestResponseStructure:
     """검색 응답의 데이터 구조와 필드 정합성을 검증한다."""
-
-    @pytest.fixture(autouse=True)
-    def _setup_hybrid_engine(self) -> None:
-        async def fake_search(
-            query: str,
-            index_type: Any,
-            top_k: int = 5,
-            mode: Optional[SearchMode] = None,
-        ) -> Tuple[List[Dict[str, Any]], SearchMode]:
-            return _make_fake_search_results(min(top_k, 5)), mode or SearchMode.HYBRID
-
-        manager.hybrid_engine = MagicMock()
-        manager.hybrid_engine.search = AsyncMock(side_effect=fake_search)
 
     def test_search_results_have_required_fields(self, client: TestClient) -> None:
         """각 결과에 doc_id, source_type, title, content, score가 포함된다."""
@@ -287,21 +265,9 @@ class TestResponseStructure:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("setup_hybrid_engine")
 class TestSearchQueryVariety:
     """다양한 쿼리 패턴과 파라미터 조합의 검색 E2E 검증."""
-
-    @pytest.fixture(autouse=True)
-    def _setup_hybrid_engine(self) -> None:
-        async def fake_search(
-            query: str,
-            index_type: Any,
-            top_k: int = 5,
-            mode: Optional[SearchMode] = None,
-        ) -> Tuple[List[Dict[str, Any]], SearchMode]:
-            return _make_fake_search_results(min(top_k, 5)), mode or SearchMode.HYBRID
-
-        manager.hybrid_engine = MagicMock()
-        manager.hybrid_engine.search = AsyncMock(side_effect=fake_search)
 
     def test_search_with_long_query(self, client: TestClient) -> None:
         """100자 이상 긴 쿼리로 검색 시 정상 처리한다."""

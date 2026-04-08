@@ -38,12 +38,15 @@ VLLM_ARGS=(
 if [ -n "${ADAPTER_PATHS:-}" ]; then
     VLLM_ARGS+=(--enable-lora --max-loras 4 --max-lora-rank 64)
     # ADAPTER_PATHS 형식: "civil=repo/path,legal=repo/path"
+    # vLLM 0.19: --lora-modules를 한 번만 사용, 여러 어댑터는 공백 구분
     IFS=',' read -ra PAIRS <<< "$ADAPTER_PATHS"
+    LORA_MODULES=()
     for pair in "${PAIRS[@]}"; do
         name="${pair%%=*}"
         path="${pair#*=}"
-        VLLM_ARGS+=(--lora-modules "${name}=${path}")
+        LORA_MODULES+=("${name}=${path}")
     done
+    VLLM_ARGS+=(--lora-modules "${LORA_MODULES[@]}")
 fi
 
 echo "[entrypoint] vLLM 서버 기동: port=$VLLM_PORT model=$MODEL"
@@ -66,7 +69,7 @@ try:
     sys.exit(0 if r.status == 200 else 1)
 except:
     sys.exit(1)
-" 2>/dev/null
+"
 }
 
 while [ $WAITED -lt $MAX_WAIT ]; do

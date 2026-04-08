@@ -169,7 +169,7 @@ class vLLMEngineManager:
         self._checkpointer_ctx = None  # AsyncSqliteSaver 컨텍스트 매니저 (lifespan에서 관리)
         self._sync_checkpointer_conn = None  # SqliteSaver용 sqlite3 connection (leak 방지)
         self._init_agent_loop()
-        self._init_graph()
+        # _init_graph()는 lifespan()에서 호출 — 모듈 로드 시점 실행 방지
 
     async def initialize(self):
         if SKIP_MODEL_LOAD:
@@ -886,6 +886,9 @@ async def lifespan(app: FastAPI):
     SqliteSaver(또는 MemorySaver fallback)를 그대로 유지한다.
     """
     await manager.initialize()
+
+    # vLLM 서버 연결 후 graph 초기화 (모듈 로드 시점이 아닌 lifespan에서 실행)
+    manager._init_graph()
 
     # AsyncSqliteSaver로 graph 재구성 시도 (더 높은 async 성능)
     async_cp_db = str(Path(manager.session_store.db_path).parent / "langgraph_checkpoints.db")

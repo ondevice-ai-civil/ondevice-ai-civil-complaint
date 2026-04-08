@@ -52,14 +52,25 @@ echo "[entrypoint] args: ${VLLM_ARGS[*]}"
 python3.10 -m vllm.entrypoints.openai.api_server "${VLLM_ARGS[@]}" &
 VLLM_PID=$!
 
-# --- vLLM health check ---
+# --- vLLM health check (curl 미설치 → python urllib 사용) ---
 echo "[entrypoint] vLLM 서버 준비 대기 중..."
-MAX_WAIT=900  # 최대 15분 (모델 다운로드 + CUDA graph 캡처 포함)
+MAX_WAIT=900
 WAITED=0
 INTERVAL=5
 
+_health_check() {
+    python3.10 -c "
+import urllib.request, sys
+try:
+    r = urllib.request.urlopen('http://localhost:${VLLM_PORT}/health', timeout=3)
+    sys.exit(0 if r.status == 200 else 1)
+except:
+    sys.exit(1)
+" 2>/dev/null
+}
+
 while [ $WAITED -lt $MAX_WAIT ]; do
-    if curl -sf "http://localhost:${VLLM_PORT}/health" > /dev/null 2>&1; then
+    if _health_check; then
         echo "[entrypoint] vLLM 서버 준비 완료 (${WAITED}s)"
         break
     fi

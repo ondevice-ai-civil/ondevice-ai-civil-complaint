@@ -12,29 +12,19 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 # ---------------------------------------------------------------------------
-# import guard: capabilities 패키지가 없으면 전체 skip
+# import — 프로젝트 모듈 import 실패는 테스트 실패로 노출시킨다.
+# (broad ImportError skip은 내부 리팩터링 회귀를 숨길 수 있으므로 사용하지 않는다.)
 # ---------------------------------------------------------------------------
-
-try:
-    from src.inference.graph.capabilities.api_lookup import ApiLookupCapability
-    from src.inference.graph.capabilities.base import (
-        EvidenceEnvelope,
-        LookupResult,
-    )
-    from src.inference.graph.capabilities.demographics_lookup import DemographicsLookupCapability
-    from src.inference.graph.capabilities.issue_detector import IssueDetectorCapability
-    from src.inference.graph.capabilities.keyword_analyzer import KeywordAnalyzerCapability
-    from src.inference.graph.capabilities.rag_search import RagSearchCapability
-    from src.inference.graph.capabilities.stats_lookup import StatsLookupCapability
-
-    CAPABILITIES_AVAILABLE = True
-except ImportError:
-    CAPABILITIES_AVAILABLE = False
-
-requires_capabilities = pytest.mark.skipif(
-    not CAPABILITIES_AVAILABLE,
-    reason="capabilities 패키지를 임포트할 수 없습니다",
+from src.inference.graph.capabilities.api_lookup import ApiLookupCapability
+from src.inference.graph.capabilities.base import (
+    EvidenceEnvelope,
+    LookupResult,
 )
+from src.inference.graph.capabilities.demographics_lookup import DemographicsLookupCapability
+from src.inference.graph.capabilities.issue_detector import IssueDetectorCapability
+from src.inference.graph.capabilities.keyword_analyzer import KeywordAnalyzerCapability
+from src.inference.graph.capabilities.rag_search import RagSearchCapability
+from src.inference.graph.capabilities.stats_lookup import StatsLookupCapability
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +54,7 @@ def _assert_to_dict_schema(d: dict) -> None:
 # ===========================================================================
 
 
-@requires_capabilities
+
 class TestRagSearchPipeline:
     """RagSearchCapability execute → LookupResult → to_dict() 파이프라인 검증."""
 
@@ -186,7 +176,7 @@ class TestRagSearchPipeline:
 # ===========================================================================
 
 
-@requires_capabilities
+
 class TestApiLookupPipeline:
     """ApiLookupCapability execute → LookupResult → to_dict() 파이프라인 검증."""
 
@@ -249,7 +239,7 @@ class TestApiLookupPipeline:
 # ===========================================================================
 
 
-@requires_capabilities
+
 class TestIssueDetectorPipeline:
     """IssueDetectorCapability execute → LookupResult → to_dict() 파이프라인 검증."""
 
@@ -342,7 +332,7 @@ class TestIssueDetectorPipeline:
 # ===========================================================================
 
 
-@requires_capabilities
+
 class TestStatsLookupPipeline:
     """StatsLookupCapability execute → LookupResult → to_dict() 파이프라인 검증."""
 
@@ -384,6 +374,10 @@ class TestStatsLookupPipeline:
         assert d["success"] is True
         assert d["count"] == 3
         assert "evidence" in d
+
+        # 호출 계약 검증: searchword가 있을 때 doc_count + trend가 호출되었는지 확인
+        mock_action.get_doc_count.assert_awaited_once()
+        mock_action.get_trend.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_stats_lookup_without_keyword_uses_statistics_and_rankings(self):
@@ -435,13 +429,18 @@ class TestStatsLookupPipeline:
         assert "evidence" in d
         assert d["evidence"]["status"] == "ok"
 
+        # 호출 계약 검증: searchword 없을 때 statistics + org_ranking + region_ranking 호출
+        mock_action.get_statistics.assert_awaited_once()
+        mock_action.get_org_ranking.assert_awaited_once()
+        mock_action.get_region_ranking.assert_awaited_once()
+
 
 # ===========================================================================
 # TestKeywordAnalyzerPipeline
 # ===========================================================================
 
 
-@requires_capabilities
+
 class TestKeywordAnalyzerPipeline:
     """KeywordAnalyzerCapability execute → LookupResult → to_dict() 파이프라인 검증."""
 
@@ -499,7 +498,7 @@ class TestKeywordAnalyzerPipeline:
 # ===========================================================================
 
 
-@requires_capabilities
+
 class TestDemographicsLookupPipeline:
     """DemographicsLookupCapability execute → LookupResult → to_dict() 파이프라인 검증."""
 

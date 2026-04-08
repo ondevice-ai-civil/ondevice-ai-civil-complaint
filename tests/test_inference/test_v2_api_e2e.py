@@ -19,7 +19,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# retriever mock (test_retriever.py와 충돌 방지를 위해 conftest가 아닌 개별 파일에서 처리)
+# retriever mock — api_server.py가 모듈 레벨에서 retriever를 import하므로
+# api_server import 전에 등록해야 한다.
+# setdefault 사용: 실제 retriever가 이미 로드된 경우 덮어쓰지 않는다.
+# test_retriever.py와 충돌 방지를 위해 conftest가 아닌 개별 파일에서 처리한다.
+# 이 mock은 모듈 로드 시점에만 필요하며, 테스트에서 직접 사용하지 않는다.
 sys.modules.setdefault("src.inference.retriever", MagicMock())
 
 from fastapi.testclient import TestClient
@@ -121,7 +125,13 @@ def _make_completed_graph(
 
 
 def _make_approve_graph(approved: bool, final_text: str = "실행 완료.") -> AsyncMock:
-    """approve/reject 이후 결과를 반환하는 그래프 스텁."""
+    """approve/reject 이후 결과를 반환하는 그래프 스텁.
+
+    ainvoke의 side_effect로 전달된 Command의 resume payload를 검증하여
+    핸들러가 approved/rejected를 올바르게 번역하는지 확인한다.
+    """
+    from langgraph.types import Command
+
     result_payload = {
         "session_id": "sess-approve",
         "request_id": "req-approve",
@@ -129,13 +139,29 @@ def _make_approve_graph(approved: bool, final_text: str = "실행 완료.") -> A
         "evidence_items": [],
         "approval_status": "approved" if approved else "rejected",
     }
+
+    async def _verify_and_return(command_or_state, config=None):
+        # api_server가 Command(resume={"approved": bool})로 호출하는지 검증
+        if isinstance(command_or_state, Command):
+            resume = command_or_state.resume
+            assert "approved" in resume, f"resume에 'approved' 키 누락: {resume}"
+            assert resume["approved"] is approved, (
+                f"expected approved={approved}, got {resume['approved']}"
+            )
+        return result_payload
+
     mock_graph = AsyncMock()
-    mock_graph.ainvoke = AsyncMock(return_value=result_payload)
+    mock_graph.ainvoke = AsyncMock(side_effect=_verify_and_return)
     return mock_graph
 
 
 def _make_cancel_ready_graph() -> AsyncMock:
-    """interrupt 대기 상태의 그래프 스텁 (cancel 테스트용)."""
+    """interrupt 대기 상태의 그래프 스텁 (cancel 테스트용).
+
+    ainvoke의 side_effect로 전달된 Command의 cancel 플래그를 검증한다.
+    """
+    from langgraph.types import Command
+
     interrupted_state = FakeGraphState(
         values={"session_id": "sess-cancel", "request_id": "req-cancel"},
         next_nodes=["approval_wait"],
@@ -144,9 +170,16 @@ def _make_cancel_ready_graph() -> AsyncMock:
         "session_id": "sess-cancel",
         "request_id": "req-cancel-done",
     }
+
+    async def _verify_cancel(command_or_state, config=None):
+        if isinstance(command_or_state, Command):
+            resume = command_or_state.resume
+            assert resume.get("cancel") is True, f"cancel 플래그 누락: {resume}"
+        return cancel_result
+
     mock_graph = AsyncMock()
     mock_graph.aget_state = AsyncMock(return_value=interrupted_state)
-    mock_graph.ainvoke = AsyncMock(return_value=cancel_result)
+    mock_graph.ainvoke = AsyncMock(side_effect=_verify_cancel)
     return mock_graph
 
 
@@ -365,13 +398,12 @@ class TestV2DiverseQueries:
         resp = client.post("/v2/agent/run", json={"query": issue_query, "stream": False})
         assert resp.status_code == 200
         body = resp.json()
-        # interrupt 또는 completed 모두 허용하되 필수 필드 검증
-        assert body["status"] in ("awaiting_approval", "completed")
+        # _make_interrupted_graph를 주입했으므로 반드시 awaiting_approval이어야 한다
+        assert body["status"] == "awaiting_approval", (
+            f"_make_interrupted_graph 사용 시 status는 awaiting_approval이어야 합니다: {body}"
+        )
         assert "thread_id" in body
         assert "session_id" in body
         assert "graph_run_id" in body
-
-        # interrupt인 경우 approval_request가 존재해야 한다
-        if body["status"] == "awaiting_approval":
-            assert body.get("approval_request") is not None
-            assert body["approval_request"].get("tool_name") == "detect_issue"
+        assert body.get("approval_request") is not None
+        assert body["approval_request"].get("tool_name") == "detect_issue"

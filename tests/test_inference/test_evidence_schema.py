@@ -4,7 +4,7 @@ Issue #155: mixed evidence 응답 스키마 정규화.
 
 테스트 케이스:
   1. EvidenceItem/EvidenceEnvelope 직렬화
-  2. (removed — rag_search capability was deleted)
+  2. (removed)
   3. ApiLookupCapability evidence 필드 채워지는지 확인
   4. 정상/빈결과/부분결과/에러 4케이스
 """

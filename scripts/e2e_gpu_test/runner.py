@@ -243,7 +243,6 @@ async def run_phase1_infra(logger: E2ELogger) -> list[dict]:
 async def main() -> int:
     parser = argparse.ArgumentParser(description="GovOn E2E GPU Test Runner")
     parser.add_argument("--phase", type=int, help="특정 Phase만 실행 (1-6)")
-    parser.add_argument("--monitor", action="store_true", help="실시간 모니터링 모드")
     parser.add_argument("--verbose", action="store_true", default=True, help="상세 출력")
     args = parser.parse_args()
 
@@ -282,8 +281,14 @@ async def main() -> int:
 
     # Phase 2-5: 기존 스크립트 호환 (점진적 이관 예정)
     if target_phase is not None and target_phase in (2, 3, 4, 5):
-        logger.info(f"\n[Phase {target_phase}] 기존 verify_e2e_tool_calling.py를 사용하세요")
-        logger.info("  GOVON_RUNTIME_URL=... python scripts/verify_e2e_tool_calling.py")
+        logger.error(
+            f"\n[Phase {target_phase}] 미구현: "
+            "기존 verify_e2e_tool_calling.py를 사용하세요\n"
+            "  GOVON_RUNTIME_URL=... python scripts/verify_e2e_tool_calling.py"
+        )
+        write_json_report(all_results, RESULTS_PATH, _run_id, cold_start_wait, _observed_tools)
+        logger.close()
+        return 1
 
     # Phase 6: Advanced
     if target_phase is None or target_phase == 6:

@@ -2,8 +2,8 @@
 테스트 공통 fixture.
 """
 
-import types
 import sys
+import types
 from unittest.mock import MagicMock
 
 # database.py 모듈 레벨의 PostgreSQL engine 생성을 우회

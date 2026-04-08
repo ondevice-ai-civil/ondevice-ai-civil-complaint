@@ -46,27 +46,6 @@ from src.inference.graph.tools.search_tools import build_search_tools
 
 
 @pytest.fixture()
-def mock_rag_search_fn() -> AsyncMock:
-    """RAG 검색 클로저 mock."""
-    fn = AsyncMock()
-    fn.return_value = {
-        "query": "테스트 검색",
-        "results": [
-            {
-                "content": "테스트 문서 내용",
-                "metadata": {"file_path": "/docs/test.pdf", "page": 1},
-                "score": 0.85,
-                "source_type": "law",
-                "doc_id": "doc-001",
-                "title": "테스트 법령",
-            }
-        ],
-        "context_text": "관련 문서 1건 검색됨",
-    }
-    return fn
-
-
-@pytest.fixture()
 def mock_api_action() -> MagicMock:
     """MinwonAnalysisAction mock."""
     action = MagicMock()
@@ -128,36 +107,26 @@ def mock_api_action() -> MagicMock:
 class TestBuildSearchTools:
     """build_search_tools 테스트."""
 
-    def test_returns_two_tools(self, mock_rag_search_fn: AsyncMock) -> None:
-        tools = build_search_tools(mock_rag_search_fn, api_lookup_action=None)
-        assert len(tools) == 2
+    def test_returns_one_tool(self) -> None:
+        tools = build_search_tools(api_lookup_action=None)
+        assert len(tools) == 1
 
-    def test_tool_names(self, mock_rag_search_fn: AsyncMock) -> None:
-        tools = build_search_tools(mock_rag_search_fn)
+    def test_tool_names(self) -> None:
+        tools = build_search_tools()
         names = {t.name for t in tools}
-        assert names == {"rag_search", "api_lookup"}
+        assert names == {"api_lookup"}
 
-    def test_descriptions_not_empty(self, mock_rag_search_fn: AsyncMock) -> None:
-        tools = build_search_tools(mock_rag_search_fn)
+    def test_descriptions_not_empty(self) -> None:
+        tools = build_search_tools()
         for tool in tools:
             assert tool.description, f"{tool.name} description이 비어있음"
 
     @pytest.mark.asyncio
-    async def test_rag_search_returns_json(self, mock_rag_search_fn: AsyncMock) -> None:
-        tools = build_search_tools(mock_rag_search_fn)
-        rag_tool = next(t for t in tools if t.name == "rag_search")
-        result = await rag_tool.ainvoke({"query": "테스트"})
-        parsed = json.loads(result)
-        assert isinstance(parsed, dict)
-        assert "success" in parsed
-
-    @pytest.mark.asyncio
     async def test_api_lookup_returns_json(
         self,
-        mock_rag_search_fn: AsyncMock,
         mock_api_action: MagicMock,
     ) -> None:
-        tools = build_search_tools(mock_rag_search_fn, mock_api_action)
+        tools = build_search_tools(mock_api_action)
         api_tool = next(t for t in tools if t.name == "api_lookup")
         result = await api_tool.ainvoke({"query": "테스트 민원"})
         parsed = json.loads(result)
@@ -239,16 +208,15 @@ class TestBuildAnalysisTools:
 class TestBuildAllTools:
     """build_all_tools 테스트."""
 
-    def test_collects_all_tools(self, mock_rag_search_fn: AsyncMock) -> None:
+    def test_collects_all_tools(self) -> None:
         tools = build_all_tools(
-            rag_search_fn=mock_rag_search_fn,
             api_lookup_action=None,
         )
-        # 2 search + 4 analysis = 6 (draft_response_fn 없음)
-        assert len(tools) == 6
+        # 1 search + 4 analysis = 5 (draft_response_fn 없음)
+        assert len(tools) == 5
 
-    def test_all_names_unique(self, mock_rag_search_fn: AsyncMock) -> None:
-        tools = build_all_tools(rag_search_fn=mock_rag_search_fn)
+    def test_all_names_unique(self) -> None:
+        tools = build_all_tools()
         names = [t.name for t in tools]
         assert len(names) == len(set(names)), f"중복 도구명: {names}"
 
@@ -256,8 +224,8 @@ class TestBuildAllTools:
 class TestToolApprovalMap:
     """get_tool_approval_map 테스트."""
 
-    def test_returns_map(self, mock_rag_search_fn: AsyncMock) -> None:
-        tools = build_all_tools(rag_search_fn=mock_rag_search_fn)
+    def test_returns_map(self) -> None:
+        tools = build_all_tools()
         approval_map = get_tool_approval_map(tools)
         assert isinstance(approval_map, dict)
         assert len(approval_map) == len(tools)

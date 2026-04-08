@@ -111,7 +111,7 @@ async def call_agent_with_approval(
         return False, "", meta, f"SSE 이벤트 수신했으나 text/awaiting 없음 (events={len(events)})"
 
     except Exception as sse_exc:
-        pass  # fallback to REST
+        meta["sse_fallback_reason"] = str(sse_exc)  # REST fallback 원인 기록
 
     # REST fallback: /v2/agent/run
     try:

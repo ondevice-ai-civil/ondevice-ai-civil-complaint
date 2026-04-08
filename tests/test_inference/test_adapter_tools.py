@@ -1,14 +1,63 @@
-"""adapter_tools 팩토리 함수 단위 테스트."""
+"""adapter_tools 팩토리 함수 단위 테스트.
+
+graph 패키지의 import chain(faiss, vllm 등)을 우회하기 위해
+importlib를 사용하여 adapter_tools 모듈만 직접 로드한다.
+sys.modules를 오염시키지 않도록 테스트 종료 시 복원한다.
+"""
 
 from __future__ import annotations
 
+import importlib
+import importlib.util
 import json
+import pathlib
+import sys
+import types
 from unittest.mock import AsyncMock
 
 import pytest
 
 from src.inference.adapter_registry import AdapterMeta, AdapterRegistry
-from src.inference.graph.tools.adapter_tools import build_adapter_tools
+
+
+def _import_adapter_tools():
+    """graph 패키지 초기화를 우회하여 adapter_tools만 로드한다."""
+    mod_name = "src.inference.graph.tools.adapter_tools"
+    if mod_name in sys.modules:
+        return sys.modules[mod_name]
+
+    # 상위 패키지 stub 등록 (아직 없는 경우만)
+    stubs = {}
+    for parent in ["src.inference.graph", "src.inference.graph.tools"]:
+        if parent not in sys.modules:
+            stub = types.ModuleType(parent)
+            stub.__path__ = []
+            sys.modules[parent] = stub
+            stubs[parent] = True
+
+    adapter_tools_path = str(
+        pathlib.Path(__file__).resolve().parents[2]
+        / "src"
+        / "inference"
+        / "graph"
+        / "tools"
+        / "adapter_tools.py"
+    )
+
+    spec = importlib.util.spec_from_file_location(mod_name, adapter_tools_path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[mod_name] = mod
+    spec.loader.exec_module(mod)
+
+    # stub 패키지 복원 — 다른 테스트가 정상 import 할 수 있도록
+    for parent in stubs:
+        del sys.modules[parent]
+
+    return mod
+
+
+_adapter_tools_mod = _import_adapter_tools()
+build_adapter_tools = _adapter_tools_mod.build_adapter_tools
 
 
 @pytest.fixture(autouse=True)

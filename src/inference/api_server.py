@@ -655,6 +655,9 @@ class vLLMEngineManager:
         """
         accumulated_text = ""
         async with self._http_client.stream("POST", "/v1/chat/completions", json=body) as resp:
+            if resp.status_code != 200:
+                logger.error(f"vLLM 스트리밍 HTTP {resp.status_code}")
+                return
             async for line in resp.aiter_lines():
                 line = line.strip()
                 if not line.startswith("data:"):
@@ -993,9 +996,10 @@ async def health():
         try:
             resp = await manager._http_client.get("/health", timeout=3.0)
             vllm_ok = resp.status_code == 200
-        except Exception:
-            pass
-    status = "healthy" if vllm_ok else "degraded"
+        except Exception as exc:
+            logger.debug(f"vLLM health check 실패: {exc}")
+    # SKIP_MODEL_LOAD 환경에서는 vLLM 없이도 healthy
+    status = "healthy" if (vllm_ok or SKIP_MODEL_LOAD) else "degraded"
     return {
         "status": status,
         "profile": runtime_config.profile.value,

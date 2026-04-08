@@ -112,8 +112,10 @@ fi
 # exec 대신 백그라운드 실행 후 wait: SIGTERM을 vLLM/FastAPI 양쪽에 전파하기 위함
 cleanup() {
     echo "[entrypoint] Shutting down..."
-    kill $VLLM_PID 2>/dev/null
-    wait $VLLM_PID 2>/dev/null
+    kill $FASTAPI_PID 2>/dev/null || true
+    kill $VLLM_PID 2>/dev/null || true
+    wait $FASTAPI_PID 2>/dev/null || true
+    wait $VLLM_PID 2>/dev/null || true
 }
 trap cleanup EXIT SIGTERM SIGINT
 

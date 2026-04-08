@@ -17,7 +17,7 @@ test.describe('GovOn Runtime Smoke', () => {
     const body = await response.json();
     expect(body).toHaveProperty('status', 'healthy');
     expect(body).toHaveProperty('profile');
-    expect(['local', 'single', 'airgap']).toContain(body.profile);
+    expect(['local', 'single', 'airgap', 'container']).toContain(body.profile);
     expect(body).toHaveProperty('model');
     expect(body).toHaveProperty('feature_flags');
     expect(body.feature_flags).toHaveProperty('model_version');

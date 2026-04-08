@@ -62,11 +62,16 @@ _API_KEY = os.getenv("API_KEY")
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
+_ALLOW_NO_AUTH = os.getenv("ALLOW_NO_AUTH", "false").lower() in ("true", "1")
+
+
 async def verify_api_key(api_key: str = Security(_api_key_header)):
     if _API_KEY is None:
-        # TODO: M7 — API_KEY 미설정 시 운영 프로필에서 요청 차단 여부는
-        # HF Spaces 초기 배포 호환성을 확인한 뒤 결정한다.
-        return
+        if _ALLOW_NO_AUTH:
+            return
+        raise HTTPException(
+            status_code=401, detail="API_KEY가 설정되지 않았습니다. 서버 관리자에게 문의하세요."
+        )
     if api_key != _API_KEY:
         raise HTTPException(status_code=401, detail="유효하지 않은 API 키입니다.")
 
@@ -117,7 +122,7 @@ class _StreamChunk:
     ``request_output.finished``에 접근하므로 동일한 속성을 제공한다.
     """
 
-    def __init__(self, text: str, finished: bool):
+    def __init__(self, text: str, finished: bool) -> None:
         self.outputs = [type("Output", (), {"text": text})()]
         self.finished = finished
 
@@ -1005,7 +1010,7 @@ async def health():
         "profile": runtime_config.profile.value,
         "model": runtime_config.model.model_path,
         "vllm_connected": vllm_ok,
-        "agents_loaded": list(manager.agent_manager._agents.keys()) if manager.agent_manager else [],
+        "agents_loaded": manager.agent_manager.list_agents() if manager.agent_manager else [],
         "feature_flags": {
             "model_version": manager.feature_flags.model_version,
         },

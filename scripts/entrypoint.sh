@@ -122,4 +122,8 @@ trap cleanup EXIT SIGTERM SIGINT
 echo "[entrypoint] FastAPI 서버 기동: port=${PORT:-7860}"
 CUDA_VISIBLE_DEVICES="" python3.10 -m src.inference.api_server &
 FASTAPI_PID=$!
-wait $FASTAPI_PID
+
+# 두 자식 중 먼저 종료된 프로세스를 감지하여 나머지도 정리
+wait -n $FASTAPI_PID $VLLM_PID 2>/dev/null || true
+EXITED=$?
+echo "[entrypoint] 프로세스 종료 감지 (exit=$EXITED), cleanup 진행"

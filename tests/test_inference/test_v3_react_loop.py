@@ -201,7 +201,8 @@ class TestV3MaxIterations:
             tool_calls=[{"name": "api_lookup", "args": {"query": "검색"}, "id": "call_max_1"}],
         )
         # 두 번째 agent 호출: max_iterations 도달로 도구 없이 응답 강제
-        forced_response = AIMessage(content="현재까지 수집한 정보로 답변합니다.")
+        # tool_calls=[] 명시: StubLLM.bind_tools가 self를 반환하므로 빈 리스트를 직접 지정
+        forced_response = AIMessage(content="현재까지 수집한 정보로 답변합니다.", tool_calls=[])
         llm = StubLLM(responses=[tool_call_response, forced_response])
         tools = [make_test_tool("api_lookup")]
 
@@ -211,8 +212,12 @@ class TestV3MaxIterations:
 
         result = await graph.ainvoke(state, config)
 
-        assert result["final_text"] == "현재까지 수집한 정보로 답변합니다."
-        assert result["iteration_count"] == 1
+        assert (
+            result["final_text"] == "현재까지 수집한 정보로 답변합니다."
+        ), f"expected forced final answer, got {result.get('final_text')!r}"
+        assert (
+            result["iteration_count"] == 1
+        ), f"expected iteration_count=1 after forced stop, got {result.get('iteration_count')}"
         # 1회 도구 실행 후 강제 종료
         history = result.get("tool_call_history", [])
         assert len(history) >= 1

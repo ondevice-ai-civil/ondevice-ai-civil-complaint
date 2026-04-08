@@ -1001,7 +1001,7 @@ async def health():
         "profile": runtime_config.profile.value,
         "model": runtime_config.model.model_path,
         "vllm_connected": vllm_ok,
-        "agents_loaded": list(manager.agent_manager.agents.keys()) if manager.agent_manager else [],
+        "agents_loaded": manager.agent_manager.list_agents() if manager.agent_manager else [],
         "feature_flags": {
             "model_version": manager.feature_flags.model_version,
         },

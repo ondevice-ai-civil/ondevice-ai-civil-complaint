@@ -50,7 +50,7 @@ class StubExecutorAdapter(ExecutorAdapter):
         }
 
     def list_tools(self) -> list[str]:
-        return ["rag_search", "api_lookup", "draft_civil_response", "append_evidence"]
+        return ["rag_search", "api_lookup", "draft_response"]
 
 
 class RecordingExecutorAdapter(ExecutorAdapter):
@@ -74,7 +74,7 @@ class RecordingExecutorAdapter(ExecutorAdapter):
         }
 
     def list_tools(self) -> list[str]:
-        return ["rag_search", "api_lookup", "draft_civil_response", "append_evidence"]
+        return ["rag_search", "api_lookup", "draft_response"]
 
 
 @pytest.fixture
@@ -351,7 +351,7 @@ class TestGraphSmoke:
         assert "도로 보수 접수를 진행하겠습니다." in executor.seen_queries["rag_search"]
         assert "관련 법령 지침 매뉴얼 공지 내부 문서" in executor.seen_queries["rag_search"]
         assert "유사 민원 사례 통계 최근 이슈" in executor.seen_queries["api_lookup"]
-        assert executor.seen_queries["append_evidence"] == "이 답변의 근거를 붙여줘"
+        assert executor.seen_queries["draft_response"] == "이 답변의 근거를 붙여줘"
         assert executor.seen_queries["rag_search"] != executor.seen_queries["api_lookup"]
 
 

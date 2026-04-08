@@ -2,7 +2,7 @@
 """GovOn Legal LoRA 어댑터 서빙 통합 검증 스크립트.
 
 HuggingFace Space에 배포된 govon-runtime 서버에 대해
-legal/civil adapter Multi-LoRA 서빙 동작을 검증한다.
+legal/public_admin adapter Multi-LoRA 서빙 동작을 검증한다.
 
 사용법:
     GOVON_RUNTIME_URL=https://<space-url>.hf.space python3 scripts/verify_lora_serving.py
@@ -408,8 +408,8 @@ async def _call_agent(
 _RUN_SESSION_ID = str(uuid4())
 
 
-async def scenario3_civil_lora() -> dict:
-    """Scenario 3: Civil LoRA — draft_civil_response (v2/agent/stream)."""
+async def scenario3_public_admin_lora() -> dict:
+    """Scenario 3: Public Admin LoRA — draft_response (v2/agent/stream)."""
     t0 = time.monotonic()
     try:
         ok, text, err = await _call_agent(
@@ -420,7 +420,7 @@ async def scenario3_civil_lora() -> dict:
         if not ok:
             return _record(
                 3,
-                "Civil LoRA (draft_civil_response)",
+                "Public Admin LoRA (draft_response)",
                 False,
                 elapsed,
                 err,
@@ -428,23 +428,23 @@ async def scenario3_civil_lora() -> dict:
             )
         if not text.strip():
             return _record(
-                3, "Civil LoRA (draft_civil_response)", False, elapsed, "응답 텍스트가 비어있음"
+                3, "Public Admin LoRA (draft_response)", False, elapsed, "응답 텍스트가 비어있음"
             )
         return _record(
             3,
-            "Civil LoRA (draft_civil_response)",
+            "Public Admin LoRA (draft_response)",
             True,
             elapsed,
             detail={"text_preview": text[:200]},
         )
     except Exception as exc:
         return _record(
-            3, "Civil LoRA (draft_civil_response)", False, time.monotonic() - t0, str(exc)
+            3, "Public Admin LoRA (draft_response)", False, time.monotonic() - t0, str(exc)
         )
 
 
 async def scenario4_legal_lora() -> dict:
-    """Scenario 4: Legal LoRA — append_evidence (v2/agent/stream).
+    """Scenario 4: Legal LoRA — draft_response (v2/agent/stream).
 
     독립 세션에서 민원 답변 초안 요청 후 동일 세션에서 법령 근거 보강을 요청한다.
     응답에 법령/조항 관련 패턴이 포함되어 있는지 확인한다.
@@ -452,19 +452,19 @@ async def scenario4_legal_lora() -> dict:
     t0 = time.monotonic()
     session_id = str(uuid4())
     try:
-        # 동일 세션에서 civil 요청 먼저 (append_evidence는 이전 답변 컨텍스트 필요)
-        ok_civil, _, err_civil = await _call_agent(
+        # 동일 세션에서 public_admin 요청 먼저 (draft_response는 이전 답변 컨텍스트 필요)
+        ok_admin, _, err_admin = await _call_agent(
             message="건축 허가 신청 민원에 대한 답변 초안을 작성해줘",
             session_id=session_id,
         )
-        if not ok_civil:
+        if not ok_admin:
             elapsed = time.monotonic() - t0
             return _record(
                 4,
-                "Legal LoRA (append_evidence)",
+                "Legal LoRA (draft_response)",
                 False,
                 elapsed,
-                f"civil 선행 요청 실패: {err_civil}",
+                f"public_admin 선행 요청 실패: {err_admin}",
             )
 
         ok, text, err = await _call_agent(
@@ -475,7 +475,7 @@ async def scenario4_legal_lora() -> dict:
         if not ok:
             return _record(
                 4,
-                "Legal LoRA (append_evidence)",
+                "Legal LoRA (draft_response)",
                 False,
                 elapsed,
                 err,
@@ -483,7 +483,7 @@ async def scenario4_legal_lora() -> dict:
             )
         if not text.strip():
             return _record(
-                4, "Legal LoRA (append_evidence)", False, elapsed, "응답 텍스트가 비어있음"
+                4, "Legal LoRA (draft_response)", False, elapsed, "응답 텍스트가 비어있음"
             )
 
         has_legal = _contains_legal_keyword(text)
@@ -496,21 +496,21 @@ async def scenario4_legal_lora() -> dict:
         if not has_legal:
             return _record(
                 4,
-                "Legal LoRA (append_evidence)",
+                "Legal LoRA (draft_response)",
                 False,
                 elapsed,
                 f"법령 패턴 미발견 ({LEGAL_PATTERNS[:3]}...)",
                 detail,
             )
-        return _record(4, "Legal LoRA (append_evidence)", True, elapsed, detail=detail)
+        return _record(4, "Legal LoRA (draft_response)", True, elapsed, detail=detail)
     except Exception as exc:
-        return _record(4, "Legal LoRA (append_evidence)", False, time.monotonic() - t0, str(exc))
+        return _record(4, "Legal LoRA (draft_response)", False, time.monotonic() - t0, str(exc))
 
 
 async def scenario5_sequential_multi_lora_switching() -> dict:
-    """Scenario 5: Sequential Multi-LoRA Switching (civil → legal x3).
+    """Scenario 5: Sequential Multi-LoRA Switching (public_admin → legal x3).
 
-    civil 요청 → legal 요청을 3회 반복하여 LoRA 전환 오류가 없는지 확인한다.
+    public_admin 요청 → legal 요청을 3회 반복하여 LoRA 전환 오류가 없는지 확인한다.
     반복마다 별도의 UUID 세션 ID를 사용한다.
     """
     t0 = time.monotonic()
@@ -520,13 +520,13 @@ async def scenario5_sequential_multi_lora_switching() -> dict:
     for i in range(1, iterations + 1):
         session_id = str(uuid4())
 
-        # civil 요청
+        # public_admin 요청
         ok, text, err = await _call_agent(
             message="행정처분 이의신청 민원 답변 초안을 작성해줘",
             session_id=session_id,
         )
         if not ok or not text.strip():
-            errors.append(f"iter {i} civil: {err or '빈 응답'}")
+            errors.append(f"iter {i} public_admin: {err or '빈 응답'}")
             continue
 
         # legal 요청 (동일 세션)
@@ -580,28 +580,29 @@ async def scenario6_lora_id_consistency() -> dict:
         detail["model"] = health.get("model", "")
         detail["feature_flags"] = health.get("feature_flags", {})
 
-        civil_found = False
+        public_admin_found = False
         legal_found = False
 
         # /v1/models 시도 (vLLM OpenAI-compatible)
+        # HF Hub 경로("govon-civil-adapter")에 "civil" 문자열이 포함되므로 경로 기반으로 검색
         try:
             models_status, models_resp = await http_get("/v1/models")
             if models_status == 200:
                 model_ids = [m.get("id", "") for m in models_resp.get("data", [])]
                 detail["v1_models"] = model_ids
-                civil_found = any("civil" in mid for mid in model_ids)
+                public_admin_found = any("civil" in mid for mid in model_ids)
                 legal_found = any("legal" in mid for mid in model_ids)
-                detail["civil_adapter_in_models"] = civil_found
+                detail["public_admin_adapter_in_models"] = public_admin_found
                 detail["legal_adapter_in_models"] = legal_found
         except Exception as exc:
             logger.warning("Failed to fetch /v1/models: %s", exc)
             detail["v1_models"] = "unavailable"
 
         # vLLM이 /v1/models에 어댑터를 노출하지 않을 수 있으므로 정보성 기록만 수행
-        if not civil_found or not legal_found:
+        if not public_admin_found or not legal_found:
             missing = []
-            if not civil_found:
-                missing.append("civil")
+            if not public_admin_found:
+                missing.append("public_admin")
             if not legal_found:
                 missing.append("legal")
             detail["warning"] = f"어댑터 미감지 (vLLM 버전에 따라 정상): {', '.join(missing)}"
@@ -628,7 +629,7 @@ async def main() -> int:
     scenarios = [
         scenario1_health_check,
         scenario2_base_model_generation,
-        scenario3_civil_lora,
+        scenario3_public_admin_lora,
         scenario4_legal_lora,
         scenario5_sequential_multi_lora_switching,
         scenario6_lora_id_consistency,

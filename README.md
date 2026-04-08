@@ -8,8 +8,8 @@ GovOn은 행정 업무를 보조하는 **에이전틱 CLI 셸**이다. 사용자
 <!-- DORA-BADGES:START -->
 ![DORA Grade](https://img.shields.io/badge/DORA-Elite-brightgreen)
 ![Deploy Freq](https://img.shields.io/badge/Deploy_Freq-30%2Fweek-blue)
-![Lead Time](https://img.shields.io/badge/Lead_Time-2.0h-brightgreen)
-![CFR](https://img.shields.io/badge/CFR-27.0%2525-yellow)
+![Lead Time](https://img.shields.io/badge/Lead_Time-2.5h-brightgreen)
+![CFR](https://img.shields.io/badge/CFR-27.5%2525-yellow)
 ![MTTR](https://img.shields.io/badge/MTTR-0.0h-brightgreen)
 <!-- DORA-BADGES:END -->
 

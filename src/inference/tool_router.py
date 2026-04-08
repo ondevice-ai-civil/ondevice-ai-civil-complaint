@@ -13,8 +13,7 @@ class ToolType(str, Enum):
 
     RAG_SEARCH = "rag_search"
     API_LOOKUP = "api_lookup"
-    DRAFT_CIVIL_RESPONSE = "draft_civil_response"
-    APPEND_EVIDENCE = "append_evidence"
+    DRAFT_RESPONSE = "draft_response"
     ISSUE_DETECTOR = "issue_detector"
     STATS_LOOKUP = "stats_lookup"
     KEYWORD_ANALYZER = "keyword_analyzer"
@@ -48,14 +47,6 @@ class ExecutionPlan:
     def tool_names(self) -> List[str]:
         return [step.step_id for step in self.steps]
 
-
-_EVIDENCE_PATTERNS = [
-    r"근거",
-    r"출처",
-    r"왜\s*이렇게",
-    r"이유",
-    r"링크",
-]
 
 _DRAFT_PATTERNS = [
     r"답변",
@@ -94,7 +85,6 @@ class ToolRouter:
     """자연어 요청을 MVP capability 조합으로 정규화한다."""
 
     def __init__(self) -> None:
-        self._evidence_patterns = [re.compile(p) for p in _EVIDENCE_PATTERNS]
         self._draft_patterns = [re.compile(p) for p in _DRAFT_PATTERNS]
         self._lookup_patterns = [re.compile(p) for p in _LOOKUP_PATTERNS]
         self._rag_patterns = [re.compile(p) for p in _RAG_PATTERNS]
@@ -111,20 +101,9 @@ class ToolRouter:
                 reason=f"강제 지정된 capability: {[tool_name(tool) for tool in force_tools]}",
             )
 
-        needs_evidence = self._match_patterns(query, self._evidence_patterns)
         needs_draft = self._match_patterns(query, self._draft_patterns)
         needs_lookup = self._match_patterns(query, self._lookup_patterns)
         needs_rag = self._match_patterns(query, self._rag_patterns)
-
-        if needs_evidence:
-            return ExecutionPlan(
-                steps=[
-                    ToolStep(tool=ToolType.RAG_SEARCH),
-                    ToolStep(tool=ToolType.API_LOOKUP),
-                    ToolStep(tool=ToolType.APPEND_EVIDENCE, depends_on=ToolType.API_LOOKUP.value),
-                ],
-                reason="근거/출처 보강 요청으로 판단",
-            )
 
         if needs_lookup and not needs_draft and not needs_rag:
             return ExecutionPlan(
@@ -138,7 +117,7 @@ class ToolRouter:
                     ToolStep(tool=ToolType.RAG_SEARCH),
                     ToolStep(tool=ToolType.API_LOOKUP),
                     ToolStep(
-                        tool=ToolType.DRAFT_CIVIL_RESPONSE,
+                        tool=ToolType.DRAFT_RESPONSE,
                         depends_on=ToolType.API_LOOKUP.value,
                     ),
                 ],
@@ -150,7 +129,7 @@ class ToolRouter:
                 ToolStep(tool=ToolType.RAG_SEARCH),
                 ToolStep(tool=ToolType.API_LOOKUP),
                 ToolStep(
-                    tool=ToolType.DRAFT_CIVIL_RESPONSE,
+                    tool=ToolType.DRAFT_RESPONSE,
                     depends_on=ToolType.API_LOOKUP.value,
                 ),
             ],

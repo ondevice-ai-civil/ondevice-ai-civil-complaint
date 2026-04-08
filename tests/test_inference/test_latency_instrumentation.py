@@ -33,7 +33,7 @@ class SlowExecutor:
         self.latencies = latencies or {
             "rag_search": 0.2,
             "api_lookup": 0.2,
-            "draft_civil_response": 0.1,
+            "draft_response": 0.1,
         }
 
     async def execute(self, tool_name: str, query: str, context: dict) -> dict:
@@ -197,26 +197,26 @@ class TestParallelToolExecution:
 
     @pytest.mark.asyncio
     async def test_dependent_tools_run_after_independent(self):
-        """draft_civil_response는 independent 도구 이후 순차 실행된다."""
+        """draft_response는 independent 도구 이후 순차 실행된다."""
         executor = SlowExecutor(
             {
                 "rag_search": 0.05,
                 "api_lookup": 0.05,
-                "draft_civil_response": 0.05,
+                "draft_response": 0.05,
             }
         )
 
         state = {
             "approval_status": ApprovalStatus.APPROVED.value,
-            "planned_tools": ["rag_search", "api_lookup", "draft_civil_response"],
+            "planned_tools": ["rag_search", "api_lookup", "draft_response"],
             "accumulated_context": {"query": "test"},
         }
 
         result = await tool_execute_node(state, executor_adapter=executor)
 
         assert len(result["tool_results"]) == 3
-        assert "draft_civil_response" in result["tool_results"]
-        # draft_civil_response는 rag/api 결과가 accumulated된 후 실행
+        assert "draft_response" in result["tool_results"]
+        # draft_response는 rag/api 결과가 accumulated된 후 실행
         assert "rag_search" in result["accumulated_context"]
         assert "api_lookup" in result["accumulated_context"]
 
@@ -259,7 +259,7 @@ class TestCapabilityDefaults:
 
         assert get_timeout("rag_search") == 15.0
         assert get_timeout("api_lookup") == 10.0
-        assert get_timeout("draft_civil_response") == 30.0
+        assert get_timeout("draft_response") == 30.0
 
     def test_get_timeout_env_override(self, monkeypatch):
         from src.inference.graph.capabilities.defaults import get_timeout

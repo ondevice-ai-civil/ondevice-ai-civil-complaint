@@ -1,11 +1,10 @@
 """LangGraph capabilities 패키지 — 표준화된 tool capability 인터페이스."""
 
 from .api_lookup import ApiLookupCapability, ApiLookupParams
-from .append_evidence import AppendEvidenceCapability
 from .base import CapabilityBase, CapabilityMetadata, LookupResult
 from .defaults import get_all_defaults, get_max_retries, get_timeout
 from .demographics_lookup import DemographicsLookupCapability
-from .draft_civil_response import DraftCivilResponseCapability
+from .draft_response import DraftResponseCapability
 from .issue_detector import IssueDetectorCapability
 from .keyword_analyzer import KeywordAnalyzerCapability
 from .rag_search import RagSearchCapability, RagSearchParams
@@ -26,8 +25,7 @@ __all__ = [
     "ApiLookupParams",
     "RagSearchCapability",
     "RagSearchParams",
-    "DraftCivilResponseCapability",
-    "AppendEvidenceCapability",
+    "DraftResponseCapability",
     "IssueDetectorCapability",
     "StatsLookupCapability",
     "KeywordAnalyzerCapability",

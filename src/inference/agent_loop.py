@@ -325,10 +325,9 @@ class AgentLoop:
 
     @staticmethod
     def _extract_final_text(accumulated: Dict[str, Any], plan: ExecutionPlan) -> str:
-        for tool_type in (ToolType.APPEND_EVIDENCE, ToolType.DRAFT_CIVIL_RESPONSE):
-            payload = accumulated.get(tool_type.value, {})
-            if isinstance(payload, dict) and payload.get("text"):
-                return str(payload["text"])
+        payload = accumulated.get(ToolType.DRAFT_RESPONSE.value, {})
+        if isinstance(payload, dict) and payload.get("text"):
+            return str(payload["text"])
 
         for step in plan.steps:
             payload = accumulated.get(step.step_id, {})

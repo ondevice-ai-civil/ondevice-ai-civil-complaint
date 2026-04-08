@@ -257,7 +257,7 @@ async def tool_execute_node(
     실행 전략:
     - Phase 1 (병렬): `rag_search`, `api_lookup` 등 INDEPENDENT_TOOLS는
       `asyncio.gather()`로 동시에 실행한다.
-    - Phase 2 (순차): 나머지 의존 도구(draft_civil_response 등)는 Phase 1
+    - Phase 2 (순차): 나머지 의존 도구(draft_response 등)는 Phase 1
       결과가 누적된 accumulated_context를 사용하여 순서대로 실행한다.
 
     Parameters
@@ -310,7 +310,7 @@ async def tool_execute_node(
     # 새로운 독립 capability를 추가할 때는 이 집합에도 등록해야 한다.
     # 독립 도구란 다른 도구의 실행 결과(accumulated_context)에 의존하지 않아
     # 병렬 실행이 안전한 capability를 의미한다.
-    INDEPENDENT_TOOLS = {"rag_search", "api_lookup", "draft_civil_response"}
+    INDEPENDENT_TOOLS = {"rag_search", "api_lookup", "draft_response"}
 
     independent = [t for t in planned_tools if t in INDEPENDENT_TOOLS]
     dependent = [t for t in planned_tools if t not in INDEPENDENT_TOOLS]
@@ -428,7 +428,7 @@ async def synthesis_node(
     tool_args = state.get("tool_args", {})
 
     # LoRA 합성: 초안 + 도구 결과 → 최종 답변
-    draft_data = accumulated.get("draft_civil_response", {})
+    draft_data = accumulated.get("draft_response", {})
     draft_text = ""
     if isinstance(draft_data, dict):
         draft_text = draft_data.get("draft_text", "") or draft_data.get("text", "")
@@ -442,8 +442,8 @@ async def synthesis_node(
     ):
         # LoRA 모델로 초안 + 근거 통합 생성
         query = accumulated.get("query", "")
-        # adapter 이름: planner가 선택한 값 또는 기본 civil
-        adapter_name = "civil"
+        # adapter 이름: planner가 선택한 값 또는 기본 public_admin
+        adapter_name = "public_admin"
         for ta in tool_args.values():
             if isinstance(ta, dict) and ta.get("adapter"):
                 adapter_name = ta["adapter"]
@@ -635,9 +635,6 @@ def _extract_final_text(accumulated: Dict[str, Any], task_type: str) -> str:
     기존 AgentLoop._extract_final_text()를 계승하되,
     task_type을 기반으로 분기한다.
 
-    append_evidence 타입일 때는 기존 답변(previous_assistant_response)을
-    evidence 섹션 앞에 prepend하여 답변을 보강한다.
-
     Parameters
     ----------
     accumulated : Dict[str, Any]
@@ -650,22 +647,10 @@ def _extract_final_text(accumulated: Dict[str, Any], task_type: str) -> str:
     str
         최종 응답 텍스트.
     """
-    # append_evidence: 기존 답변 위에 근거 섹션을 추가한다
-    if task_type == "append_evidence":
-        previous_draft = str(accumulated.get("previous_assistant_response", "")).strip()
-        evidence_section = _build_evidence_section(accumulated)
-        if previous_draft and evidence_section:
-            return f"{previous_draft}\n\n{evidence_section}"
-        if evidence_section:
-            return evidence_section
-        if previous_draft:
-            return previous_draft
-
-    # 1. append_evidence 또는 draft_civil_response의 직접 텍스트가 있으면 사용
-    for key in ("append_evidence", "draft_civil_response"):
-        payload = accumulated.get(key, {})
-        if isinstance(payload, dict) and payload.get("text"):
-            return str(payload["text"])
+    # 1. draft_response의 직접 텍스트가 있으면 사용
+    payload = accumulated.get("draft_response", {})
+    if isinstance(payload, dict) and payload.get("text"):
+        return str(payload["text"])
 
     # 2. 모든 accumulated 결과에서 텍스트 탐색
     for key, payload in accumulated.items():
@@ -719,50 +704,3 @@ def _extract_final_text(accumulated: Dict[str, Any], task_type: str) -> str:
             parts.append(api_data["context_text"])
 
     return "\n\n".join(parts) if parts else "요청을 처리할 수 없습니다."
-
-
-def _build_evidence_section(accumulated: Dict[str, Any]) -> str:
-    """accumulated에서 근거 섹션 텍스트를 구성한다.
-
-    append_evidence capability의 직접 텍스트가 있으면 우선 사용하고,
-    없으면 evidence items에서 구조화된 텍스트를 생성한다.
-
-    계약(contract):
-      - 이 함수는 **근거 섹션만** 반환한다. 기존 답변(previous_draft)은 포함하지 않는다.
-      - 호출자(_extract_final_text)가 previous_draft와 병합하여 반환한다.
-      - AppendEvidenceCapability.execute()의 text 필드도 근거 섹션만 담아야 한다.
-        (기존 답변을 포함한 완전 응답을 text에 넣으면 _extract_final_text에서 중복된다.)
-
-    Parameters
-    ----------
-    accumulated : Dict[str, Any]
-        tool 결과가 누적된 컨텍스트 dict.
-
-    Returns
-    -------
-    str
-        근거 섹션 텍스트. 근거가 없으면 빈 문자열.
-    """
-    # append_evidence capability의 직접 생성 텍스트 우선 사용
-    # 이 텍스트는 근거 섹션만 담아야 한다 (기존 답변 포함 금지).
-    ae_payload = accumulated.get("append_evidence", {})
-    if isinstance(ae_payload, dict) and ae_payload.get("text"):
-        return str(ae_payload["text"])
-
-    # evidence items에서 구조화 텍스트 생성
-    items = _collect_evidence_items(accumulated)
-    if not items:
-        return ""
-
-    lines = ["[참조 근거]"]
-    for item in items[:5]:
-        source_type = item.get("source_type", "")
-        title = item.get("title", "")
-        excerpt = item.get("excerpt", "")[:120]
-        label = "[로컬]" if source_type == "rag" else "[외부]" if source_type == "api" else "[생성]"
-        if title:
-            lines.append(f"- {label} {title}: {excerpt}")
-        elif excerpt:
-            lines.append(f"- {label} {excerpt}")
-
-    return "\n".join(lines) if len(lines) > 1 else ""

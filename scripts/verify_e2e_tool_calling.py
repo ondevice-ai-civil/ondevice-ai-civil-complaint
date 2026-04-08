@@ -15,7 +15,7 @@ HuggingFace Space에 배포된 govon-runtime 서버에 대해
         3. Adapter Registry
     Phase 2: Agent Pipeline Core
         4. Planner Produces Valid Plan
-        5. Civil LoRA Draft Response
+        5. Public Admin LoRA Draft Response
         6. Legal LoRA Evidence Augmentation (depends on 5)
         6a. Legal LoRA — 민사법 (Civil Law)
         6b. Legal LoRA — 형사법 (Criminal Law)
@@ -56,8 +56,7 @@ VALID_TOOLS = frozenset(
     {
         "rag_search",
         "api_lookup",
-        "draft_civil_response",
-        "append_evidence",
+        "draft_response",
         "issue_detector",
         "stats_lookup",
         "keyword_analyzer",
@@ -789,13 +788,14 @@ async def scenario3_adapter_registry() -> dict:
         assertions.append(f"data array: {len(data)} models")
 
         model_ids = [m.get("id", "") for m in data]
-        civil_found = any("civil" in mid for mid in model_ids)
+        # HF Hub 경로("govon-civil-adapter")에 "civil" 문자열이 포함되므로 경로 기반으로 검색
+        public_admin_found = any("civil" in mid for mid in model_ids)
         legal_found = any("legal" in mid for mid in model_ids)
 
-        if not civil_found:
-            warnings.append("civil adapter not detected in /v1/models (WARN, not FAIL)")
+        if not public_admin_found:
+            warnings.append("public_admin adapter not detected in /v1/models (WARN, not FAIL)")
         else:
-            assertions.append("civil adapter detected")
+            assertions.append("public_admin adapter detected")
         if not legal_found:
             warnings.append("legal adapter not detected in /v1/models (WARN, not FAIL)")
         else:
@@ -809,7 +809,11 @@ async def scenario3_adapter_registry() -> dict:
             elapsed,
             assertions=assertions,
             warnings=warnings,
-            detail={"model_ids": model_ids, "civil_found": civil_found, "legal_found": legal_found},
+            detail={
+                "model_ids": model_ids,
+                "public_admin_found": public_admin_found,
+                "legal_found": legal_found,
+            },
         )
 
     except Exception as exc:
@@ -898,8 +902,8 @@ async def scenario4_planner_valid_plan() -> dict:
     return _record(4, "Planner Produces Valid Plan", 2, "failed", 0, attempts, error=last_error)
 
 
-async def scenario5_civil_lora_draft() -> dict:
-    """Scenario 5: Civil LoRA Draft Response (retry 2x)."""
+async def scenario5_public_admin_lora_draft() -> dict:
+    """Scenario 5: Public Admin LoRA Draft Response (retry 2x)."""
     global _scenario5_session_id, _scenario5_passed
     query = "아파트 층간소음 민원에 대한 답변을 작성해주세요"
     last_error = ""
@@ -927,7 +931,7 @@ async def scenario5_civil_lora_draft() -> dict:
                     continue
                 return _record(
                     5,
-                    "Civil LoRA Draft Response",
+                    "Public Admin LoRA Draft Response",
                     2,
                     "failed",
                     elapsed,
@@ -937,11 +941,11 @@ async def scenario5_civil_lora_draft() -> dict:
                     detail={"meta": meta},
                 )
 
-            has_draft = "draft_civil_response" in planned
+            has_draft = "draft_response" in planned
             if has_draft:
-                assertions.append("draft_civil_response in planned_tools")
+                assertions.append("draft_response in planned_tools")
             else:
-                assertions.append(f"draft_civil_response NOT in planned_tools ({planned})")
+                assertions.append(f"draft_response NOT in planned_tools ({planned})")
 
             if len(text) >= 50:
                 assertions.append(f"text length {len(text)} >= 50")
@@ -962,14 +966,14 @@ async def scenario5_civil_lora_draft() -> dict:
 
             warnings = []
             if not has_draft:
-                warnings.append("draft_civil_response not in planned_tools")
+                warnings.append("draft_response not in planned_tools")
             if task_type != "draft_response":
                 warnings.append(f"task_type={task_type}, expected draft_response")
 
             if passed:
                 return _record(
                     5,
-                    "Civil LoRA Draft Response",
+                    "Public Admin LoRA Draft Response",
                     2,
                     "passed",
                     elapsed,
@@ -984,7 +988,7 @@ async def scenario5_civil_lora_draft() -> dict:
                 continue
             return _record(
                 5,
-                "Civil LoRA Draft Response",
+                "Public Admin LoRA Draft Response",
                 2,
                 "failed",
                 elapsed,
@@ -998,7 +1002,9 @@ async def scenario5_civil_lora_draft() -> dict:
         except Exception as exc:
             last_error = str(exc)
 
-    return _record(5, "Civil LoRA Draft Response", 2, "failed", 0, attempts, error=last_error)
+    return _record(
+        5, "Public Admin LoRA Draft Response", 2, "failed", 0, attempts, error=last_error
+    )
 
 
 async def scenario6_legal_lora_evidence() -> dict:
@@ -1048,11 +1054,11 @@ async def scenario6_legal_lora_evidence() -> dict:
                     detail={"meta": meta},
                 )
 
-            has_evidence = "append_evidence" in planned
+            has_evidence = "draft_response" in planned
             if has_evidence:
-                assertions.append("append_evidence in planned_tools")
+                assertions.append("draft_response in planned_tools")
             else:
-                assertions.append(f"append_evidence NOT in planned_tools ({planned})")
+                assertions.append(f"draft_response NOT in planned_tools ({planned})")
 
             has_legal = _contains_legal_keyword(text)
             matched = [p for p in LEGAL_PATTERNS if re.search(p, text)]
@@ -1063,7 +1069,7 @@ async def scenario6_legal_lora_evidence() -> dict:
 
             warnings = []
             if not has_evidence:
-                warnings.append("append_evidence not in planned_tools")
+                warnings.append("draft_response not in planned_tools")
 
             if has_legal:
                 return _record(
@@ -1156,12 +1162,12 @@ async def _legal_category_scenario(
     session_id = _session_id(scenario_id)
 
     try:
-        # Step 1: Civil draft (선행 요청으로 세션 컨텍스트 생성)
-        ok_civil, _, _, err_civil = await _call_agent_with_approval(
+        # Step 1: Public admin draft (선행 요청으로 세션 컨텍스트 생성)
+        ok_admin, _, _, err_admin = await _call_agent_with_approval(
             query=civil_query,
             session_id=session_id,
         )
-        if not ok_civil:
+        if not ok_admin:
             elapsed = time.monotonic() - t0
             return _record(
                 scenario_id,
@@ -1169,7 +1175,7 @@ async def _legal_category_scenario(
                 2,
                 "failed",
                 elapsed,
-                error=f"civil 선행 실패: {err_civil}",
+                error=f"public_admin 선행 실패: {err_admin}",
             )
 
         # Step 2: Legal follow-up (법적 근거 보강)
@@ -1201,10 +1207,10 @@ async def _legal_category_scenario(
         if planned:
             _observed_tools.update(planned)
 
-        if "append_evidence" in planned:
-            assertions.append("append_evidence in planned_tools")
+        if "draft_response" in planned:
+            assertions.append("draft_response in planned_tools")
         else:
-            warnings.append("append_evidence not in planned_tools")
+            warnings.append("draft_response not in planned_tools")
 
         if has_legal:
             assertions.append(f"법령 패턴 발견: {matched[:3]}")
@@ -1287,7 +1293,7 @@ async def scenario7_task_type_classification() -> dict:
     test_cases = [
         ("민원 답변 초안을 작성해줘", {"draft_response"}),
         ("관련 통계 데이터를 조회해줘", {"stats_query", "lookup_stats"}),
-        ("이 민원의 근거를 보강해줘", {"append_evidence"}),
+        ("이 민원의 근거를 보강해줘", {"draft_response"}),
     ]
 
     t0 = time.monotonic()
@@ -1870,7 +1876,7 @@ async def main() -> int:
 
     phase2_scenarios = [
         scenario4_planner_valid_plan,
-        scenario5_civil_lora_draft,
+        scenario5_public_admin_lora_draft,
         scenario6_legal_lora_evidence,
         scenario7_task_type_classification,
     ]

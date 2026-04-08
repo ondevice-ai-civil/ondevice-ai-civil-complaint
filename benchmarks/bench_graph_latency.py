@@ -37,8 +37,7 @@ from src.inference.session_context import SessionStore  # noqa: E402
 SIMULATED_LATENCIES = {
     "rag_search": 0.2,  # 200ms
     "api_lookup": 0.5,  # 500ms
-    "draft_civil_response": 1.0,  # 1000ms
-    "append_evidence": 0.3,  # 300ms
+    "draft_response": 1.0,  # 1000ms
 }
 
 

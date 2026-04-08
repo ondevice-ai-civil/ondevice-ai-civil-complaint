@@ -38,7 +38,7 @@ class TestBuildQueryVariants:
 
         variants = build_query_variants(
             "이 답변의 근거를 붙여줘",
-            tool_names=["rag_search", "api_lookup", "append_evidence"],
+            tool_names=["rag_search", "api_lookup", "draft_response"],
             context=context,
         )
 
@@ -58,7 +58,7 @@ class TestBuildQueryVariants:
 
         variants = build_query_variants(
             "좀 더 정중하게 수정해줘",
-            tool_names=["rag_search", "api_lookup", "draft_civil_response"],
+            tool_names=["rag_search", "api_lookup", "draft_response"],
             context=context,
         )
 
@@ -77,4 +77,4 @@ class TestBuildQueryVariants:
         }
 
         assert resolve_tool_query("rag_search", context) == "원본 요청 관련 법령"
-        assert resolve_tool_query("draft_civil_response", context) == "원본 요청"
+        assert resolve_tool_query("draft_response", context) == "원본 요청"

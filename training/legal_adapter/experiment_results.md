@@ -3,7 +3,7 @@
 ## 개요
 
 EXAONE 4.0-32B 기반 법률해석·근거인용 전용 LoRA 어댑터 (1차 학습).
-`append_evidence` capability에서 법령 조항 인용 품질 향상을 목표로 함.
+evidence augmentation(근거 보강) follow-up에서 법령 조항 인용 품질 향상을 목표로 함.
 
 - **HF Hub**: [siwo/govon-legal-adapter](https://huggingface.co/siwo/govon-legal-adapter)
 - **학습 일시**: 2026-04-06

@@ -195,19 +195,17 @@ def should_use_follow_up_context(
 ) -> bool:
     """이전 user/assistant turn을 query에 섞어야 하는 follow-up인지 판단한다.
 
-    ``append_evidence`` 플랜이더라도 쿼리가 자기완결적이면 이전 맥락을
-    주입하지 않는다. 실제 후속 질문(지시대명사·참조 표현 포함 또는
+    쿼리가 자기완결적이면 이전 맥락을 주입하지 않는다.
+    실제 후속 질문(지시대명사·참조 표현 포함 또는
     _FOLLOW_UP_PATTERNS 매칭)인 경우에만 True를 반환한다.
     """
     if not (previous_user or previous_assistant):
         return False
 
-    # 자기완결적 쿼리면 append_evidence 플랜이어도 이전 맥락 주입 안 함
+    # 자기완결적 쿼리면 이전 맥락 주입 안 함
     if is_self_contained_query(query):
         return False
 
-    if "append_evidence" in tool_names:
-        return True
     return any(pattern.search(query) for pattern in _FOLLOW_UP_PATTERNS)
 
 

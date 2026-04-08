@@ -7,7 +7,7 @@ tool definition 용 enum/description 생성과 vLLM ``LoRARequest`` 팩토리를
 사용법::
 
     registry = AdapterRegistry.get_instance()
-    lora_req = registry.get_lora_request("civil")
+    lora_req = registry.get_lora_request("public_admin")
     enum_list = registry.build_adapter_enum()
 """
 
@@ -49,6 +49,7 @@ class AdapterMeta:
     description: str
     domain: str
     lora_id: int
+    keywords: tuple = ()  # 분야 판단용 키워드 목록
 
 
 # ---------------------------------------------------------------------------
@@ -135,6 +136,7 @@ class AdapterRegistry:
                 description=meta.get("description", ""),
                 domain=meta.get("domain", ""),
                 lora_id=idx,
+                keywords=tuple(meta.get("keywords", [])),
             )
 
         if self._adapters:
@@ -171,13 +173,17 @@ class AdapterRegistry:
     def build_adapter_description(self) -> str:
         """tool definition 용 description 문자열을 생성한다.
 
-        각 어댑터의 ``name: description`` 형식으로 조합한다.
+        각 어댑터의 ``- name: description (키워드: ...)`` 형식으로 조합한다.
         """
         lines: List[str] = []
         for name in sorted(self._adapters.keys()):
             adapter = self._adapters[name]
-            lines.append(f"{name}: {adapter.description}")
-        lines.append("none: 기본 모델 사용 (어댑터 미적용)")
+            keywords_str = ", ".join(adapter.keywords) if adapter.keywords else ""
+            desc = f"- {name}: {adapter.description}"
+            if keywords_str:
+                desc += f" (키워드: {keywords_str})"
+            lines.append(desc)
+        lines.append("- none: 베이스 모델 사용 (어댑터 미적용)")
         return "\n".join(lines)
 
     def list_available(self) -> List[str]:
@@ -201,8 +207,8 @@ class AdapterRegistry:
     def _parse_adapter_paths(raw: str) -> Dict[str, str]:
         """``ADAPTER_PATHS`` 환경변수를 파싱한다.
 
-        형식: ``"civil=/path/to/civil,legal=/path/to/legal"``
-        반환: ``{"civil": "/path/to/civil", "legal": "/path/to/legal"}``
+        형식: ``"public_admin=/path/to/public_admin,legal=/path/to/legal"``
+        반환: ``{"public_admin": "/path/to/public_admin", "legal": "/path/to/legal"}``
         잘못된 항목은 경고 후 무시한다.
         """
         if not raw or not raw.strip():

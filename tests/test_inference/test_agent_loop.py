@@ -32,16 +32,10 @@ async def mock_api_lookup(query: str, context: dict, session: Any) -> dict:
     }
 
 
-async def mock_draft_civil_response(query: str, context: dict, session: Any) -> dict:
+async def mock_draft_response(query: str, context: dict, session: Any) -> dict:
     return {
         "text": "근거 요약\n- 로컬 문서 2건을 참고했습니다.\n\n최종 초안\n도로 보수 접수를 진행하겠습니다.",
         "draft_text": "도로 보수 접수를 진행하겠습니다.",
-    }
-
-
-async def mock_append_evidence(query: str, context: dict, session: Any) -> dict:
-    return {
-        "text": "이전 답변\n\n근거/출처\n[1] /tmp/sample.pdf (p.3)\n[2] 도로 파손 유사 민원 - https://example.com",
     }
 
 
@@ -59,8 +53,7 @@ class TestAgentLoop:
         registry = {
             ToolType.RAG_SEARCH: mock_rag_search,
             ToolType.API_LOOKUP: mock_api_lookup,
-            ToolType.DRAFT_CIVIL_RESPONSE: mock_draft_civil_response,
-            ToolType.APPEND_EVIDENCE: mock_append_evidence,
+            ToolType.DRAFT_RESPONSE: mock_draft_response,
         }
         if overrides:
             registry.update(overrides)
@@ -74,7 +67,7 @@ class TestAgentLoop:
         trace = await loop.run("도로 포장이 파손되어 위험합니다", session)
 
         assert trace.error is None
-        assert trace.plan.tool_names == ["rag_search", "api_lookup", "draft_civil_response"]
+        assert trace.plan.tool_names == ["rag_search", "api_lookup", "draft_response"]
         assert len(trace.tool_results) == 3
         assert all(result.success for result in trace.tool_results)
         assert "최종 초안" in trace.final_text
@@ -99,7 +92,7 @@ class TestAgentLoop:
         assert session.graph_runs[0].executed_capabilities == [
             "rag_search",
             "api_lookup",
-            "draft_civil_response",
+            "draft_response",
         ]
         assert session.graph_runs[0].status == "completed"
 
@@ -137,14 +130,14 @@ class TestAgentLoop:
         session = SessionContext()
 
         trace = await loop.run(
-            "근거만 정리해줘",
+            "초안 작성해줘",
             session,
-            force_tools=[ToolType.APPEND_EVIDENCE],
+            force_tools=[ToolType.DRAFT_RESPONSE],
         )
 
         assert len(trace.tool_results) == 1
-        assert trace.tool_results[0].tool == ToolType.APPEND_EVIDENCE
-        assert "근거/출처" in trace.final_text
+        assert trace.tool_results[0].tool == ToolType.DRAFT_RESPONSE
+        assert "최종 초안" in trace.final_text
 
     @pytest.mark.asyncio
     async def test_force_tools_accepts_custom_registry_tool(self):
@@ -185,15 +178,15 @@ class TestAgentLoop:
             seen_queries["api_lookup"] = query
             return {"query": query, "results": [], "count": 0, "context_text": ""}
 
-        async def capture_append(query: str, context: dict, session: Any) -> dict:
-            seen_queries["append_evidence"] = query
-            return {"text": f"append::{query}"}
+        async def capture_draft(query: str, context: dict, session: Any) -> dict:
+            seen_queries["draft_response"] = query
+            return {"text": f"draft::{query}"}
 
         loop = AgentLoop(
             tool_registry={
                 ToolType.RAG_SEARCH: capture_rag,
                 ToolType.API_LOOKUP: capture_api,
-                ToolType.APPEND_EVIDENCE: capture_append,
+                ToolType.DRAFT_RESPONSE: capture_draft,
             },
             tool_timeout=2.0,
         )
@@ -207,7 +200,6 @@ class TestAgentLoop:
         trace = await loop.run("이 답변의 근거를 붙여줘", session)
 
         assert trace.error is None
-        assert seen_queries["append_evidence"] == "이 답변의 근거를 붙여줘"
         assert "도로 포장이 파손되어 위험합니다" in seen_queries["rag_search"]
         assert "담당 부서 검토 후 보수 일정을 안내드리겠습니다." in seen_queries["rag_search"]
         assert "관련 법령 지침 매뉴얼 공지 내부 문서" in seen_queries["rag_search"]
@@ -222,7 +214,7 @@ class TestAgentLoopStream:
             tool_registry={
                 ToolType.RAG_SEARCH: mock_rag_search,
                 ToolType.API_LOOKUP: mock_api_lookup,
-                ToolType.DRAFT_CIVIL_RESPONSE: mock_draft_civil_response,
+                ToolType.DRAFT_RESPONSE: mock_draft_response,
             }
         )
         session = SessionContext()
@@ -245,7 +237,7 @@ class TestAgentLoopStream:
             tool_registry={
                 ToolType.RAG_SEARCH: mock_failing_tool,
                 ToolType.API_LOOKUP: mock_api_lookup,
-                ToolType.DRAFT_CIVIL_RESPONSE: mock_draft_civil_response,
+                ToolType.DRAFT_RESPONSE: mock_draft_response,
             }
         )
         session = SessionContext()

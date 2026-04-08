@@ -117,7 +117,7 @@ class TestToolPlanValidator:
         assert fallback["reason"] == ""
 
     def test_all_mvp_capabilities_allowed(self, validator: ToolPlanValidator) -> None:
-        """4개 MVP capability가 모두 통과한다."""
+        """6개 MVP capability가 모두 통과한다."""
         plan = ToolPlan(
             task_type=TaskType.DRAFT_RESPONSE,
             goal="모든 MVP capability 테스트",

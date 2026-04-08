@@ -99,7 +99,6 @@ def session():
 def mock_registry_fns():
     """build_mvp_registry에 주입할 mock 함수 모음."""
     return {
-        "draft_response_fn": _make_async_fn({"text": "draft_result", "results": []}),
         "draft_response_fn": _make_async_fn({"text": "민원 답변 초안입니다.", "results": []}),
     }
 
@@ -436,7 +435,6 @@ class TestExecutorAdapterIntegration:
     async def test_execute_draft_response_error_path(self):
         """draft_response가 에러를 반환할 때 adapter가 success=False를 반환한다."""
         error_fns = {
-            "draft_response_fn": _make_async_fn({"results": []}),
             "draft_response_fn": _make_async_fn({"error": "LLM 오류 발생"}),
         }
         registry = build_mvp_registry(

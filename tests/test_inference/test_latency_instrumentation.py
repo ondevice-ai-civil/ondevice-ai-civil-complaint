@@ -62,7 +62,7 @@ class RecordingExecutor:
         return {"success": True, "text": f"ok {tool_name}"}
 
     def list_tools(self) -> list[str]:
-        return ["api_lookup"]
+        return ["api_lookup", "issue_detector"]
 
 
 class StubSessionStore:
@@ -176,12 +176,12 @@ class TestParallelToolExecution:
 
     @pytest.mark.asyncio
     async def test_independent_tools_run_in_parallel(self):
-        """api_lookup + draft_response이 병렬로 실행되면 최대 동시 실행 수 >= 2."""
+        """api_lookup + issue_detector가 병렬로 실행되면 최대 동시 실행 수 >= 2."""
         executor = RecordingExecutor()
 
         state = {
             "approval_status": ApprovalStatus.APPROVED.value,
-            "planned_tools": ["api_lookup"],
+            "planned_tools": ["api_lookup", "issue_detector"],
             "accumulated_context": {"query": "test query"},
         }
 
@@ -192,14 +192,13 @@ class TestParallelToolExecution:
             f"최대 동시 실행 수: {executor.max_concurrent} (기대: >= 2)"
         )
         assert "api_lookup" in result["tool_results"]
-        assert "api_lookup" in result["tool_results"]
+        assert "issue_detector" in result["tool_results"]
 
     @pytest.mark.asyncio
     async def test_dependent_tools_run_after_independent(self):
         """draft_response는 independent 도구 이후 순차 실행된다."""
         executor = SlowExecutor(
             {
-                "api_lookup": 0.05,
                 "api_lookup": 0.05,
                 "draft_response": 0.05,
             }
@@ -213,10 +212,9 @@ class TestParallelToolExecution:
 
         result = await tool_execute_node(state, executor_adapter=executor)
 
-        assert len(result["tool_results"]) == 3
+        assert len(result["tool_results"]) == 2
         assert "draft_response" in result["tool_results"]
-        # draft_response는 rag/api 결과가 accumulated된 후 실행
-        assert "api_lookup" in result["accumulated_context"]
+        # draft_response는 api 결과가 accumulated된 후 실행
         assert "api_lookup" in result["accumulated_context"]
 
     @pytest.mark.asyncio
@@ -231,17 +229,17 @@ class TestParallelToolExecution:
                 return {"success": True, "text": f"ok {tool_name}"}
 
             def list_tools(self):
-                return ["api_lookup"]
+                return ["api_lookup", "draft_response"]
 
         state = {
             "approval_status": ApprovalStatus.APPROVED.value,
-            "planned_tools": ["api_lookup"],
+            "planned_tools": ["api_lookup", "draft_response"],
             "accumulated_context": {"query": "test"},
         }
 
         result = await tool_execute_node(state, executor_adapter=FailingExecutor())
-        # api_lookup은 성공, api_lookup은 예외로 건너뜀
-        assert "api_lookup" in result["tool_results"]
+        # draft_response는 성공, api_lookup은 예외로 건너뜀
+        assert "draft_response" in result["tool_results"]
         assert "api_lookup" not in result["tool_results"]
 
 

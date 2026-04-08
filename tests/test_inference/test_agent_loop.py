@@ -53,7 +53,7 @@ class TestAgentLoop:
         registry = {
             ToolType.RAG_SEARCH: mock_rag_search,
             ToolType.API_LOOKUP: mock_api_lookup,
-            ToolType.DRAFT_RESPONSE: mock_draft_response,
+            "draft_response": mock_draft_response,
         }
         if overrides:
             registry.update(overrides)
@@ -67,7 +67,7 @@ class TestAgentLoop:
         trace = await loop.run("도로 포장이 파손되어 위험합니다", session)
 
         assert trace.error is None
-        assert trace.plan.tool_names == ["rag_search", "api_lookup", "draft_response"]
+        assert trace.plan_tools == ["rag_search", "api_lookup", "draft_response"]
         assert len(trace.tool_results) == 3
         assert all(result.success for result in trace.tool_results)
         assert "최종 초안" in trace.final_text
@@ -132,11 +132,11 @@ class TestAgentLoop:
         trace = await loop.run(
             "초안 작성해줘",
             session,
-            force_tools=[ToolType.DRAFT_RESPONSE],
+            force_tools=["draft_response"],
         )
 
         assert len(trace.tool_results) == 1
-        assert trace.tool_results[0].tool == ToolType.DRAFT_RESPONSE
+        assert trace.tool_results[0].tool == "draft_response"
         assert "최종 초안" in trace.final_text
 
     @pytest.mark.asyncio
@@ -186,7 +186,7 @@ class TestAgentLoop:
             tool_registry={
                 ToolType.RAG_SEARCH: capture_rag,
                 ToolType.API_LOOKUP: capture_api,
-                ToolType.DRAFT_RESPONSE: capture_draft,
+                "draft_response": capture_draft,
             },
             tool_timeout=2.0,
         )
@@ -214,7 +214,7 @@ class TestAgentLoopStream:
             tool_registry={
                 ToolType.RAG_SEARCH: mock_rag_search,
                 ToolType.API_LOOKUP: mock_api_lookup,
-                ToolType.DRAFT_RESPONSE: mock_draft_response,
+                "draft_response": mock_draft_response,
             }
         )
         session = SessionContext()
@@ -237,7 +237,7 @@ class TestAgentLoopStream:
             tool_registry={
                 ToolType.RAG_SEARCH: mock_failing_tool,
                 ToolType.API_LOOKUP: mock_api_lookup,
-                ToolType.DRAFT_RESPONSE: mock_draft_response,
+                "draft_response": mock_draft_response,
             }
         )
         session = SessionContext()

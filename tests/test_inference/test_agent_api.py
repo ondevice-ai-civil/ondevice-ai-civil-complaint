@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from src.inference.agent_loop import AgentTrace, ToolResult
 from src.inference.session_context import SessionContext
-from src.inference.tool_router import ExecutionPlan, ToolStep, ToolType
+from src.inference.tool_router import ToolType
 
 _vllm_mock = MagicMock()
 _vllm_mock.AsyncLLM = MagicMock()
@@ -46,13 +46,8 @@ def _fake_trace(session_id: str) -> AgentTrace:
     trace = AgentTrace(
         request_id="trace-001",
         session_id=session_id,
-        plan=ExecutionPlan(
-            steps=[
-                ToolStep(tool=ToolType.RAG_SEARCH),
-                ToolStep(tool=ToolType.API_LOOKUP),
-            ],
-            reason="runtime contract test",
-        ),
+        plan_tools=["rag_search", "api_lookup"],
+        plan_reason="runtime contract test",
         tool_results=[
             ToolResult(
                 tool=ToolType.RAG_SEARCH,

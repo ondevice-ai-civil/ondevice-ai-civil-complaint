@@ -1,4 +1,4 @@
-"""세션 기반 task loop."""
+"""세션 기반 task loop (v1 엔드포인트용)."""
 
 from __future__ import annotations
 
@@ -10,9 +10,9 @@ from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 
 from loguru import logger
 
-from .query_builder import build_query_variants, build_runtime_query_context, resolve_tool_query
+from .query_builder import build_runtime_query_context, normalize_text
 from .session_context import SessionContext
-from .tool_router import ExecutionPlan, ToolName, ToolRouter, ToolStep, ToolType, tool_name
+from .tool_router import ToolName, ToolType, tool_name
 
 
 @dataclass
@@ -37,7 +37,8 @@ class ToolResult:
 class AgentTrace:
     request_id: str
     session_id: str
-    plan: Optional[ExecutionPlan] = None
+    plan_tools: List[str] = field(default_factory=list)
+    plan_reason: str = ""
     tool_results: List[ToolResult] = field(default_factory=list)
     total_latency_ms: float = 0.0
     final_text: str = ""
@@ -47,8 +48,8 @@ class AgentTrace:
         return {
             "request_id": self.request_id,
             "session_id": self.session_id,
-            "plan": self.plan.tool_names if self.plan else [],
-            "plan_reason": self.plan.reason if self.plan else "",
+            "plan": self.plan_tools,
+            "plan_reason": self.plan_reason,
             "tool_results": [result.to_dict() for result in self.tool_results],
             "total_latency_ms": round(self.total_latency_ms, 2),
             "error": self.error,
@@ -60,16 +61,17 @@ DEFAULT_TOOL_TIMEOUT = 30.0
 
 
 class AgentLoop:
-    """GovOn MVP capability loop."""
+    """GovOn MVP capability loop (v1).
+
+    등록된 tool을 순차 실행하는 단순 루프.
+    """
 
     def __init__(
         self,
         tool_registry: Dict[ToolName, ToolFunction],
-        router: Optional[ToolRouter] = None,
         tool_timeout: float = DEFAULT_TOOL_TIMEOUT,
     ) -> None:
         self._tools = {tool_name(name): runner for name, runner in tool_registry.items()}
-        self._router = router or ToolRouter()
         self._tool_timeout = tool_timeout
 
     async def run(
@@ -87,26 +89,27 @@ class AgentLoop:
         try:
             session.add_turn("user", query)
 
-            has_context = bool(session.tool_runs or session.conversations)
-            plan = self._router.plan(query, has_context=has_context, force_tools=force_tools)
-            trace.plan = plan
+            # 등록된 모든 tool을 순차 실행
+            tool_names = (
+                [tool_name(t) for t in force_tools]
+                if force_tools
+                else list(self._tools.keys())
+            )
+            trace.plan_tools = tool_names
+            trace.plan_reason = "등록된 도구 순차 실행"
 
             accumulated: Dict[str, Any] = build_runtime_query_context(session, query)
             accumulated["conversation"] = [
                 {"role": turn.role, "content": turn.content} for turn in session.recent_history[-5:]
             ]
-            accumulated["query_variants"] = build_query_variants(
-                query,
-                tool_names=plan.tool_names,
-                context=accumulated,
-            )
+            accumulated["query"] = normalize_text(query)
 
-            for step in plan.steps:
-                result = await self._execute_tool(step, accumulated, session)
+            for step_name in tool_names:
+                result = await self._execute_tool(step_name, accumulated, session)
                 trace.tool_results.append(result)
-                accumulated[step.step_id] = result.data if result.success else {}
+                accumulated[step_name] = result.data if result.success else {}
                 session.add_tool_run(
-                    tool=step.step_id,
+                    tool=step_name,
                     graph_run_request_id=rid,
                     success=result.success,
                     latency_ms=result.latency_ms,
@@ -114,7 +117,7 @@ class AgentLoop:
                     metadata=self._build_tool_log_metadata(result.data),
                 )
 
-            trace.final_text = self._extract_final_text(accumulated, plan)
+            trace.final_text = self._extract_final_text(accumulated, tool_names)
             session.add_turn("assistant", trace.final_text)
 
         except Exception as exc:
@@ -145,31 +148,31 @@ class AgentLoop:
 
         try:
             session.add_turn("user", query)
-            has_context = bool(session.tool_runs or session.conversations)
-            plan = self._router.plan(query, has_context=has_context, force_tools=force_tools)
-            trace.plan = plan
+            tool_names = (
+                [tool_name(t) for t in force_tools]
+                if force_tools
+                else list(self._tools.keys())
+            )
+            trace.plan_tools = tool_names
+            trace.plan_reason = "등록된 도구 순차 실행"
 
             yield {
                 "type": "plan",
                 "request_id": rid,
-                "plan": plan.tool_names,
-                "reason": plan.reason,
+                "plan": tool_names,
+                "reason": trace.plan_reason,
             }
 
             accumulated: Dict[str, Any] = build_runtime_query_context(session, query)
-            accumulated["query_variants"] = build_query_variants(
-                query,
-                tool_names=plan.tool_names,
-                context=accumulated,
-            )
+            accumulated["query"] = normalize_text(query)
 
-            for step in plan.steps:
-                yield {"type": "tool_start", "request_id": rid, "tool": step.step_id}
-                result = await self._execute_tool(step, accumulated, session)
+            for step_name in tool_names:
+                yield {"type": "tool_start", "request_id": rid, "tool": step_name}
+                result = await self._execute_tool(step_name, accumulated, session)
                 trace.tool_results.append(result)
-                accumulated[step.step_id] = result.data if result.success else {}
+                accumulated[step_name] = result.data if result.success else {}
                 session.add_tool_run(
-                    tool=step.step_id,
+                    tool=step_name,
                     graph_run_request_id=rid,
                     success=result.success,
                     latency_ms=result.latency_ms,
@@ -179,13 +182,13 @@ class AgentLoop:
                 yield {
                     "type": "tool_result",
                     "request_id": rid,
-                    "tool": step.step_id,
+                    "tool": step_name,
                     "success": result.success,
                     "latency_ms": round(result.latency_ms, 2),
                     "error": result.error,
                 }
 
-            trace.final_text = self._extract_final_text(accumulated, plan)
+            trace.final_text = self._extract_final_text(accumulated, tool_names)
             session.add_turn("assistant", trace.final_text)
             trace.total_latency_ms = (time.monotonic() - loop_start) * 1000
             yield {
@@ -218,20 +221,19 @@ class AgentLoop:
 
     async def _execute_tool(
         self,
-        step: ToolStep,
+        step_name: str,
         accumulated: Dict[str, Any],
         session: SessionContext,
     ) -> ToolResult:
-        step_name = step.step_id
         tool_fn = self._tools.get(step_name)
         if tool_fn is None:
             return ToolResult(
-                tool=step.tool, success=False, error=f"등록되지 않은 tool: {step_name}"
+                tool=step_name, success=False, error=f"등록되지 않은 tool: {step_name}"
             )
 
         start = time.monotonic()
         try:
-            execution_query = resolve_tool_query(step_name, accumulated)
+            execution_query = normalize_text(accumulated.get("query", ""))
             result_data = await asyncio.wait_for(
                 tool_fn(
                     query=execution_query,
@@ -241,14 +243,14 @@ class AgentLoop:
                 timeout=self._tool_timeout,
             )
             return ToolResult(
-                tool=step.tool,
+                tool=step_name,
                 success=True,
                 data=result_data if isinstance(result_data, dict) else {"result": result_data},
                 latency_ms=(time.monotonic() - start) * 1000,
             )
         except asyncio.TimeoutError:
             return ToolResult(
-                tool=step.tool,
+                tool=step_name,
                 success=False,
                 error=f"tool {step_name} 타임아웃 ({self._tool_timeout}초)",
                 latency_ms=(time.monotonic() - start) * 1000,
@@ -256,7 +258,7 @@ class AgentLoop:
         except Exception as exc:
             logger.error(f"[AgentLoop] tool {step_name} 실행 오류: {exc}", exc_info=True)
             return ToolResult(
-                tool=step.tool,
+                tool=step_name,
                 success=False,
                 error=str(exc),
                 latency_ms=(time.monotonic() - start) * 1000,
@@ -277,13 +279,10 @@ class AgentLoop:
         return metadata
 
     @staticmethod
-    def _build_plan_summary(plan: Optional[ExecutionPlan]) -> str:
-        if not plan:
-            return ""
-
-        tools = " -> ".join(step.step_id for step in plan.steps)
-        if plan.reason:
-            return f"{plan.reason} | tools: {tools}"
+    def _build_plan_summary(trace: AgentTrace) -> str:
+        tools = " -> ".join(trace.plan_tools)
+        if trace.plan_reason:
+            return f"{trace.plan_reason} | tools: {tools}"
         return tools
 
     @staticmethod
@@ -306,14 +305,14 @@ class AgentLoop:
         failure_count = len(trace.tool_results) - success_count
         session.add_graph_run(
             request_id=trace.request_id,
-            plan_summary=cls._build_plan_summary(trace.plan),
+            plan_summary=cls._build_plan_summary(trace),
             approval_status="not_requested",
             executed_capabilities=[tool_name(result.tool) for result in trace.tool_results],
             status=cls._graph_run_status(trace),
             error=trace.error,
             total_latency_ms=trace.total_latency_ms,
             metadata={
-                "plan_reason": trace.plan.reason if trace.plan else "",
+                "plan_reason": trace.plan_reason,
                 "tool_result_count": len(trace.tool_results),
                 "success_count": success_count,
                 "failure_count": failure_count,
@@ -324,13 +323,15 @@ class AgentLoop:
         )
 
     @staticmethod
-    def _extract_final_text(accumulated: Dict[str, Any], plan: ExecutionPlan) -> str:
-        payload = accumulated.get(ToolType.DRAFT_RESPONSE.value, {})
+    def _extract_final_text(accumulated: Dict[str, Any], tool_names: List[str]) -> str:
+        # draft_response 결과가 있으면 우선 사용
+        payload = accumulated.get("draft_response", {})
         if isinstance(payload, dict) and payload.get("text"):
             return str(payload["text"])
 
-        for step in plan.steps:
-            payload = accumulated.get(step.step_id, {})
+        # 각 tool 결과에서 text 추출 시도
+        for step_name in tool_names:
+            payload = accumulated.get(step_name, {})
             if isinstance(payload, dict) and payload.get("text"):
                 return str(payload["text"])
 

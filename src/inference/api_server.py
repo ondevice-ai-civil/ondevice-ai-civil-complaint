@@ -63,7 +63,7 @@ SKIP_MODEL_LOAD = os.getenv("SKIP_MODEL_LOAD", "false").lower() in ("true", "1",
 
 
 async def _noop_tool(query: str, context: dict, session: Any) -> dict:
-    """build_mvp_registry fallback용 no-op tool."""
+    """build_all_tools fallback용 no-op tool."""
     return {"success": False, "error": "tool이 초기화되지 않았습니다"}
 
 
@@ -163,17 +163,6 @@ def _extract_approval_request(graph_state: Any) -> Any:
         return None
     return task.interrupts[0].value
 
-
-def _safe_state_field(vals: Any, key: str, default: Any = "") -> Any:
-    """graph state에서 JSON 직렬화 가능한 값을 안전하게 추출한다."""
-    if not isinstance(vals, dict):
-        return default
-    v = vals.get(key, default)
-    if isinstance(v, (str, int, float, bool, type(None))):
-        return v
-    if isinstance(v, (dict, list)):
-        return v
-    return default
 
 
 class vLLMEngineManager:
@@ -1066,31 +1055,33 @@ class vLLMEngineManager:
         tool_registry = {
             ToolType.RAG_SEARCH: _rag_search_tool,
             ToolType.API_LOOKUP: _api_lookup_tool,
-            ToolType.DRAFT_RESPONSE: _draft_response_tool,
+            "draft_response": _draft_response_tool,
         }
         self.agent_loop = AgentLoop(tool_registry=tool_registry)
 
-    def _build_tool_registry(self) -> Dict[str, Any]:
-        """CapabilityBase 기반 MVP tool registry를 반환한다.
+    def _build_langgraph_tools(self) -> list:
+        """LangGraph ToolNode용 도구 목록을 생성한다.
 
-        build_mvp_registry()를 사용하여 단일 소스에서 registry를 구성한다.
-        planner metadata와 executor binding이 동일한 CapabilityBase 인스턴스에서 나온다.
-        AgentLoop 하위호환: AgentLoop._tools에서 closure를 추출하여 wrapper로 래핑한다.
+        build_all_tools()를 사용하여 StructuredTool 목록을 반환한다.
+        AgentLoop의 tool_registry에서 기존 closure를 추출하여 전달한다.
         """
-        if self.agent_loop is None:
-            return {}
+        from src.inference.graph.tools import build_all_tools
 
-        from src.inference.graph.capabilities.registry import build_mvp_registry
+        if self.agent_loop is None:
+            return build_all_tools(
+                rag_search_fn=_noop_tool,
+                api_lookup_action=self._get_api_lookup_action(),
+            )
 
         # AgentLoop의 tool_registry에서 기존 closure를 추출
         raw_tools = {
             str(k.value if hasattr(k, "value") else k): v for k, v in self.agent_loop._tools.items()
         }
 
-        return build_mvp_registry(
+        return build_all_tools(
             rag_search_fn=raw_tools.get("rag_search", _noop_tool),
             api_lookup_action=self._get_api_lookup_action(),
-            draft_response_fn=raw_tools.get("draft_response", _noop_tool),
+            draft_response_fn=raw_tools.get("draft_response"),
         )
 
     def _get_api_lookup_action(self) -> Any:
@@ -1117,9 +1108,8 @@ class vLLMEngineManager:
     def _init_graph(self, checkpointer: Optional[object] = None) -> None:
         """LangGraph StateGraph를 초기화한다.
 
-        운영 환경에서는 LLMPlannerAdapter(vLLM OpenAI-compatible endpoint)를 사용한다.
-        SKIP_MODEL_LOAD=true 환경(CI/테스트)에서는 RegexPlannerAdapter가 CI fallback으로 동작한다.
-        RegistryExecutorAdapter는 기존 tool_registry를 재사용한다.
+        v4 아키텍처: ReAct + ToolNode 기반.
+        LLM이 자율적으로 도구 호출을 결정하며, 정적 planner/executor를 사용하지 않는다.
 
         Parameters
         ----------
@@ -1132,24 +1122,18 @@ class vLLMEngineManager:
         """
         try:
             from src.inference.graph.builder import build_govon_graph
-            from src.inference.graph.executor_adapter import RegistryExecutorAdapter
-            from src.inference.graph.planner_adapter import (
-                DirectEnginePlannerAdapter,
-                LLMPlannerAdapter,
-            )
         except ImportError as exc:
             logger.warning(f"LangGraph graph 초기화 실패 (import 오류): {exc}")
             return
 
-        tool_registry = self._build_tool_registry()
+        tools = self._build_langgraph_tools()
 
+        # LLM 인스턴스 구성
         if SKIP_MODEL_LOAD:
-            # CI/테스트 환경: LLM이 없으므로 RegexPlannerAdapter를 CI fallback으로 사용
-            from src.inference.graph.planner_adapter import RegexPlannerAdapter
-
-            planner = RegexPlannerAdapter(registry=tool_registry)
+            # CI/테스트 환경: LLM이 없으므로 graph 초기화 스킵
+            logger.info("SKIP_MODEL_LOAD=true: LangGraph graph 초기화 스킵")
+            return
         elif os.getenv("LANGGRAPH_MODEL_BASE_URL"):
-            # 외부 LLM 엔드포인트가 명시된 경우: LLMPlannerAdapter (HTTP) 사용
             from langchain_openai import ChatOpenAI
 
             llm = ChatOpenAI(
@@ -1159,21 +1143,22 @@ class vLLMEngineManager:
                 temperature=0.0,
                 max_tokens=1024,
             )
-            planner = LLMPlannerAdapter(llm=llm, registry=tool_registry)
         else:
-            # 운영 환경: vLLM engine 직접 호출 (self-call HTTP 오버헤드 제거)
-            planner = DirectEnginePlannerAdapter(engine_manager=self, registry=tool_registry)
-        executor = RegistryExecutorAdapter(
-            tool_registry=tool_registry,
-            session_store=self.session_store,
-        )
+            # 운영 환경: vLLM OpenAI-compatible endpoint 사용
+            from langchain_openai import ChatOpenAI
+
+            vllm_port = os.getenv("VLLM_PORT", "8000")
+            llm = ChatOpenAI(
+                base_url=f"http://localhost:{vllm_port}/v1",
+                api_key="EMPTY",
+                model=runtime_config.model.model_path,
+                temperature=0.0,
+                max_tokens=1024,
+            )
 
         # checkpointer가 외부에서 주입되지 않으면 SqliteSaver를 시도한다.
-        # SqliteSaver는 프로세스 재시작 후에도 interrupt 상태를 복원하므로
-        # MemorySaver와 달리 재시작-안전(restart-safe)하다.
         if checkpointer is None:
             checkpointer, conn = _build_sync_sqlite_checkpointer(self.session_store.db_path)
-            # 이전 동기 connection이 있으면 닫아 leak을 방지한다.
             if self._sync_checkpointer_conn is not None:
                 try:
                     self._sync_checkpointer_conn.close()
@@ -1182,11 +1167,10 @@ class vLLMEngineManager:
             self._sync_checkpointer_conn = conn
 
         self.graph = build_govon_graph(
-            planner_adapter=planner,
-            executor_adapter=executor,
+            llm=llm,
+            tools=tools,
             session_store=self.session_store,
             checkpointer=checkpointer,
-            engine_manager=self,
         )
         logger.info("LangGraph graph 초기화 완료")
 
@@ -1762,35 +1746,28 @@ async def v2_agent_stream(
                         "node": node_name,
                         "status": "completed",
                     }
-                    # synthesis 완료 시 evidence_items와 task_type을 이벤트에 포함.
+                    # persist 완료 시 evidence_items를 이벤트에 포함.
                     # 전제: stream_mode="updates"에서 state_delta는 노드의 raw return dict다.
-                    # LangGraph 버전 업그레이드 시 이 구조가 변경될 수 있으므로 주의.
                     # evidence_items 스키마: EvidenceItem.to_dict() 필드를 따른다.
                     #   source_type: "rag" | "api" | "llm_generated"
                     #   title, excerpt, link_or_path, page, score, provider_meta
-                    #   (웹 프론트엔드에서 직접 렌더링 시 XSS 방지를 위해 이스케이프 필요)
-                    if node_name == "synthesis" and isinstance(state_delta, dict):
+                    if node_name == "persist" and isinstance(state_delta, dict):
                         if state_delta.get("final_text"):
                             event["final_text"] = state_delta["final_text"]
                         if state_delta.get("evidence_items"):
                             event["evidence_items"] = state_delta["evidence_items"]
-                        if state_delta.get("task_type"):
-                            event["task_type"] = state_delta["task_type"]
                     # approval_wait: 명시적 노드명 또는 LangGraph interrupt() 호출 시
                     # stream_mode="updates"에서 emit되는 "__interrupt__" 청크 모두 처리
                     if node_name in ("approval_wait", "__interrupt__"):
                         try:
                             graph_state = await manager.graph.aget_state(config)
                             if graph_state.next:
-                                _vals = graph_state.values or {}
                                 event = {
                                     "node": "approval_wait",
                                     "status": "awaiting_approval",
                                     "approval_request": _extract_approval_request(graph_state),
                                     "thread_id": thread_id,
                                     "session_id": session_id,
-                                    "adapter_mode": _safe_state_field(_vals, "adapter_mode", ""),
-                                    "tool_args": _safe_state_field(_vals, "tool_args", {}),
                                 }
                         except Exception as exc:
                             logger.warning(f"[v2/agent/stream] aget_state 실패: {exc}")
@@ -1884,15 +1861,12 @@ async def v2_agent_run(
         graph_state = await manager.graph.aget_state(config)
         if graph_state.next:
             # interrupt 대기 중: approval_request 정보를 클라이언트에 반환
-            _vals = graph_state.values or {}
             return {
                 "status": "awaiting_approval",
                 "thread_id": thread_id,
                 "session_id": session_id,
                 "graph_run_id": request_id,
                 "approval_request": _extract_approval_request(graph_state),
-                "adapter_mode": _vals.get("adapter_mode", ""),
-                "tool_args": _vals.get("tool_args", {}),
             }
 
         # interrupt 없이 완료된 경우 (rejected 또는 오류)
@@ -1904,9 +1878,6 @@ async def v2_agent_run(
             "graph_run_id": request_id,
             "text": final_state.get("final_text", ""),
             "evidence_items": final_state.get("evidence_items", []),
-            "task_type": final_state.get("task_type", ""),
-            "adapter_mode": _safe_state_field(final_state, "adapter_mode", ""),
-            "tool_args": _safe_state_field(final_state, "tool_args", {}),
         }
     except Exception as exc:
         logger.error(f"[v2/agent/run] 예외 발생: {exc}")
@@ -1981,11 +1952,7 @@ async def v2_agent_approve(
             "graph_run_id": result.get("request_id", ""),
             "text": result.get("final_text", ""),
             "evidence_items": result.get("evidence_items", []),
-            "task_type": result.get("task_type", ""),
-            "tool_results": result.get("tool_results", {}),
             "approval_status": approval_status,
-            "adapter_mode": _safe_state_field(result, "adapter_mode", ""),
-            "tool_args": _safe_state_field(result, "tool_args", {}),
         }
     except Exception as exc:
         logger.error(f"[v2/agent/approve] 예외 발생: {exc}")

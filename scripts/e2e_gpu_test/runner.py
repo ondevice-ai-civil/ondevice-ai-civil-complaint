@@ -292,7 +292,7 @@ async def main() -> int:
 
     # Phase 6: Advanced
     if target_phase is None or target_phase == 6:
-        phase6_results = await run_phase6(logger)
+        phase6_results = await run_phase6(logger, _observed_tools, aggregator)
         all_results.extend(phase6_results)
 
     # 요약

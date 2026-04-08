@@ -259,9 +259,11 @@ async def scenario18_lora_hot_switch(logger: E2ELogger) -> dict:
 
     for query, expected_domain in queries:
         ok, text, meta, err = await call_agent_with_approval(query, sid, approve=True, timeout=180)
+        actual_adapter = meta.get("adapter_mode", "unknown")
         results.append(
             {
                 "domain": expected_domain,
+                "actual_adapter": actual_adapter,
                 "ok": ok,
                 "text_len": len(text) if text else 0,
                 "error": err,
@@ -270,9 +272,17 @@ async def scenario18_lora_hot_switch(logger: E2ELogger) -> dict:
 
     elapsed = time.monotonic() - t0
     all_ok = all(r["ok"] for r in results)
+
+    # 어댑터가 1종류만 사용되면 hot-switch 미발생 의심
+    adapters_seen = {r["actual_adapter"] for r in results if r["ok"]}
+    hot_switch_detected = len(adapters_seen) > 1
+
     assertions = [
-        f"{r['domain']}: {'OK' if r['ok'] else 'FAIL'} ({r['text_len']} chars)" for r in results
+        f"{r['domain']}: {'OK' if r['ok'] else 'FAIL'} adapter={r['actual_adapter']} ({r['text_len']} chars)"
+        for r in results
     ]
+    if not hot_switch_detected:
+        assertions.append(f"WARNING: 어댑터 전환 미감지 (사용된 어댑터: {adapters_seen})")
 
     return logger.scenario_result(
         18,
@@ -281,8 +291,9 @@ async def scenario18_lora_hot_switch(logger: E2ELogger) -> dict:
         "passed" if all_ok else "failed",
         elapsed,
         assertions=assertions,
+        warnings=None if hot_switch_detected else [f"어댑터 전환 미감지: {adapters_seen}"],
         error="; ".join(r["error"] or "" for r in results if not r["ok"]) or None,
-        detail={"results": results},
+        detail={"results": results, "adapters_seen": list(adapters_seen)},
     )
 
 
@@ -297,16 +308,22 @@ async def scenario19_graceful_error_propagation(logger: E2ELogger) -> dict:
     ]
     assertions = []
 
+    has_exception = False
     for query, label in test_cases:
         try:
             code, resp = await http_post("/v2/agent/run", {"query": query}, timeout=10)
-            is_ok = code != 500
-            assertions.append(f"{label}: HTTP {code} {'OK' if is_ok else 'FAIL (500)'}")
+            if code == 500:
+                assertions.append(f"{label}: FAIL HTTP 500")
+            elif 400 <= code < 500:
+                assertions.append(f"{label}: OK HTTP {code} (expected client error)")
+            else:
+                assertions.append(f"{label}: OK HTTP {code}")
         except Exception as exc:
-            assertions.append(f"{label}: exception {exc}")
+            has_exception = True
+            assertions.append(f"{label}: FAIL exception {type(exc).__name__}: {exc}")
 
     elapsed = time.monotonic() - t0
-    no_500 = all("FAIL (500)" not in a for a in assertions)
+    no_500 = all("FAIL" not in a for a in assertions) and not has_exception
 
     return logger.scenario_result(
         19,
@@ -352,10 +369,10 @@ async def scenario20_evidence_envelope(logger: E2ELogger) -> dict:
                     assertions.append(f"{tool_name}: evidence가 dict가 아님")
 
         if not evidence_found:
-            assertions.append("evidence 필드를 가진 tool_result 없음 (정보성)")
+            assertions.append("evidence 필드를 가진 tool_result 없음")
 
-        # text가 있으면 기본적으로 PASS
-        status = "passed" if ok and text else "failed"
+        # text + 최소 1개 evidence 검증 성공이어야 PASS
+        status = "passed" if ok and text and evidence_found else "failed"
         return logger.scenario_result(
             20,
             "Evidence Envelope",
@@ -372,12 +389,26 @@ async def scenario20_evidence_envelope(logger: E2ELogger) -> dict:
         )
 
 
-async def run_phase6(logger: E2ELogger) -> list[dict]:
-    """Phase 6 전체 실행."""
+async def run_phase6(
+    logger: E2ELogger,
+    observed_tools: set[str] | None = None,
+    aggregator: LatencyAggregator | None = None,
+) -> list[dict]:
+    """Phase 6 전체 실행.
+
+    Parameters
+    ----------
+    observed_tools : set[str] | None
+        runner에서 전달받은 관측 도구 집합. Phase 6 시나리오에서 갱신.
+    aggregator : LatencyAggregator | None
+        runner에서 전달받은 레이턴시 집계기. None이면 내부 생성.
+    """
     logger.info("\n[Phase 6] Advanced Scenarios")
     logger.info("-" * 40)
 
-    aggregator = LatencyAggregator()
+    if aggregator is None:
+        aggregator = LatencyAggregator()
+
     results = []
 
     scenarios = [
@@ -393,5 +424,11 @@ async def run_phase6(logger: E2ELogger) -> list[dict]:
     for scenario_fn in scenarios:
         result = await scenario_fn()
         results.append(result)
+        # 실행된 시나리오에서 관측된 도구 수집
+        if observed_tools is not None:
+            detail = result.get("detail", {})
+            for key in ("planned_tools", "actual_nodes"):
+                if isinstance(detail.get(key), (list, set)):
+                    observed_tools.update(detail[key])
 
     return results

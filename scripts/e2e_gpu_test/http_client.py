@@ -71,6 +71,7 @@ try:
             return resp.status_code, resp.text[:200]
 
 except ImportError:
+    import asyncio
     import urllib.error
     import urllib.request
 
@@ -82,7 +83,7 @@ except ImportError:
             h["X-API-Key"] = API_KEY
         return h
 
-    async def http_get(path: str, timeout: float = TIMEOUT) -> tuple[int, dict]:
+    def _sync_get(path: str, timeout: float) -> tuple[int, dict]:
         url = BASE_URL + path
         req = urllib.request.Request(url, headers=_build_headers(), method="GET")
         try:
@@ -91,7 +92,10 @@ except ImportError:
         except urllib.error.HTTPError as e:
             return e.code, {}
 
-    async def http_post(path: str, body: dict, timeout: float = TIMEOUT) -> tuple[int, dict]:
+    async def http_get(path: str, timeout: float = TIMEOUT) -> tuple[int, dict]:
+        return await asyncio.to_thread(_sync_get, path, timeout)
+
+    def _sync_post(path: str, body: dict, timeout: float) -> tuple[int, dict]:
         url = BASE_URL + path
         data = json.dumps(body).encode()
         req = urllib.request.Request(url, data=data, headers=_build_headers(), method="POST")
@@ -101,9 +105,10 @@ except ImportError:
         except urllib.error.HTTPError as e:
             return e.code, {}
 
-    async def http_post_sse(
-        path: str, body: dict, timeout: float = TIMEOUT
-    ) -> tuple[int, list[dict]]:
+    async def http_post(path: str, body: dict, timeout: float = TIMEOUT) -> tuple[int, dict]:
+        return await asyncio.to_thread(_sync_post, path, body, timeout)
+
+    def _sync_post_sse(path: str, body: dict, timeout: float) -> tuple[int, list[dict]]:
         url = BASE_URL + path
         data = json.dumps(body).encode()
         h = _build_headers()
@@ -129,7 +134,12 @@ except ImportError:
             status_code = e.code
         return status_code, events
 
-    async def http_get_raw(url: str, timeout: float = 10) -> tuple[int, str]:
+    async def http_post_sse(
+        path: str, body: dict, timeout: float = TIMEOUT
+    ) -> tuple[int, list[dict]]:
+        return await asyncio.to_thread(_sync_post_sse, path, body, timeout)
+
+    def _sync_get_raw(url: str, timeout: float) -> tuple[int, str]:
         req = urllib.request.Request(url, method="GET")
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -138,6 +148,9 @@ except ImportError:
             return e.code, ""
         except Exception:
             return 0, ""
+
+    async def http_get_raw(url: str, timeout: float = 10) -> tuple[int, str]:
+        return await asyncio.to_thread(_sync_get_raw, url, timeout)
 
 
 def get_http_backend() -> str:

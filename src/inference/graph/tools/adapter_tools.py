@@ -40,25 +40,34 @@ def build_adapter_tools(draft_response_fn: Callable) -> List[StructuredTool]:
 
     for adapter_name in registry.list_available():
         description = registry.get_tool_description(adapter_name)
+        meta = registry.get_meta(adapter_name)
         tool_name = f"{adapter_name}_adapter"
 
         # 클로저로 adapter_name을 캡처
         def _make_execute(name: str) -> Callable:
             async def _adapter_execute(query: str) -> str:
-                result = await draft_response_fn(
-                    query=query,
-                    context={"adapter": name},
-                    session=None,
-                )
-                return json.dumps(result, ensure_ascii=False)
+                try:
+                    result = await draft_response_fn(
+                        query=query,
+                        context={"adapter": name},
+                        session=None,
+                    )
+                    return json.dumps(result, ensure_ascii=False)
+                except Exception as e:
+                    return json.dumps(
+                        {"error": str(e), "success": False},
+                        ensure_ascii=False,
+                    )
 
             return _adapter_execute
 
+        requires_approval = meta.requires_approval if meta else True
         tool = StructuredTool.from_function(
             coroutine=_make_execute(adapter_name),
             name=tool_name,
             description=description,
             args_schema=AdapterToolInput,
+            metadata={"requires_approval": requires_approval},
         )
         tools.append(tool)
 

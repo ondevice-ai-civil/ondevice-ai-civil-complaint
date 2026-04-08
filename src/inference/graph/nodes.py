@@ -15,11 +15,17 @@ import json
 import time
 from typing import TYPE_CHECKING, Any, Dict, List
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.types import interrupt
 from loguru import logger
 
 from .state import ApprovalStatus, GovOnGraphState
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+_MAX_CONSECUTIVE_REJECTIONS = 2
 
 if TYPE_CHECKING:
     from src.inference.session_context import SessionStore
@@ -79,10 +85,39 @@ def make_agent_node(llm, tools: list):
     """
     llm_with_tools = llm.bind_tools(tools)
 
+    def _count_consecutive_rejections(messages: list) -> int:
+        """messages를 역순 순회하여 연속 거부 피드백 메시지 수를 카운트한다."""
+        count = 0
+        for msg in reversed(messages):
+            if (
+                isinstance(msg, HumanMessage)
+                and "사용자가 도구 실행을 거부했습니다" in (msg.content or "")
+            ):
+                count += 1
+            elif isinstance(msg, AIMessage):
+                # AI 응답을 만나면 그 이전의 거부는 이전 사이클이므로 중단
+                break
+            else:
+                break
+        return count
+
     async def agent_node(state: GovOnGraphState) -> dict:
         t0 = time.monotonic()
         messages = state.get("messages", [])
-        system = SystemMessage(content=_SYSTEM_PROMPT)
+
+        # 연속 거부 횟수에 따라 system prompt에 도구 호출 금지 힌트 추가
+        rejection_count = _count_consecutive_rejections(messages)
+        system_content = _SYSTEM_PROMPT
+        if rejection_count >= _MAX_CONSECUTIVE_REJECTIONS:
+            system_content += (
+                "\n\n[중요] 사용자가 도구 실행을 연속으로 거부했습니다. "
+                "더 이상 도구를 호출하지 말고, 현재 가진 정보만으로 직접 답변하세요."
+            )
+            logger.warning(
+                f"[agent] 연속 거부 {rejection_count}회 감지 — 도구 호출 없이 직접 응답 유도"
+            )
+
+        system = SystemMessage(content=system_content)
         response = await llm_with_tools.ainvoke([system] + list(messages))
         latency = round((time.monotonic() - t0) * 1000, 2)
         logger.debug(
@@ -214,16 +249,33 @@ def make_persist_node(session_store: "SessionStore"):
                 except (json.JSONDecodeError, TypeError):
                     pass
 
-        # SessionStore에 대화 턴 저장 (side effect)
+        # SessionStore에 마지막 턴만 저장 (중복 방지)
         session_id = state.get("session_id", "")
         if session_id and session_store:
             session = session_store.get_or_create(session_id)
-            for msg in messages:
-                if hasattr(msg, "type"):
-                    if msg.type == "human":
-                        session.add_turn("user", msg.content)
-                    elif msg.type == "ai" and not getattr(msg, "tool_calls", None):
-                        session.add_turn("assistant", msg.content)
+            # 역순 순회하여 마지막 Human 쿼리와 AI 응답만 추출
+            last_human = None
+            last_ai = None
+            for msg in reversed(messages):
+                if (
+                    last_ai is None
+                    and hasattr(msg, "type")
+                    and msg.type == "ai"
+                    and not getattr(msg, "tool_calls", None)
+                ):
+                    last_ai = msg
+                elif (
+                    last_human is None
+                    and hasattr(msg, "type")
+                    and msg.type == "human"
+                ):
+                    last_human = msg
+                if last_human and last_ai:
+                    break
+            if last_human:
+                session.add_turn("user", last_human.content)
+            if last_ai:
+                session.add_turn("assistant", last_ai.content)
 
         latency = round((time.monotonic() - t0) * 1000, 2)
         logger.debug(

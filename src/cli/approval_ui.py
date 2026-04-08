@@ -106,8 +106,30 @@ def _build_choice_text(label: str, *, selected: bool, style: str):
     return Text(f"{bullet} {label}", style=text_style)
 
 
+def _normalize_approval_request(approval_request: dict) -> dict:
+    """v4 interrupt payload 키를 UI가 사용하는 키로 정규화한다.
+
+    v4 payload: {"tools": [...], "message": "...", "approval_required": [...]}
+    UI 기대:    {"task_type": ..., "goal": ..., "reason": ..., "tool_summaries": [...]}
+    """
+    normalized = dict(approval_request)
+    # tools -> tool_summaries (기존 키가 없을 때만)
+    if "tool_summaries" not in normalized and "tools" in normalized:
+        normalized["tool_summaries"] = normalized["tools"]
+    # message -> goal (기존 키가 없을 때만)
+    if "goal" not in normalized and "message" in normalized:
+        normalized["goal"] = normalized["message"]
+    # approval_required -> reason (기존 키가 없을 때만)
+    if "reason" not in normalized and "approval_required" in normalized:
+        required = normalized["approval_required"]
+        if required:
+            normalized["reason"] = f"승인 필요 도구: {', '.join(required)}"
+    return normalized
+
+
 def _build_approval_panel(approval_request: dict, selected: int, *, columns: int):
     """Build the rich approval panel shown inside the prompt_toolkit UI."""
+    approval_request = _normalize_approval_request(approval_request)
     task_type: str | None = approval_request.get("task_type")
     accent_style = _get_task_type_style(task_type)
     goal: str = approval_request.get("goal", "")
@@ -224,6 +246,7 @@ def _pt_prompt(approval_request: dict, *, columns: int) -> bool:
 
 def _fallback_prompt(approval_request: dict, columns: int | None = None) -> bool:
     """Plain input() fallback when prompt_toolkit is unavailable."""
+    approval_request = _normalize_approval_request(approval_request)
     task_type: str | None = approval_request.get("task_type")
     goal: str = approval_request.get("goal", "")
     reason: str = approval_request.get("reason", "")

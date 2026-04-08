@@ -1597,8 +1597,8 @@ def _trace_to_schema(trace: AgentTrace) -> AgentTraceSchema:
     return AgentTraceSchema(
         request_id=trace.request_id,
         session_id=trace.session_id,
-        plan=trace.plan.tool_names if trace.plan else [],
-        plan_reason=trace.plan.reason if trace.plan else "",
+        plan=trace.plan_tools,
+        plan_reason=trace.plan_reason,
         tool_results=[
             ToolResultSchema(
                 tool=tool_name(result.tool),

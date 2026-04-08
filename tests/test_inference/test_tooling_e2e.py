@@ -26,7 +26,6 @@ from src.inference.graph.capabilities.keyword_analyzer import KeywordAnalyzerCap
 from src.inference.graph.capabilities.rag_search import RagSearchCapability
 from src.inference.graph.capabilities.stats_lookup import StatsLookupCapability
 
-
 # ---------------------------------------------------------------------------
 # 공통 헬퍼
 # ---------------------------------------------------------------------------
@@ -52,7 +51,6 @@ def _assert_to_dict_schema(d: dict) -> None:
 # ===========================================================================
 # TestRagSearchPipeline
 # ===========================================================================
-
 
 
 class TestRagSearchPipeline:
@@ -176,7 +174,6 @@ class TestRagSearchPipeline:
 # ===========================================================================
 
 
-
 class TestApiLookupPipeline:
     """ApiLookupCapability execute → LookupResult → to_dict() 파이프라인 검증."""
 
@@ -237,7 +234,6 @@ class TestApiLookupPipeline:
 # ===========================================================================
 # TestIssueDetectorPipeline
 # ===========================================================================
-
 
 
 class TestIssueDetectorPipeline:
@@ -330,7 +326,6 @@ class TestIssueDetectorPipeline:
 # ===========================================================================
 # TestStatsLookupPipeline
 # ===========================================================================
-
 
 
 class TestStatsLookupPipeline:
@@ -440,7 +435,6 @@ class TestStatsLookupPipeline:
 # ===========================================================================
 
 
-
 class TestKeywordAnalyzerPipeline:
     """KeywordAnalyzerCapability execute → LookupResult → to_dict() 파이프라인 검증."""
 
@@ -496,7 +490,6 @@ class TestKeywordAnalyzerPipeline:
 # ===========================================================================
 # TestDemographicsLookupPipeline
 # ===========================================================================
-
 
 
 class TestDemographicsLookupPipeline:

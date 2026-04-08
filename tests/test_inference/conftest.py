@@ -46,7 +46,14 @@ sys.modules.setdefault("sentence_transformers", MagicMock())
 
 _mock_stabilizer = types.ModuleType("src.inference.vllm_stabilizer")
 _mock_stabilizer.apply_transformers_patch = MagicMock()
-sys.modules.setdefault("src.inference.vllm_stabilizer", _mock_stabilizer)
+if "src.inference.vllm_stabilizer" not in sys.modules:
+    sys.modules["src.inference.vllm_stabilizer"] = _mock_stabilizer
+    # patch("src.inference.vllm_stabilizer.xxx")가 작동하려면
+    # 부모 모듈(src.inference)에도 속성으로 등록해야 한다.
+    import src.inference as _inf_pkg
+
+    if not hasattr(_inf_pkg, "vllm_stabilizer"):
+        _inf_pkg.vllm_stabilizer = _mock_stabilizer  # type: ignore[attr-defined]
 
 # NOTE: src.inference.retriever는 여기서 mock하지 않음.
 # retriever 단위 테스트(test_retriever.py)가 실제 모듈을 사용하므로,

@@ -20,15 +20,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 # retriever mock — api_server.py가 모듈 레벨에서 retriever를 import하므로
-# api_server import 전에 등록해야 한다.
-# setdefault 사용: 실제 retriever가 이미 로드된 경우 덮어쓰지 않는다.
-# test_retriever.py와 충돌 방지를 위해 conftest가 아닌 개별 파일에서 처리한다.
-# 이 mock은 모듈 로드 시점에만 필요하며, 테스트에서 직접 사용하지 않는다.
-sys.modules.setdefault("src.inference.retriever", MagicMock())
+# api_server import 시에만 필요하다. test_retriever.py와 충돌하지 않도록
+# patch.dict로 import 범위 내에서만 mock을 적용하고, import 후 즉시 제거한다.
+_retriever_stub = MagicMock()
+with patch.dict(sys.modules, {"src.inference.retriever": _retriever_stub}):
+    from fastapi.testclient import TestClient
 
-from fastapi.testclient import TestClient
-
-from src.inference.api_server import app, manager
+    from src.inference.api_server import app, manager
 
 # ---------------------------------------------------------------------------
 # 헬퍼: 그래프 스텁
@@ -145,9 +143,9 @@ def _make_approve_graph(approved: bool, final_text: str = "실행 완료.") -> A
         if isinstance(command_or_state, Command):
             resume = command_or_state.resume
             assert "approved" in resume, f"resume에 'approved' 키 누락: {resume}"
-            assert resume["approved"] is approved, (
-                f"expected approved={approved}, got {resume['approved']}"
-            )
+            assert (
+                resume["approved"] is approved
+            ), f"expected approved={approved}, got {resume['approved']}"
         return result_payload
 
     mock_graph = AsyncMock()
@@ -399,9 +397,9 @@ class TestV2DiverseQueries:
         assert resp.status_code == 200
         body = resp.json()
         # _make_interrupted_graph를 주입했으므로 반드시 awaiting_approval이어야 한다
-        assert body["status"] == "awaiting_approval", (
-            f"_make_interrupted_graph 사용 시 status는 awaiting_approval이어야 합니다: {body}"
-        )
+        assert (
+            body["status"] == "awaiting_approval"
+        ), f"_make_interrupted_graph 사용 시 status는 awaiting_approval이어야 합니다: {body}"
         assert "thread_id" in body
         assert "session_id" in body
         assert "graph_run_id" in body

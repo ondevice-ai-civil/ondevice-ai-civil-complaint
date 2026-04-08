@@ -9,18 +9,19 @@ Issue: #154
 
 import sys
 from typing import Any, Dict, List, Optional, Tuple
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 # heavy-deps mock은 conftest.py에서 처리
-# retriever만 이 파일에서 개별 mock (test_retriever.py와 충돌 방지)
-sys.modules.setdefault("src.inference.retriever", MagicMock())
+# retriever mock: api_server import 시에만 필요하고, test_retriever.py와
+# 충돌하지 않도록 import 후 즉시 제거한다.
+_retriever_stub = MagicMock()
+with patch.dict(sys.modules, {"src.inference.retriever": _retriever_stub}):
+    from fastapi.testclient import TestClient
 
-from fastapi.testclient import TestClient
-
-from src.inference.api_server import app, manager
-from src.inference.hybrid_search import SearchMode
+    from src.inference.api_server import app, manager
+    from src.inference.hybrid_search import SearchMode
 
 # ---------------------------------------------------------------------------
 # 공통 Fixtures

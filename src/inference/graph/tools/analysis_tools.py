@@ -102,8 +102,11 @@ def build_analysis_tools(
             # search_date를 analysis_time에서 자동 추출 (YYYYMMDDHH -> YYYYMMDD)
             if len(analysis_time) >= 8:
                 context["search_date"] = analysis_time[:8]
-        result = await _issue_cap.execute(query=query, context=context, session=None)
-        return json.dumps(result.to_dict(), ensure_ascii=False)
+        try:
+            result = await _issue_cap.execute(query=query, context=context, session=None)
+            return json.dumps(result.to_dict(), ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": str(e), "success": False}, ensure_ascii=False)
 
     issue_detector_tool = StructuredTool.from_function(
         coroutine=_issue_detector,
@@ -133,8 +136,11 @@ def build_analysis_tools(
             context["date_to"] = date_to
         if period is not None:
             context["period"] = period
-        result = await _stats_cap.execute(query=query, context=context, session=None)
-        return json.dumps(result.to_dict(), ensure_ascii=False)
+        try:
+            result = await _stats_cap.execute(query=query, context=context, session=None)
+            return json.dumps(result.to_dict(), ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": str(e), "success": False}, ensure_ascii=False)
 
     stats_lookup_tool = StructuredTool.from_function(
         coroutine=_stats_lookup,
@@ -164,8 +170,11 @@ def build_analysis_tools(
             context["date_to"] = date_to
         # searchword를 query에서 자동 설정 (연관어 분석용)
         context["searchword"] = query
-        result = await _kw_cap.execute(query=query, context=context, session=None)
-        return json.dumps(result.to_dict(), ensure_ascii=False)
+        try:
+            result = await _kw_cap.execute(query=query, context=context, session=None)
+            return json.dumps(result.to_dict(), ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": str(e), "success": False}, ensure_ascii=False)
 
     keyword_analyzer_tool = StructuredTool.from_function(
         coroutine=_keyword_analyzer,
@@ -192,8 +201,11 @@ def build_analysis_tools(
             context["date_from"] = date_from
         if date_to is not None:
             context["date_to"] = date_to
-        result = await _demo_cap.execute(query=query, context=context, session=None)
-        return json.dumps(result.to_dict(), ensure_ascii=False)
+        try:
+            result = await _demo_cap.execute(query=query, context=context, session=None)
+            return json.dumps(result.to_dict(), ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": str(e), "success": False}, ensure_ascii=False)
 
     demographics_lookup_tool = StructuredTool.from_function(
         coroutine=_demographics_lookup,

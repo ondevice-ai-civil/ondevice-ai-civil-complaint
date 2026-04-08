@@ -72,8 +72,11 @@ def build_search_tools(
         context: dict[str, Any] = {"top_k": top_k}
         if source_types is not None:
             context["source_types"] = source_types
-        result = await _rag_cap.execute(query=query, context=context, session=None)
-        return json.dumps(result.to_dict(), ensure_ascii=False)
+        try:
+            result = await _rag_cap.execute(query=query, context=context, session=None)
+            return json.dumps(result.to_dict(), ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": str(e), "success": False}, ensure_ascii=False)
 
     rag_search_tool = StructuredTool.from_function(
         coroutine=_rag_search,
@@ -95,8 +98,11 @@ def build_search_tools(
         ret_count: int = 5,
     ) -> str:
         context: dict[str, Any] = {"ret_count": ret_count}
-        result = await _api_cap.execute(query=query, context=context, session=None)
-        return json.dumps(result.to_dict(), ensure_ascii=False)
+        try:
+            result = await _api_cap.execute(query=query, context=context, session=None)
+            return json.dumps(result.to_dict(), ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": str(e), "success": False}, ensure_ascii=False)
 
     api_lookup_tool = StructuredTool.from_function(
         coroutine=_api_lookup,

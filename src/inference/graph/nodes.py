@@ -180,6 +180,11 @@ def make_approval_wait_node(approval_map: dict[str, bool]):
             }
         )
 
+        cancelled = response.get("cancel", False) if isinstance(response, dict) else False
+        if cancelled:
+            logger.info("[approval_wait] 취소됨")
+            return {"approval_status": "cancelled"}
+
         approved = response.get("approved", False) if isinstance(response, dict) else bool(response)
 
         if approved:
@@ -206,10 +211,13 @@ def make_approval_wait_node(approval_map: dict[str, bool]):
 def route_after_approval(state: GovOnGraphState) -> str:
     """approval_wait 이후 분기.
 
-    승인이면 tools로, 거부이면 agent로 돌려보내 대안을 제시하게 한다.
+    승인이면 tools로, 취소이면 persist로, 거부이면 agent로 돌려보내 대안을 제시하게 한다.
     """
-    if state.get("approval_status") == ApprovalStatus.APPROVED.value:
+    status = state.get("approval_status", "")
+    if status == ApprovalStatus.APPROVED.value:
         return "tools"
+    if status == "cancelled":
+        return "persist"
     return "agent"
 
 
@@ -240,9 +248,21 @@ def make_persist_node(session_store: "SessionStore"):
                 final_text = msg.content
                 break
 
-        # evidence: ToolMessage들에서 수집
+        # 현재 턴 시작점: 마지막 HumanMessage (거부 메시지 제외) 이후부터
+        turn_start = 0
+        for i in range(len(messages) - 1, -1, -1):
+            msg = messages[i]
+            if (
+                hasattr(msg, "type")
+                and msg.type == "human"
+                and "사용자가 도구 실행을 거부했습니다" not in (msg.content or "")
+            ):
+                turn_start = i
+                break
+
+        # evidence: 현재 턴의 ToolMessage에서만 수집 (stale evidence 방지)
         evidence_items: List[Dict[str, Any]] = []
-        for msg in messages:
+        for msg in messages[turn_start:]:
             if hasattr(msg, "type") and msg.type == "tool":
                 try:
                     data = json.loads(msg.content) if isinstance(msg.content, str) else msg.content

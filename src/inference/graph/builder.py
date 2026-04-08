@@ -8,8 +8,9 @@ Graph topology:
        ├── (no tool_calls)   → persist → END
        ├── (all Tier 0)      → tools → agent → ...
        └── (needs approval)  → approval_wait → [route_after_approval]
-                                   ├── (approved) → tools → agent → ...
-                                   └── (rejected) → agent → ...
+                                   ├── (approved)  → tools → agent → ...
+                                   ├── (cancelled) → persist → END
+                                   └── (rejected)  → agent → ...
 """
 
 from __future__ import annotations
@@ -124,6 +125,7 @@ def build_govon_graph(
         {
             "tools": "tools",
             "agent": "agent",
+            "persist": "persist",
         },
     )
     graph.add_edge("tools", "agent")

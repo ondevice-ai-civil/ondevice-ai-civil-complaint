@@ -13,6 +13,9 @@ from __future__ import annotations
 
 import json
 import time
+
+# v3 전용 import
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, List
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -316,3 +319,158 @@ def make_persist_node(session_store: "SessionStore"):
         }
 
     return persist_node
+
+
+# ---------------------------------------------------------------------------
+# v3 ReAct 전용 상수
+# ---------------------------------------------------------------------------
+
+_V3_SYSTEM_PROMPT = (
+    "당신은 GovOn 민원 답변 보조 시스템입니다.\n"
+    "사용자의 요청을 분석하여 적절한 도구를 호출하거나 직접 답변하세요.\n\n"
+    "판단 원칙:\n"
+    "- 각 도구의 설명을 읽고 필요한 것만 호출하세요.\n"
+    "- 답변 초안이 필요하면 도메인에 맞는 어댑터 도구를 선택하세요.\n"
+    "- 근거나 출처가 필요하면 검색 도구를 호출하세요.\n"
+    "- 이전 대화에서 이미 초안이 있으면 어댑터 재호출이 불필요할 수 있습니다.\n"
+    "- 충분한 정보가 모이면 최종 답변을 직접 작성하세요.\n"
+    "- 불필요한 도구는 호출하지 마세요.\n"
+    "- 도구 결과가 부족하면 추가 도구를 호출할 수 있습니다.\n"
+)
+
+_V3_FORCE_ANSWER_SUFFIX = (
+    "\n\n[중요] 최대 반복 횟수에 도달했습니다. "
+    "더 이상 도구를 호출하지 말고, 현재까지 수집한 정보를 기반으로 최선의 답변을 작성하세요."
+)
+
+
+# ---------------------------------------------------------------------------
+# v3 agent 노드
+# ---------------------------------------------------------------------------
+
+
+def make_agent_node_v3(llm, tools: list):
+    """v3 ReAct agent 노드 팩토리.
+
+    iteration_count를 추적하고 max_iterations 초과 시 강제 final answer를 생성한다.
+    pending_tool_calls를 state에 저장하여 tools_node_v3에서 실행한다.
+    """
+    llm_without_tools = llm
+    llm_with_tools = llm.bind_tools(tools)
+
+    async def agent_node_v3(state: GovOnGraphState) -> dict:
+        t0 = time.monotonic()
+        messages = state.get("messages", [])
+        iteration = state.get("iteration_count", 0)
+        max_iter = state.get("max_iterations", 10)
+
+        # max_iterations 도달 시 도구 바인딩 없이 호출하여 강제 종료
+        force_answer = iteration >= max_iter
+        system_content = _V3_SYSTEM_PROMPT
+        if force_answer:
+            system_content += _V3_FORCE_ANSWER_SUFFIX
+            logger.warning(
+                f"[agent_v3] iteration {iteration} >= max {max_iter} — 강제 final answer"
+            )
+
+        system = SystemMessage(content=system_content)
+        active_llm = llm_without_tools if force_answer else llm_with_tools
+        response = await active_llm.ainvoke([system] + list(messages))
+
+        tool_calls = getattr(response, "tool_calls", None) or []
+        latency = round((time.monotonic() - t0) * 1000, 2)
+
+        result: dict = {
+            "messages": [response],
+            "node_latencies": {"agent": latency},
+        }
+
+        if tool_calls and not force_answer:
+            # 도구 호출이 있으면 pending_tool_calls에 저장하고 iteration 증가
+            result["pending_tool_calls"] = tool_calls
+            result["iteration_count"] = iteration + 1
+        else:
+            # 최종 답변 — pending_tool_calls 비우기
+            result["pending_tool_calls"] = []
+
+        logger.debug(
+            f"[agent_v3] iteration={iteration} tool_calls={len(tool_calls)} "
+            f"force_answer={force_answer} latency_ms={latency}"
+        )
+        return result
+
+    return agent_node_v3
+
+
+# ---------------------------------------------------------------------------
+# v3 tools 노드
+# ---------------------------------------------------------------------------
+
+
+def make_tools_node_v3(tool_node_fn):
+    """v3 tools 노드 팩토리.
+
+    기존 ToolNode를 래핑하여 실행 후 tool_call_history에 메타데이터를 기록한다.
+
+    Parameters
+    ----------
+    tool_node_fn : callable
+        LangGraph ToolNode 인스턴스 또는 동등한 async callable.
+    """
+
+    async def tools_node_v3(state: GovOnGraphState) -> dict:
+        t0 = time.monotonic()
+        iteration = state.get("iteration_count", 0)
+        pending = state.get("pending_tool_calls", [])
+
+        # ToolNode 실행 (기존 로직 재사용)
+        result = await tool_node_fn(state)
+
+        latency = round((time.monotonic() - t0) * 1000, 2)
+
+        # tool_call_history 기록
+        history_entries = []
+        now = datetime.now(timezone.utc).isoformat()
+        tool_messages = result.get("messages", [])
+
+        # tool_call_id → ToolMessage 매핑 (인덱스 매칭 대신 ID 기반)
+        msg_by_id: dict = {}
+        for msg in tool_messages:
+            tc_id = getattr(msg, "tool_call_id", None)
+            if tc_id:
+                msg_by_id[tc_id] = msg
+
+        for tc in pending:
+            tool_name = tc.get("name", "unknown")
+            tc_id = tc.get("id")
+            # ToolMessage에서 성공 여부 판단 (JSON 파싱 후 success 필드 확인)
+            success = True
+            msg = msg_by_id.get(tc_id) if tc_id else None
+            if msg is not None:
+                content = getattr(msg, "content", "")
+                if isinstance(content, str):
+                    try:
+                        parsed = json.loads(content)
+                        if parsed.get("success") is False:
+                            success = False
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+            history_entries.append(
+                {
+                    "iteration": iteration,
+                    "tool": tool_name,
+                    "node_latency_ms": latency,
+                    "success": success,
+                    "timestamp": now,
+                }
+            )
+
+        result["tool_call_history"] = history_entries
+        result["pending_tool_calls"] = []  # 실행 완료 후 비우기
+        result["node_latencies"] = {"tools": latency}
+
+        logger.debug(f"[tools_v3] executed={len(pending)} latency_ms={latency}")
+        return result
+
+    return tools_node_v3

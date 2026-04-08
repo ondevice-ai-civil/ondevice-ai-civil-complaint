@@ -131,7 +131,7 @@ def test_collect_evidence_items_from_multiple_tools():
                 "errors": [],
             }
         },
-        "api_lookup": {
+        "issue_detector": {
             "evidence": {
                 "status": "ok",
                 "items": [_SAMPLE_API_EVIDENCE],
@@ -197,18 +197,7 @@ class StubEvidenceExecutorAdapter(ExecutorAdapter):
                 "text": "",
                 "evidence": {
                     "status": "ok",
-                    "items": [_SAMPLE_RAG_EVIDENCE],
-                    "errors": [],
-                },
-                "latency_ms": 1.0,
-            }
-        if tool_name == "api_lookup":
-            return {
-                "success": True,
-                "text": "",
-                "evidence": {
-                    "status": "ok",
-                    "items": [_SAMPLE_API_EVIDENCE],
+                    "items": [_SAMPLE_RAG_EVIDENCE, _SAMPLE_API_EVIDENCE],
                     "errors": [],
                 },
                 "latency_ms": 1.0,

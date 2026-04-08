@@ -54,7 +54,7 @@ VLLM_PID=$!
 
 # --- vLLM health check ---
 echo "[entrypoint] vLLM 서버 준비 대기 중..."
-MAX_WAIT=600  # 최대 10분
+MAX_WAIT=900  # 최대 15분 (모델 다운로드 + CUDA graph 캡처 포함)
 WAITED=0
 INTERVAL=5
 

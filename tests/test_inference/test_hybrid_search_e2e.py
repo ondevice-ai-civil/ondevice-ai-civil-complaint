@@ -274,31 +274,32 @@ class TestSearchQueryVariety:
         long_query = "서울시 강남구에서 접수된 도로 파손 관련 민원으로 " * 5
         payload = {**_BASE_SEARCH_PAYLOAD, "query": long_query}
         response = client.post("/v1/search", json=payload)
-        assert response.status_code == 200
-        assert len(response.json()["results"]) > 0
+        assert response.status_code == 200, f"long query 실패: {response.text}"
+        data = response.json()
+        assert len(data["results"]) > 0, f"결과가 비어있음: {data}"
 
     def test_search_with_doc_type_law(self, client: TestClient) -> None:
         """doc_type=law 검색이 정상 동작한다."""
         payload = {**_BASE_SEARCH_PAYLOAD, "doc_type": "law"}
         response = client.post("/v1/search", json=payload)
-        assert response.status_code == 200
+        assert response.status_code == 200, f"doc_type=law 실패: {response.text}"
 
     def test_search_with_doc_type_manual(self, client: TestClient) -> None:
         """doc_type=manual 검색이 정상 동작한다."""
         payload = {**_BASE_SEARCH_PAYLOAD, "doc_type": "manual"}
         response = client.post("/v1/search", json=payload)
-        assert response.status_code == 200
+        assert response.status_code == 200, f"doc_type=manual 실패: {response.text}"
 
     def test_search_with_top_k_1(self, client: TestClient) -> None:
         """top_k=1 검색 시 결과가 최대 1개이다."""
         payload = {**_BASE_SEARCH_PAYLOAD, "top_k": 1}
         response = client.post("/v1/search", json=payload)
         data = response.json()
-        assert response.status_code == 200
-        assert len(data["results"]) <= 1
+        assert response.status_code == 200, f"top_k=1 실패: {response.text}"
+        assert len(data["results"]) <= 1, f"top_k=1인데 결과 {len(data['results'])}개: {data}"
 
     def test_search_with_max_top_k(self, client: TestClient) -> None:
         """top_k=50 검색 시 정상 처리한다."""
         payload = {**_BASE_SEARCH_PAYLOAD, "top_k": 50}
         response = client.post("/v1/search", json=payload)
-        assert response.status_code == 200
+        assert response.status_code == 200, f"top_k=50 실패: {response.text}"

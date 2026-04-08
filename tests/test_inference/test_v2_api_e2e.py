@@ -177,6 +177,7 @@ def _make_cancel_ready_graph() -> AsyncMock:
         if isinstance(command_or_state, Command):
             resume = command_or_state.resume
             assert resume.get("cancel") is True, f"cancel 플래그 누락: {resume}"
+            assert resume.get("approved") is False, f"cancel 시 approved=False 필수: {resume}"
         return cancel_result
 
     mock_graph = AsyncMock()
@@ -325,6 +326,22 @@ class TestV2CancelEndpoint:
             params={"thread_id": "thread-no-graph"},
         )
         assert resp.status_code == 503
+
+    def test_cancel_not_interrupted_returns_409(self, client):
+        """interrupt 대기 중이 아닌 thread를 cancel하면 409를 반환해야 한다."""
+        # next=[] → interrupt 대기 상태가 아님
+        completed_state = FakeGraphState(
+            values={"session_id": "sess-done"},
+            next_nodes=[],
+        )
+        mock_graph = AsyncMock()
+        mock_graph.aget_state = AsyncMock(return_value=completed_state)
+        manager.graph = mock_graph
+        resp = client.post(
+            "/v2/agent/cancel",
+            params={"thread_id": "thread-not-interrupted"},
+        )
+        assert resp.status_code == 409, f"expected 409: {resp.json()}"
 
 
 # ---------------------------------------------------------------------------

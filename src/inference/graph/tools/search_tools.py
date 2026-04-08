@@ -12,7 +12,6 @@ from typing import Any, Callable, List, Optional
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-
 # ---------------------------------------------------------------------------
 # Pydantic 스키마 — LLM이 생성하는 JSON 인자
 # ---------------------------------------------------------------------------

@@ -27,7 +27,6 @@ from .nodes import (
     route_after_approval,
 )
 from .state import ApprovalStatus, GovOnGraphState
-from .tools import get_tool_approval_map
 
 if TYPE_CHECKING:
     from langgraph.graph.state import CompiledStateGraph
@@ -59,9 +58,7 @@ def _make_route_agent(approval_map: dict[str, bool]):
         if not tool_calls:
             return "persist"
 
-        needs_approval = any(
-            approval_map.get(tc["name"], False) for tc in tool_calls
-        )
+        needs_approval = any(approval_map.get(tc["name"], False) for tc in tool_calls)
         return "approval_wait" if needs_approval else "tools"
 
     return route_agent
@@ -94,6 +91,8 @@ def build_govon_graph(
         컴파일된 LangGraph.
     """
     from langgraph.checkpoint.memory import MemorySaver
+
+    from .tools import get_tool_approval_map
 
     tool_node = ToolNode(tools)
     approval_map = get_tool_approval_map(tools)

@@ -164,7 +164,6 @@ def _extract_approval_request(graph_state: Any) -> Any:
     return task.interrupts[0].value
 
 
-
 class vLLMEngineManager:
     """GovOn Shell MVP용 로컬 런타임 매니저."""
 

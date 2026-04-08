@@ -97,7 +97,9 @@ class TestRegistry:
             DemographicsLookupCapability(),
         ]
         for cap in caps:
-            assert isinstance(cap, CapabilityBase), f"{cap.metadata.name}이 CapabilityBase가 아닙니다"
+            assert isinstance(
+                cap, CapabilityBase
+            ), f"{cap.metadata.name}이 CapabilityBase가 아닙니다"
 
 
 # ---------------------------------------------------------------------------

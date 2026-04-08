@@ -285,5 +285,3 @@ class TestApiLookupCapabilityEvidence:
         assert result.success is True
         assert result.evidence is not None
         assert result.evidence.status == "empty"
-
-

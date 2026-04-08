@@ -91,9 +91,7 @@ class AgentLoop:
 
             # 등록된 모든 tool을 순차 실행
             tool_names = (
-                [tool_name(t) for t in force_tools]
-                if force_tools
-                else list(self._tools.keys())
+                [tool_name(t) for t in force_tools] if force_tools else list(self._tools.keys())
             )
             trace.plan_tools = tool_names
             trace.plan_reason = "등록된 도구 순차 실행"
@@ -149,9 +147,7 @@ class AgentLoop:
         try:
             session.add_turn("user", query)
             tool_names = (
-                [tool_name(t) for t in force_tools]
-                if force_tools
-                else list(self._tools.keys())
+                [tool_name(t) for t in force_tools] if force_tools else list(self._tools.keys())
             )
             trace.plan_tools = tool_names
             trace.plan_reason = "등록된 도구 순차 실행"

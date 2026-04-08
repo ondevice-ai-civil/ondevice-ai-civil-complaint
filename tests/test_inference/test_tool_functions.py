@@ -39,7 +39,6 @@ from src.inference.graph.tools.search_tools import build_search_tools
 from src.inference.graph.tools.analysis_tools import build_analysis_tools
 from src.inference.graph.tools import build_all_tools, get_tool_approval_map
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -92,35 +91,21 @@ def mock_api_action() -> MagicMock:
     action.get_rising_keywords = AsyncMock(
         return_value=[{"keyword": "도로", "df": 100, "prevRatio": "50"}]
     )
-    action.get_today_topics = AsyncMock(
-        return_value=[{"topic": "교통", "count": 200}]
-    )
-    action.get_top_keywords_by_period = AsyncMock(
-        return_value=[{"term": "소음", "df": 80}]
-    )
+    action.get_today_topics = AsyncMock(return_value=[{"topic": "교통", "count": 200}])
+    action.get_top_keywords_by_period = AsyncMock(return_value=[{"term": "소음", "df": 80}])
 
     # stats_lookup용
-    action.get_doc_count = AsyncMock(
-        return_value=[{"pttn": 100, "dfpt": 50, "saeol": 30}]
-    )
+    action.get_doc_count = AsyncMock(return_value=[{"pttn": 100, "dfpt": 50, "saeol": 30}])
     action.get_trend = AsyncMock(
         return_value=[{"label": "2026-04-08", "hits": 180, "prebRatio": "10"}]
     )
     action.get_statistics = AsyncMock(return_value=[{"label": "2026-04", "hits": 500}])
-    action.get_org_ranking = AsyncMock(
-        return_value=[{"label": "서울시청", "hits": 1000}]
-    )
-    action.get_region_ranking = AsyncMock(
-        return_value=[{"label": "서울", "hits": 2000}]
-    )
+    action.get_org_ranking = AsyncMock(return_value=[{"label": "서울시청", "hits": 1000}])
+    action.get_region_ranking = AsyncMock(return_value=[{"label": "서울", "hits": 2000}])
 
     # keyword_analyzer용
-    action.get_core_keywords = AsyncMock(
-        return_value=[{"label": "민원", "value": 500}]
-    )
-    action.get_related_words = AsyncMock(
-        return_value=[{"label": "불만", "value": 0.8}]
-    )
+    action.get_core_keywords = AsyncMock(return_value=[{"label": "민원", "value": 500}])
+    action.get_related_words = AsyncMock(return_value=[{"label": "불만", "value": 0.8}])
 
     # demographics_lookup용
     action.get_gender_stats = AsyncMock(
@@ -129,9 +114,7 @@ def mock_api_action() -> MagicMock:
     action.get_age_stats = AsyncMock(
         return_value=[{"label": "30", "hits": 300}, {"label": "40", "hits": 250}]
     )
-    action.get_population_ratio = AsyncMock(
-        return_value=[{"label": "서울", "ratio": 0.0012}]
-    )
+    action.get_population_ratio = AsyncMock(return_value=[{"label": "서울", "ratio": 0.0012}])
 
     return action
 
@@ -159,9 +142,7 @@ class TestBuildSearchTools:
             assert tool.description, f"{tool.name} description이 비어있음"
 
     @pytest.mark.asyncio
-    async def test_rag_search_returns_json(
-        self, mock_rag_search_fn: AsyncMock
-    ) -> None:
+    async def test_rag_search_returns_json(self, mock_rag_search_fn: AsyncMock) -> None:
         tools = build_search_tools(mock_rag_search_fn)
         rag_tool = next(t for t in tools if t.name == "rag_search")
         result = await rag_tool.ainvoke({"query": "테스트"})
@@ -206,22 +187,16 @@ class TestBuildAnalysisTools:
             assert tool.description, f"{tool.name} description이 비어있음"
 
     @pytest.mark.asyncio
-    async def test_issue_detector_returns_json(
-        self, mock_api_action: MagicMock
-    ) -> None:
+    async def test_issue_detector_returns_json(self, mock_api_action: MagicMock) -> None:
         tools = build_analysis_tools(mock_api_action)
         tool = next(t for t in tools if t.name == "issue_detector")
-        result = await tool.ainvoke(
-            {"query": "교통 민원", "analysis_time": "2026040814"}
-        )
+        result = await tool.ainvoke({"query": "교통 민원", "analysis_time": "2026040814"})
         parsed = json.loads(result)
         assert isinstance(parsed, dict)
         assert "success" in parsed
 
     @pytest.mark.asyncio
-    async def test_stats_lookup_returns_json(
-        self, mock_api_action: MagicMock
-    ) -> None:
+    async def test_stats_lookup_returns_json(self, mock_api_action: MagicMock) -> None:
         tools = build_analysis_tools(mock_api_action)
         tool = next(t for t in tools if t.name == "stats_lookup")
         result = await tool.ainvoke({"query": "소음 민원"})
@@ -230,9 +205,7 @@ class TestBuildAnalysisTools:
         assert "success" in parsed
 
     @pytest.mark.asyncio
-    async def test_keyword_analyzer_returns_json(
-        self, mock_api_action: MagicMock
-    ) -> None:
+    async def test_keyword_analyzer_returns_json(self, mock_api_action: MagicMock) -> None:
         tools = build_analysis_tools(mock_api_action)
         tool = next(t for t in tools if t.name == "keyword_analyzer")
         result = await tool.ainvoke(
@@ -247,9 +220,7 @@ class TestBuildAnalysisTools:
         assert "success" in parsed
 
     @pytest.mark.asyncio
-    async def test_demographics_returns_json(
-        self, mock_api_action: MagicMock
-    ) -> None:
+    async def test_demographics_returns_json(self, mock_api_action: MagicMock) -> None:
         tools = build_analysis_tools(mock_api_action)
         tool = next(t for t in tools if t.name == "demographics_lookup")
         result = await tool.ainvoke(

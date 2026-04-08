@@ -13,7 +13,6 @@ from typing import Any, Optional
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-
 # ---------------------------------------------------------------------------
 # Pydantic 스키마 — LLM이 생성하는 JSON 인자
 # ---------------------------------------------------------------------------
@@ -37,9 +36,7 @@ class StatsLookupInput(BaseModel):
     date_from: Optional[str] = Field(
         None, description="조회 시작일 (YYYYMMDD 형식). 예: '20260101'"
     )
-    date_to: Optional[str] = Field(
-        None, description="조회 종료일 (YYYYMMDD 형식). 예: '20260408'"
-    )
+    date_to: Optional[str] = Field(None, description="조회 종료일 (YYYYMMDD 형식). 예: '20260408'")
     period: Optional[str] = Field(
         None, description="집계 기간 단위 (DAILY, WEEKLY, MONTHLY, YEARLY)"
     )
@@ -52,9 +49,7 @@ class KeywordAnalyzerInput(BaseModel):
     date_from: Optional[str] = Field(
         None, description="분석 시작일 (YYYYMMDD 형식). 예: '20260101'"
     )
-    date_to: Optional[str] = Field(
-        None, description="분석 종료일 (YYYYMMDD 형식). 예: '20260408'"
-    )
+    date_to: Optional[str] = Field(None, description="분석 종료일 (YYYYMMDD 형식). 예: '20260408'")
     result_count: int = Field(20, description="반환할 키워드 수", ge=1)
 
 
@@ -65,9 +60,7 @@ class DemographicsLookupInput(BaseModel):
     date_from: Optional[str] = Field(
         None, description="분석 시작일 (YYYYMMDD 형식). 예: '20260101'"
     )
-    date_to: Optional[str] = Field(
-        None, description="분석 종료일 (YYYYMMDD 형식). 예: '20260408'"
-    )
+    date_to: Optional[str] = Field(None, description="분석 종료일 (YYYYMMDD 형식). 예: '20260408'")
 
 
 # ---------------------------------------------------------------------------

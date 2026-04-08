@@ -88,13 +88,13 @@ def _make_graph_stream_events(include_approval: bool = False):
     """
     chunks = [
         {"session_load": {"session_id": "test-stream-session"}},
-        {"planner": {"goal": "test goal", "planned_tools": ["rag_search"]}},
+        {"planner": {"goal": "test goal", "planned_tools": ["api_lookup"]}},
     ]
     if include_approval:
         # approval_wait 도달 시 stream에서 마지막 chunk만 나옴
         chunks.append({"approval_wait": {}})
     else:
-        chunks.append({"tool_execute": {"tool_results": {"rag_search": {"success": True}}}})
+        chunks.append({"tool_execute": {"tool_results": {"api_lookup": {"success": True}}}})
         chunks.append({"synthesis": {"final_text": "테스트 답변"}})
         chunks.append({"persist": {}})
     return chunks
@@ -480,7 +480,7 @@ class TestProcessQueryStreaming:
         approval_data = {
             "goal": "테스트 목표",
             "reason": "테스트 이유",
-            "tool_summaries": ["rag_search 실행"],
+            "tool_summaries": ["api_lookup 실행"],
         }
         mock_client = MagicMock()
         mock_client.stream.return_value = iter(

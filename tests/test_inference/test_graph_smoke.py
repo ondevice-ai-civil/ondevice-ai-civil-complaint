@@ -50,7 +50,7 @@ class StubExecutorAdapter(ExecutorAdapter):
         }
 
     def list_tools(self) -> list[str]:
-        return ["rag_search", "api_lookup", "draft_response"]
+        return ["api_lookup", "draft_response"]
 
 
 class RecordingExecutorAdapter(ExecutorAdapter):
@@ -74,7 +74,7 @@ class RecordingExecutorAdapter(ExecutorAdapter):
         }
 
     def list_tools(self) -> list[str]:
-        return ["rag_search", "api_lookup", "draft_response"]
+        return ["api_lookup", "draft_response"]
 
 
 @pytest.fixture
@@ -347,12 +347,8 @@ class TestGraphSmoke:
         await graph.ainvoke(initial, config=config)
         await graph.ainvoke(Command(resume={"approved": True}), config=config)
 
-        assert "도로 포장이 파손되어 위험합니다" in executor.seen_queries["rag_search"]
-        assert "도로 보수 접수를 진행하겠습니다." in executor.seen_queries["rag_search"]
-        assert "관련 법령 지침 매뉴얼 공지 내부 문서" in executor.seen_queries["rag_search"]
         assert "유사 민원 사례 통계 최근 이슈" in executor.seen_queries["api_lookup"]
         assert executor.seen_queries["draft_response"] == "이 답변의 근거를 붙여줘"
-        assert executor.seen_queries["rag_search"] != executor.seen_queries["api_lookup"]
 
 
 class TestToolExecuteApprovalGuard:
@@ -371,11 +367,11 @@ class TestToolExecuteApprovalGuard:
                 return {"success": True}
 
             def list_tools(self):
-                return ["rag_search"]
+                return ["api_lookup"]
 
         state = {
             "approval_status": ApprovalStatus.REJECTED.value,
-            "planned_tools": ["rag_search"],
+            "planned_tools": ["api_lookup"],
             "accumulated_context": {"query": "test"},
         }
         result = await tool_execute_node(state, executor_adapter=StubExecutor())
@@ -396,11 +392,11 @@ class TestToolExecuteApprovalGuard:
                 return {"success": True}
 
             def list_tools(self):
-                return ["rag_search"]
+                return ["api_lookup"]
 
         state = {
             "approval_status": ApprovalStatus.PENDING.value,
-            "planned_tools": ["rag_search"],
+            "planned_tools": ["api_lookup"],
             "accumulated_context": {"query": "test"},
         }
         result = await tool_execute_node(state, executor_adapter=StubExecutor())
@@ -421,11 +417,11 @@ class TestToolExecuteApprovalGuard:
                 return {"success": True}
 
             def list_tools(self):
-                return ["rag_search"]
+                return ["api_lookup"]
 
         state = {
             "approval_status": "",
-            "planned_tools": ["rag_search"],
+            "planned_tools": ["api_lookup"],
             "accumulated_context": {"query": "test"},
         }
         result = await tool_execute_node(state, executor_adapter=StubExecutor())

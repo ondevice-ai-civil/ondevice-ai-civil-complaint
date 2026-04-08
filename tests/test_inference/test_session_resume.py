@@ -51,7 +51,7 @@ class StubExecutorAdapter(ExecutorAdapter):
         }
 
     def list_tools(self) -> list[str]:
-        return ["rag_search", "api_lookup", "draft_response"]
+        return ["api_lookup", "draft_response"]
 
 
 @pytest.fixture
@@ -201,7 +201,7 @@ class TestSessionStoreRestartSafe:
             request_id="gr-req-1",
             plan_summary="민원 답변 초안 작성",
             approval_status="approved",
-            executed_capabilities=["rag_search", "draft_response"],
+            executed_capabilities=["draft_response"],
             status="completed",
             total_latency_ms=123.4,
         )
@@ -216,7 +216,7 @@ class TestSessionStoreRestartSafe:
         assert run.request_id == "gr-req-1"
         assert run.plan_summary == "민원 답변 초안 작성"
         assert run.approval_status == "approved"
-        assert run.executed_capabilities == ["rag_search", "draft_response"]
+        assert run.executed_capabilities == ["draft_response"]
         assert run.status == "completed"
 
     def test_tool_run_with_graph_run_id_survives_restart(self, tmp_path):
@@ -383,6 +383,6 @@ class TestSchemaMigration:
 
         # 정상 동작 확인
         ctx = store.get_or_create(session_id="legacy-migrated")
-        ctx.add_tool_run("rag_search", success=True, graph_run_request_id="req-legacy")
+        ctx.add_tool_run(success=True, graph_run_request_id="req-legacy")
         loaded = store.get("legacy-migrated")
         assert loaded.tool_runs[0].graph_run_request_id == "req-legacy"

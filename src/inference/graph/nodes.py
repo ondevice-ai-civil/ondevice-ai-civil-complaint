@@ -255,7 +255,7 @@ async def tool_execute_node(
     결과를 `accumulated_context`에 누적한다.
 
     실행 전략:
-    - Phase 1 (병렬): `rag_search`, `api_lookup` 등 INDEPENDENT_TOOLS는
+    - Phase 1 (병렬): `api_lookup`, `draft_response` 등 INDEPENDENT_TOOLS는
       `asyncio.gather()`로 동시에 실행한다.
     - Phase 2 (순차): 나머지 의존 도구(draft_response 등)는 Phase 1
       결과가 누적된 accumulated_context를 사용하여 순서대로 실행한다.
@@ -310,7 +310,7 @@ async def tool_execute_node(
     # 새로운 독립 capability를 추가할 때는 이 집합에도 등록해야 한다.
     # 독립 도구란 다른 도구의 실행 결과(accumulated_context)에 의존하지 않아
     # 병렬 실행이 안전한 capability를 의미한다.
-    INDEPENDENT_TOOLS = {"rag_search", "api_lookup", "draft_response"}
+    INDEPENDENT_TOOLS = {"api_lookup", "draft_response"}
 
     independent = [t for t in planned_tools if t in INDEPENDENT_TOOLS]
     dependent = [t for t in planned_tools if t not in INDEPENDENT_TOOLS]
@@ -690,15 +690,6 @@ def _extract_final_text(accumulated: Dict[str, Any], task_type: str) -> str:
 
     # evidence가 없는 경우 legacy fallback
     if not parts:
-        rag_data = accumulated.get("rag_search", {})
-        if isinstance(rag_data, dict) and rag_data.get("results"):
-            lines = ["[로컬 문서 근거]"]
-            for item in rag_data["results"][:3]:
-                title = item.get("title", "")
-                content = str(item.get("content", ""))[:120]
-                lines.append(f"- {title}: {content}")
-            parts.append("\n".join(lines))
-
         api_data = accumulated.get("api_lookup", {})
         if isinstance(api_data, dict) and api_data.get("context_text"):
             parts.append(api_data["context_text"])

@@ -26,7 +26,7 @@ def valid_plan() -> ToolPlan:
         task_type=TaskType.DRAFT_RESPONSE,
         goal="민원 답변 초안을 작성합니다.",
         reason="사용자가 민원 답변을 요청했습니다.",
-        tools=["rag_search", "draft_response"],
+        tools=["draft_response"],
     )
 
 
@@ -55,7 +55,7 @@ class TestToolPlanValidator:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="테스트 목표",
             reason="테스트 이유",
-            tools=["rag_search", "unknown_tool"],
+            tools=["unknown_tool"],
         )
         with pytest.raises(PlanValidationError, match="허용되지 않은 capability"):
             validator.validate(plan)
@@ -66,7 +66,7 @@ class TestToolPlanValidator:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="",
             reason="테스트 이유",
-            tools=["rag_search"],
+            tools=["api_lookup"],
         )
         with pytest.raises(PlanValidationError, match="goal이 비어있습니다"):
             validator.validate(plan)
@@ -77,7 +77,7 @@ class TestToolPlanValidator:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="테스트 목표",
             reason="",
-            tools=["rag_search"],
+            tools=["api_lookup"],
         )
         with pytest.raises(PlanValidationError, match="reason이 비어있습니다"):
             validator.validate(plan)
@@ -88,7 +88,7 @@ class TestToolPlanValidator:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="   ",
             reason="테스트 이유",
-            tools=["rag_search"],
+            tools=["api_lookup"],
         )
         with pytest.raises(PlanValidationError, match="goal이 비어있습니다"):
             validator.validate(plan)
@@ -99,7 +99,7 @@ class TestToolPlanValidator:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="테스트 목표",
             reason="   ",
-            tools=["rag_search"],
+            tools=["api_lookup"],
         )
         with pytest.raises(PlanValidationError, match="reason이 비어있습니다"):
             validator.validate(plan)
@@ -133,7 +133,7 @@ class TestToolPlanValidator:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="테스트",
             reason="테스트",
-            tools=["rag_search"],
+            tools=["api_lookup"],
         )
         assert plan.adapter_mode == "llm"
 
@@ -143,7 +143,7 @@ class TestToolPlanValidator:
             task_type=TaskType.DRAFT_RESPONSE,
             goal="테스트",
             reason="테스트",
-            tools=["rag_search"],
+            tools=["api_lookup"],
             adapter_mode="llm",
         )
         assert plan.adapter_mode == "llm"

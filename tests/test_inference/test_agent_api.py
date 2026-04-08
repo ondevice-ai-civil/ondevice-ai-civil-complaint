@@ -48,20 +48,20 @@ def _fake_trace(session_id: str) -> AgentTrace:
         session_id=session_id,
         plan=ExecutionPlan(
             steps=[
-                ToolStep(tool=ToolType.RAG_SEARCH),
                 ToolStep(tool=ToolType.API_LOOKUP),
+                ToolStep(tool=ToolType.DRAFT_RESPONSE),
             ],
             reason="runtime contract test",
         ),
         tool_results=[
             ToolResult(
-                tool=ToolType.RAG_SEARCH,
+                tool=ToolType.API_LOOKUP,
                 success=True,
                 latency_ms=12.5,
                 data={"results": [{"title": "도로 보수 매뉴얼"}]},
             ),
             ToolResult(
-                tool=ToolType.API_LOOKUP,
+                tool=ToolType.DRAFT_RESPONSE,
                 success=True,
                 latency_ms=18.0,
                 data={"results": [{"title": "유사 민원"}]},
@@ -74,7 +74,7 @@ def _fake_trace(session_id: str) -> AgentTrace:
 
 
 async def _stream_events(**_kwargs):
-    yield {"type": "plan", "plan": ["rag_search"], "reason": "test"}
+    yield {"type": "plan", "plan": ["api_lookup"], "reason": "test"}
     yield {
         "type": "final",
         "text": "완료",
@@ -147,7 +147,7 @@ class TestAgentApi:
         body = response.json()
         assert body["session_id"] == "session-123"
         assert body["text"] == "도로 보수 접수를 진행하겠습니다."
-        assert body["trace"]["plan"] == ["rag_search", "api_lookup"]
+        assert body["trace"]["plan"] == ["api_lookup", "draft_response"]
         assert body["search_results"][0]["title"] == "도로 보수 매뉴얼"
 
     def test_agent_run_rejects_stream_flag(self):
@@ -174,5 +174,5 @@ class TestAgentApi:
         schema = trace_to_schema(_fake_trace("session-789"))
 
         assert schema.session_id == "session-789"
-        assert schema.plan == ["rag_search", "api_lookup"]
-        assert schema.tool_results[0].tool == "rag_search"
+        assert schema.plan == ["api_lookup", "draft_response"]
+        assert schema.tool_results[0].tool == "api_lookup"

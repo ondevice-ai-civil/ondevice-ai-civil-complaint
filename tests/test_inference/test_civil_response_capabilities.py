@@ -99,7 +99,7 @@ def session():
 def mock_registry_fns():
     """build_mvp_registry에 주입할 mock 함수 모음."""
     return {
-        "rag_search_fn": _make_async_fn({"text": "rag_result", "results": []}),
+        "draft_response_fn": _make_async_fn({"text": "draft_result", "results": []}),
         "draft_response_fn": _make_async_fn({"text": "민원 답변 초안입니다.", "results": []}),
     }
 
@@ -108,7 +108,6 @@ def mock_registry_fns():
 def registry(mock_registry_fns):
     """MVP registry fixture."""
     return build_mvp_registry(
-        rag_search_fn=mock_registry_fns["rag_search_fn"],
         api_lookup_action=None,
         draft_response_fn=mock_registry_fns["draft_response_fn"],
     )
@@ -331,7 +330,7 @@ class TestRegistryIntegration:
         assert cap.metadata.name == "draft_response"
 
     def test_all_mvp_capabilities_registered(self, registry):
-        """4개 MVP capability가 모두 등록되어 있다."""
+        """6개 MVP capability가 모두 등록되어 있다."""
         assert set(registry.keys()) == MVP_CAPABILITY_IDS
 
     def test_draft_response_provider_in_registry(self, registry):
@@ -437,11 +436,10 @@ class TestExecutorAdapterIntegration:
     async def test_execute_draft_response_error_path(self):
         """draft_response가 에러를 반환할 때 adapter가 success=False를 반환한다."""
         error_fns = {
-            "rag_search_fn": _make_async_fn({"results": []}),
+            "draft_response_fn": _make_async_fn({"results": []}),
             "draft_response_fn": _make_async_fn({"error": "LLM 오류 발생"}),
         }
         registry = build_mvp_registry(
-            rag_search_fn=error_fns["rag_search_fn"],
             api_lookup_action=None,
             draft_response_fn=error_fns["draft_response_fn"],
         )

@@ -34,7 +34,7 @@ class TestSessionContext:
     def test_add_tool_run(self):
         ctx = SessionContext()
         ctx.add_tool_run(
-            "rag_search",
+            "api_lookup",
             graph_run_request_id="req-001",
             success=True,
             latency_ms=12.5,
@@ -42,7 +42,7 @@ class TestSessionContext:
         )
 
         assert len(ctx.tool_runs) == 1
-        assert ctx.tool_runs[0].tool == "rag_search"
+        assert ctx.tool_runs[0].tool == "api_lookup"
         assert ctx.tool_runs[0].graph_run_request_id == "req-001"
         assert ctx.tool_runs[0].metadata["count"] == 2
 
@@ -73,7 +73,7 @@ class TestSessionContext:
             request_id="run-001",
             plan_summary="민원 답변 초안 작성",
             approval_status="approved",
-            executed_capabilities=["rag_search", "draft_response"],
+            executed_capabilities=["api_lookup", "draft_response"],
             status="completed",
         )
 
@@ -81,7 +81,7 @@ class TestSessionContext:
         assert ctx.graph_runs[0].request_id == "run-001"
         assert ctx.graph_runs[0].approval_status == "approved"
         assert ctx.graph_runs[0].executed_capabilities == [
-            "rag_search",
+            "api_lookup",
             "draft_response",
         ]
 
@@ -108,7 +108,7 @@ class TestSessionStore:
         ctx.add_turn("user", "질문")
         ctx.add_turn("assistant", "답변")
         ctx.add_tool_run(
-            "rag_search",
+            "api_lookup",
             graph_run_request_id="req-001",
             success=True,
             latency_ms=8.0,
@@ -117,7 +117,7 @@ class TestSessionStore:
         ctx.add_graph_run(
             request_id="req-001",
             approval_status="approved",
-            executed_capabilities=["rag_search"],
+            executed_capabilities=["api_lookup"],
             status="completed",
             total_latency_ms=8.0,
         )
@@ -128,7 +128,7 @@ class TestSessionStore:
         assert len(loaded.conversations) == 2
         assert loaded.conversations[1].content == "답변"
         assert len(loaded.tool_runs) == 1
-        assert loaded.tool_runs[0].tool == "rag_search"
+        assert loaded.tool_runs[0].tool == "api_lookup"
         assert loaded.tool_runs[0].graph_run_request_id == "req-001"
         assert len(loaded.graph_runs) == 1
         assert loaded.graph_runs[0].request_id == "req-001"

@@ -9,12 +9,12 @@ class TestToolRouter:
 
     def test_default_request_routes_to_drafting_loop(self):
         plan = self.router.plan("도로 포장이 파손되어 위험합니다")
-        assert plan.tool_names == ["rag_search", "api_lookup", "draft_response"]
+        assert plan.tool_names == ["api_lookup", "draft_response"]
         assert "drafting loop" in plan.reason or "답변 작성" in plan.reason
 
     def test_evidence_request_routes_to_drafting_loop(self):
         plan = self.router.plan("이 답변의 근거를 붙여줘")
-        assert plan.tool_names == ["rag_search", "api_lookup", "draft_response"]
+        assert plan.tool_names == ["api_lookup", "draft_response"]
         assert "답변 작성" in plan.reason or "drafting loop" in plan.reason
 
     def test_lookup_only_request_routes_to_api_lookup(self):
@@ -23,7 +23,7 @@ class TestToolRouter:
 
     def test_revision_request_keeps_drafting_loop(self):
         plan = self.router.plan("조금 더 정중하게 다시 써줘", has_context=True)
-        assert plan.tool_names == ["rag_search", "api_lookup", "draft_response"]
+        assert plan.tool_names == ["api_lookup", "draft_response"]
 
     def test_force_tools_overrides_pattern_matching(self):
         plan = self.router.plan("무시", force_tools=[ToolType.API_LOOKUP])
@@ -36,16 +36,16 @@ class TestToolRouter:
 
     def test_execution_plan_repr_contains_step_names(self):
         plan = ExecutionPlan(
-            steps=[ToolStep(tool=ToolType.RAG_SEARCH), ToolStep(tool=ToolType.API_LOOKUP)],
+            steps=[ToolStep(tool=ToolType.API_LOOKUP), ToolStep(tool=ToolType.DRAFT_RESPONSE)],
             reason="테스트",
         )
-        assert "rag_search" in repr(plan)
+        assert "api_lookup" in repr(plan)
 
 
 class TestToolStep:
     def test_step_id_for_enum_tool(self):
-        step = ToolStep(tool=ToolType.RAG_SEARCH)
-        assert step.step_id == "rag_search"
+        step = ToolStep(tool=ToolType.API_LOOKUP)
+        assert step.step_id == "api_lookup"
 
     def test_step_id_for_custom_tool(self):
         step = ToolStep(tool="custom_tool")

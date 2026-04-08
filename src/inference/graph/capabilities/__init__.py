@@ -7,7 +7,6 @@ from .demographics_lookup import DemographicsLookupCapability
 from .draft_response import DraftResponseCapability
 from .issue_detector import IssueDetectorCapability
 from .keyword_analyzer import KeywordAnalyzerCapability
-from .rag_search import RagSearchCapability, RagSearchParams
 from .registry import (
     MVP_CAPABILITY_IDS,
     build_mvp_registry,
@@ -23,8 +22,6 @@ __all__ = [
     "LookupResult",
     "ApiLookupCapability",
     "ApiLookupParams",
-    "RagSearchCapability",
-    "RagSearchParams",
     "DraftResponseCapability",
     "IssueDetectorCapability",
     "StatsLookupCapability",

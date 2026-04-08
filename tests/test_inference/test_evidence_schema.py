@@ -4,7 +4,7 @@ Issue #155: mixed evidence 응답 스키마 정규화.
 
 테스트 케이스:
   1. EvidenceItem/EvidenceEnvelope 직렬화
-  2. RagSearchCapability evidence 필드 채워지는지 확인
+  2. (removed — removed)
   3. ApiLookupCapability evidence 필드 채워지는지 확인
   4. DraftResponseCapability evidence 확인
   5. 정상/빈결과/부분결과/에러 4케이스
@@ -135,81 +135,6 @@ class TestLookupResultWithEvidence:
         assert "evidence" not in d
 
 
-# ---------------------------------------------------------------------------
-# 2. RagSearchCapability evidence 필드
-# ---------------------------------------------------------------------------
-
-
-class TestRagSearchCapabilityEvidence:
-    @pytest.mark.asyncio
-    async def test_ok_result_has_evidence(self):
-        from src.inference.graph.capabilities.rag_search import RagSearchCapability
-
-        raw_results = [
-            {
-                "title": "행정절차법",
-                "content": "행정절차에 관한 법률입니다." * 5,
-                "score": 0.85,
-                "metadata": {"file_path": "/laws/admin.pdf", "page": 12},
-            }
-        ]
-        execute_fn = AsyncMock(
-            return_value={"query": "행정절차", "results": raw_results, "context_text": "요약"}
-        )
-        cap = RagSearchCapability(execute_fn)
-        result = await cap.execute("행정절차", {}, MagicMock())
-
-        assert result.evidence is not None
-        assert result.evidence.status == "ok"
-        assert len(result.evidence.items) == 1
-        item = result.evidence.items[0]
-        assert item.source_type == "rag"
-        assert item.title == "행정절차법"
-        assert item.link_or_path == "/laws/admin.pdf"
-        assert item.page == 12
-        assert item.score == 0.85
-
-    @pytest.mark.asyncio
-    async def test_empty_result_has_empty_envelope(self):
-        from src.inference.graph.capabilities.rag_search import RagSearchCapability
-
-        execute_fn = AsyncMock(return_value={"query": "없는검색어", "results": []})
-        cap = RagSearchCapability(execute_fn)
-        result = await cap.execute("없는검색어", {}, MagicMock())
-
-        assert result.evidence is not None
-        assert result.evidence.status == "empty"
-        assert result.evidence.items == []
-
-    @pytest.mark.asyncio
-    async def test_error_result_has_error_envelope(self):
-        from src.inference.graph.capabilities.rag_search import RagSearchCapability
-
-        execute_fn = AsyncMock(return_value={"error": "DB 연결 실패", "query": "검색어"})
-        cap = RagSearchCapability(execute_fn)
-        result = await cap.execute("검색어", {}, MagicMock())
-
-        assert result.success is False
-        assert result.evidence is not None
-        assert result.evidence.status == "error"
-        assert "DB 연결 실패" in result.evidence.errors
-
-    @pytest.mark.asyncio
-    async def test_excerpt_truncated_to_500(self):
-        from src.inference.graph.capabilities.rag_search import RagSearchCapability
-
-        long_content = "가" * 1000
-        execute_fn = AsyncMock(
-            return_value={
-                "query": "q",
-                "results": [{"title": "t", "content": long_content, "score": 0.5}],
-            }
-        )
-        cap = RagSearchCapability(execute_fn)
-        result = await cap.execute("q", {}, MagicMock())
-
-        assert result.evidence is not None
-        assert len(result.evidence.items[0].excerpt) == 500
 
 
 # ---------------------------------------------------------------------------
@@ -363,17 +288,17 @@ class TestExtractFinalTextEvidenceConsumption:
 
         accumulated: Dict[str, Any] = {
             "query": "테스트",
-            "rag_search": {
+            "api_lookup": {
                 "success": True,
                 "evidence": {
                     "items": [
                         {
-                            "source_type": "rag",
-                            "title": "행정절차법",
-                            "excerpt": "행정절차에 관한 내용",
-                            "link_or_path": "/laws/admin.pdf",
-                            "page": 1,
-                            "score": 0.9,
+                            "source_type": "api",
+                            "title": "층간소음 민원 사례",
+                            "excerpt": "층간소음 관련 처리 절차",
+                            "link_or_path": "https://data.go.kr/case/1",
+                            "page": None,
+                            "score": 4.0,
                         }
                     ],
                     "status": "ok",
@@ -382,8 +307,8 @@ class TestExtractFinalTextEvidenceConsumption:
         }
         text = _extract_final_text(accumulated, "search")
         # evidence items 기반 출처 텍스트가 포함돼야 함
-        assert "행정절차법" in text
-        assert "[로컬]" in text
+        assert "층간소음 민원 사례" in text
+        assert "[외부]" in text
 
     def test_uses_api_evidence_items(self):
         from src.inference.graph.nodes import _extract_final_text
@@ -416,7 +341,7 @@ class TestExtractFinalTextEvidenceConsumption:
 
         accumulated: Dict[str, Any] = {
             "query": "테스트",
-            "rag_search": {
+            "api_lookup": {
                 "success": True,
                 "results": [{"title": "레거시 문서", "content": "레거시 내용", "score": 0.8}],
             },

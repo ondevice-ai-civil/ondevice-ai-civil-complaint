@@ -43,7 +43,6 @@ if "torch" not in sys.modules:
 
 with patch("src.inference.vllm_stabilizer.apply_transformers_patch"):
     from src.inference.api_server import (
-        _extract_content_by_type,
         _rate_limit,
         get_feature_flags,
         manager,
@@ -51,9 +50,6 @@ with patch("src.inference.vllm_stabilizer.apply_transformers_patch"):
         vLLMEngineManager,
     )
 
-from src.inference.index_manager import IndexType
-from src.inference.local_document_indexer import IndexSyncSummary
-from src.inference.schemas import SearchResult
 
 # ---------------------------------------------------------------------------
 # _escape_special_tokens 테스트
@@ -238,65 +234,6 @@ class TestExtractQuery:
 
 
 # ---------------------------------------------------------------------------
-# _extract_content_by_type 테스트
-# ---------------------------------------------------------------------------
-
-
-class TestExtractContentByType:
-    def test_case_type(self):
-        """CASE 타입에서 complaint_text + answer_text를 추출한다."""
-        result_dict = {
-            "title": "제목",
-            "extras": {"complaint_text": "민원 내용", "answer_text": "답변 내용"},
-        }
-        content = _extract_content_by_type(result_dict, IndexType.CASE)
-        assert "민원 내용" in content
-        assert "답변 내용" in content
-
-    def test_law_type(self):
-        """LAW 타입에서 law_text를 추출한다."""
-        result_dict = {"title": "법령", "extras": {"law_text": "제1조 내용"}}
-        content = _extract_content_by_type(result_dict, IndexType.LAW)
-        assert content == "제1조 내용"
-
-    def test_manual_type(self):
-        """MANUAL 타입에서 manual_text를 추출한다."""
-        result_dict = {"title": "매뉴얼", "extras": {"manual_text": "업무 절차"}}
-        content = _extract_content_by_type(result_dict, IndexType.MANUAL)
-        assert content == "업무 절차"
-
-    def test_notice_type(self):
-        """NOTICE 타입에서 notice_text를 추출한다."""
-        result_dict = {"title": "공지", "extras": {"notice_text": "공지 내용"}}
-        content = _extract_content_by_type(result_dict, IndexType.NOTICE)
-        assert content == "공지 내용"
-
-    def test_fallback_to_title(self):
-        """extras가 비어있으면 title로 폴백한다."""
-        result_dict = {"title": "폴백 제목", "extras": {}}
-        content = _extract_content_by_type(result_dict, IndexType.CASE)
-        assert content == "폴백 제목"
-
-    def test_missing_extras(self):
-        """extras 키가 없으면 title로 폴백한다."""
-        result_dict = {"title": "제목만"}
-        content = _extract_content_by_type(result_dict, IndexType.LAW)
-        assert content == "제목만"
-
-    def test_law_fallback_to_content(self):
-        """LAW 타입에서 law_text가 없으면 content로 폴백한다."""
-        result_dict = {"title": "법령", "extras": {"content": "일반 내용"}}
-        content = _extract_content_by_type(result_dict, IndexType.LAW)
-        assert content == "일반 내용"
-
-    def test_chunk_text_fallback(self):
-        """타입별 전용 필드가 없으면 chunk_text로 폴백한다."""
-        result_dict = {"title": "매뉴얼", "extras": {"chunk_text": "청크 본문"}}
-        content = _extract_content_by_type(result_dict, IndexType.MANUAL)
-        assert content == "청크 본문"
-
-
-# ---------------------------------------------------------------------------
 # _rate_limit 테스트
 # ---------------------------------------------------------------------------
 
@@ -363,89 +300,15 @@ class TestGetFeatureFlags:
         mock_request.headers.get.return_value = None
 
         flags = get_feature_flags(mock_request)
-        assert flags.use_rag_pipeline == manager.feature_flags.use_rag_pipeline
+        assert flags.model_version == manager.feature_flags.model_version
 
     def test_overrides_from_header(self):
         """X-Feature-Flag 헤더로 플래그를 오버라이드한다."""
         mock_request = MagicMock()
-        mock_request.headers.get.return_value = "USE_RAG_PIPELINE=false"
+        mock_request.headers.get.return_value = "MODEL_VERSION=v1_lora"
 
         flags = get_feature_flags(mock_request)
-        assert flags.use_rag_pipeline is False
-
-
-class TestLocalDocumentSync:
-    def setup_method(self):
-        self.mgr = vLLMEngineManager()
-        self.mgr.index_manager = MagicMock()
-        self.mgr.embed_model = MagicMock()
-
-    def test_sync_local_documents_builds_indexer_and_stores_summary(self):
-        summary = IndexSyncSummary(
-            scanned_files=3,
-            indexed_files=2,
-            unchanged_files=1,
-            removed_files=0,
-            indexed_chunks=4,
-            rebuilt_index_types=["case"],
-        )
-
-        with patch(
-            "src.inference.api_server.runtime_config.paths.local_docs_root", "/tmp/local-docs"
-        ):
-            with patch("src.inference.api_server.SessionLocal", MagicMock()):
-                with patch("src.inference.api_server.LocalDocumentIndexer") as mock_indexer_cls:
-                    mock_indexer = mock_indexer_cls.return_value
-                    mock_indexer.root_dir = "/tmp/local-docs"
-                    mock_indexer.source_name = "local-docs:test"
-                    mock_indexer.sync.return_value = summary
-
-                    result = self.mgr.sync_local_documents()
-
-        mock_indexer_cls.assert_called_once()
-        assert result["status"] == "ok"
-        assert result["root_dir"] == "/tmp/local-docs"
-        assert result["scanned_files"] == 3
-        assert result["indexed_files"] == 2
-        assert result["rebuilt_index_types"] == ["case"]
-        assert self.mgr.local_document_sync_status == result
-
-    def test_sync_local_documents_returns_none_without_root(self):
-        with patch("src.inference.api_server.runtime_config.paths.local_docs_root", ""):
-            with patch("src.inference.api_server.LocalDocumentIndexer") as mock_indexer_cls:
-                result = self.mgr.sync_local_documents()
-
-        assert result is None
-        mock_indexer_cls.assert_not_called()
-
-    def test_schedule_local_document_sync_marks_syncing_and_creates_task(self):
-        fake_indexer = MagicMock()
-        fake_indexer.root_dir = "/tmp/local-docs"
-        fake_indexer.source_name = "local-docs:test"
-
-        with patch.object(self.mgr, "_build_local_document_indexer", return_value=fake_indexer):
-            with patch("src.inference.api_server.asyncio.create_task") as mock_create_task:
-                mock_create_task.return_value = MagicMock()
-                self.mgr._schedule_local_document_sync()
-
-        assert self.mgr.local_document_sync_status == {
-            "status": "syncing",
-            "root_dir": "/tmp/local-docs",
-            "source_name": "local-docs:test",
-        }
-        mock_create_task.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_sync_local_documents_async_uses_to_thread(self):
-        expected = {"status": "ok"}
-        with patch(
-            "src.inference.api_server.asyncio.to_thread", new_callable=AsyncMock
-        ) as mock_to_thread:
-            mock_to_thread.return_value = expected
-            result = await self.mgr._sync_local_documents_async()
-
-        mock_to_thread.assert_awaited_once_with(self.mgr.sync_local_documents)
-        assert result == expected
+        assert flags.model_version == "v1_lora"
 
 
 class TestImportWithoutSqlalchemy:

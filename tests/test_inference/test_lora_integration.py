@@ -195,7 +195,7 @@ class TestLoraEngineConfig:
                 "src.inference.api_server.runtime_config.model.adapter_paths",
                 {},
             ),
-            patch("src.inference.api_server.CivilComplaintRetriever", MagicMock()),
+            # CivilComplaintRetriever removed (RAG 제거)
         ):
             await manager.initialize()
 
@@ -241,7 +241,7 @@ class TestLoraEngineConfig:
                 "src.inference.api_server.runtime_config.model.adapter_paths",
                 {"public_admin": "/path/to/public_admin"},
             ),
-            patch("src.inference.api_server.CivilComplaintRetriever", MagicMock()),
+            # CivilComplaintRetriever removed (RAG 제거)
         ):
             await manager.initialize()
 

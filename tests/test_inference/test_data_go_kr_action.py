@@ -128,9 +128,6 @@ class TestToolRouterApiLookup:
 class TestAgentLoopApiLookupIntegration:
     @pytest.mark.asyncio
     async def test_agent_loop_with_api_lookup_and_draft(self):
-        async def mock_rag_search(query: str, context: dict, session: Any) -> dict:
-            return {"results": [{"title": "매뉴얼", "content": "절차 안내"}], "count": 1}
-
         async def mock_api_lookup(query: str, context: dict, session: Any) -> dict:
             return {
                 "results": _SAMPLE_ITEMS,
@@ -143,7 +140,6 @@ class TestAgentLoopApiLookupIntegration:
 
         loop = AgentLoop(
             tool_registry={
-                ToolType.RAG_SEARCH: mock_rag_search,
                 ToolType.API_LOOKUP: mock_api_lookup,
                 ToolType.DRAFT_RESPONSE: mock_draft,
             }
@@ -153,6 +149,6 @@ class TestAgentLoopApiLookupIntegration:
         trace = await loop.run("민원 답변 작성", session)
 
         assert trace.error is None
-        assert trace.plan.tool_names == ["rag_search", "api_lookup", "draft_response"]
-        assert trace.tool_results[1].tool == ToolType.API_LOOKUP
+        assert trace.plan.tool_names == ["api_lookup", "draft_response"]
+        assert trace.tool_results[0].tool == ToolType.API_LOOKUP
         assert "최종 초안" in trace.final_text

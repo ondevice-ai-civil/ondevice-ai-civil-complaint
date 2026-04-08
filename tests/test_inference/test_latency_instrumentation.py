@@ -31,7 +31,6 @@ class SlowExecutor:
 
     def __init__(self, latencies: dict[str, float] | None = None):
         self.latencies = latencies or {
-            "rag_search": 0.2,
             "api_lookup": 0.2,
             "draft_response": 0.1,
         }
@@ -63,7 +62,7 @@ class RecordingExecutor:
         return {"success": True, "text": f"ok {tool_name}"}
 
     def list_tools(self) -> list[str]:
-        return ["rag_search", "api_lookup"]
+        return ["api_lookup"]
 
 
 class StubSessionStore:
@@ -144,21 +143,21 @@ class TestNodeLatencyInstrumentation:
     async def test_tool_execute_returns_latency_and_per_tool(self):
         state = {
             "approval_status": ApprovalStatus.APPROVED.value,
-            "planned_tools": ["rag_search"],
+            "planned_tools": ["api_lookup"],
             "accumulated_context": {"query": "test"},
         }
-        executor = SlowExecutor({"rag_search": 0.05})
+        executor = SlowExecutor({"api_lookup": 0.05})
         result = await tool_execute_node(state, executor_adapter=executor)
         assert "node_latencies" in result
         assert "tool_execute" in result["node_latencies"]
-        assert "tool:rag_search" in result["node_latencies"]
+        assert "tool:api_lookup" in result["node_latencies"]
 
     @pytest.mark.asyncio
     async def test_tool_execute_approval_guard_returns_latency(self):
         """승인 차단 시에도 node_latencies가 반환된다."""
         state = {
             "approval_status": ApprovalStatus.REJECTED.value,
-            "planned_tools": ["rag_search"],
+            "planned_tools": ["api_lookup"],
             "accumulated_context": {},
         }
         executor = SlowExecutor()
@@ -177,12 +176,12 @@ class TestParallelToolExecution:
 
     @pytest.mark.asyncio
     async def test_independent_tools_run_in_parallel(self):
-        """rag_search + api_lookup이 병렬로 실행되면 최대 동시 실행 수 >= 2."""
+        """api_lookup + draft_response이 병렬로 실행되면 최대 동시 실행 수 >= 2."""
         executor = RecordingExecutor()
 
         state = {
             "approval_status": ApprovalStatus.APPROVED.value,
-            "planned_tools": ["rag_search", "api_lookup"],
+            "planned_tools": ["api_lookup"],
             "accumulated_context": {"query": "test query"},
         }
 
@@ -192,7 +191,7 @@ class TestParallelToolExecution:
             f"독립 도구가 병렬로 실행되어야 합니다. "
             f"최대 동시 실행 수: {executor.max_concurrent} (기대: >= 2)"
         )
-        assert "rag_search" in result["tool_results"]
+        assert "api_lookup" in result["tool_results"]
         assert "api_lookup" in result["tool_results"]
 
     @pytest.mark.asyncio
@@ -200,7 +199,7 @@ class TestParallelToolExecution:
         """draft_response는 independent 도구 이후 순차 실행된다."""
         executor = SlowExecutor(
             {
-                "rag_search": 0.05,
+                "api_lookup": 0.05,
                 "api_lookup": 0.05,
                 "draft_response": 0.05,
             }
@@ -208,7 +207,7 @@ class TestParallelToolExecution:
 
         state = {
             "approval_status": ApprovalStatus.APPROVED.value,
-            "planned_tools": ["rag_search", "api_lookup", "draft_response"],
+            "planned_tools": ["api_lookup", "draft_response"],
             "accumulated_context": {"query": "test"},
         }
 
@@ -217,7 +216,7 @@ class TestParallelToolExecution:
         assert len(result["tool_results"]) == 3
         assert "draft_response" in result["tool_results"]
         # draft_response는 rag/api 결과가 accumulated된 후 실행
-        assert "rag_search" in result["accumulated_context"]
+        assert "api_lookup" in result["accumulated_context"]
         assert "api_lookup" in result["accumulated_context"]
 
     @pytest.mark.asyncio
@@ -232,17 +231,17 @@ class TestParallelToolExecution:
                 return {"success": True, "text": f"ok {tool_name}"}
 
             def list_tools(self):
-                return ["rag_search", "api_lookup"]
+                return ["api_lookup"]
 
         state = {
             "approval_status": ApprovalStatus.APPROVED.value,
-            "planned_tools": ["rag_search", "api_lookup"],
+            "planned_tools": ["api_lookup"],
             "accumulated_context": {"query": "test"},
         }
 
         result = await tool_execute_node(state, executor_adapter=FailingExecutor())
-        # rag_search는 성공, api_lookup은 예외로 건너뜀
-        assert "rag_search" in result["tool_results"]
+        # api_lookup은 성공, api_lookup은 예외로 건너뜀
+        assert "api_lookup" in result["tool_results"]
         assert "api_lookup" not in result["tool_results"]
 
 
@@ -257,15 +256,14 @@ class TestCapabilityDefaults:
     def test_get_timeout_returns_default(self):
         from src.inference.graph.capabilities.defaults import get_timeout
 
-        assert get_timeout("rag_search") == 15.0
         assert get_timeout("api_lookup") == 10.0
         assert get_timeout("draft_response") == 30.0
 
     def test_get_timeout_env_override(self, monkeypatch):
         from src.inference.graph.capabilities.defaults import get_timeout
 
-        monkeypatch.setenv("GOVON_TOOL_TIMEOUT_RAG_SEARCH", "25")
-        assert get_timeout("rag_search") == 25.0
+        monkeypatch.setenv("GOVON_TOOL_TIMEOUT_API_LOOKUP", "25")
+        assert get_timeout("api_lookup") == 25.0
 
     def test_get_timeout_unknown_capability(self):
         from src.inference.graph.capabilities.defaults import get_timeout
@@ -276,7 +274,7 @@ class TestCapabilityDefaults:
         from src.inference.graph.capabilities.defaults import get_max_retries
 
         assert get_max_retries("api_lookup") == 1
-        assert get_max_retries("rag_search") == 0
+        assert get_max_retries("draft_response") == 0
         assert get_max_retries("unknown") == 0
 
     def test_get_timeout_invalid_env_logs_warning(self, monkeypatch):
@@ -290,17 +288,17 @@ class TestCapabilityDefaults:
             lambda message: warnings.append(message.record),
             level="WARNING",
         )
-        monkeypatch.setenv("GOVON_TOOL_TIMEOUT_RAG_SEARCH", "not-a-number")
+        monkeypatch.setenv("GOVON_TOOL_TIMEOUT_API_LOOKUP", "not-a-number")
         try:
-            result = get_timeout("rag_search")
+            result = get_timeout("api_lookup")
         finally:
             logger.remove(sink_id)
 
-        assert result == 15.0
+        assert result == 10.0
         assert warnings, "숫자가 아닌 환경변수 값에 대해 경고 로그가 발생해야 합니다"
         assert any(record["level"].name == "WARNING" for record in warnings)
         assert any(
             "not-a-number" in record["message"]
-            or "GOVON_TOOL_TIMEOUT_RAG_SEARCH" in record["message"]
+            or "GOVON_TOOL_TIMEOUT_API_LOOKUP" in record["message"]
             for record in warnings
         )

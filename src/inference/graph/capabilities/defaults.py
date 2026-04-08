@@ -3,7 +3,7 @@
 Issue #163: capability별 timeout과 retry 기본값을 중앙 집중 관리.
 환경변수 GOVON_TOOL_TIMEOUT_{CAPABILITY_NAME} 으로 오버라이드 가능.
 
-예: GOVON_TOOL_TIMEOUT_RAG_SEARCH=20  -> rag_search timeout을 20초로 변경
+예: GOVON_TOOL_TIMEOUT_API_LOOKUP=20  -> api_lookup timeout을 20초로 변경
 """
 
 from __future__ import annotations
@@ -28,7 +28,6 @@ class CapabilityDefaults:
 # -----------------------------------------------------------------------
 
 _DEFAULTS: Dict[str, CapabilityDefaults] = {
-    "rag_search": CapabilityDefaults(timeout_sec=15.0, max_retries=0),
     "api_lookup": CapabilityDefaults(timeout_sec=10.0, max_retries=1),
     "draft_response": CapabilityDefaults(timeout_sec=30.0, max_retries=0),
     "issue_detector": CapabilityDefaults(timeout_sec=15.0, max_retries=0),
@@ -47,7 +46,7 @@ def get_timeout(capability_name: str) -> float:
     Parameters
     ----------
     capability_name : str
-        capability 이름 (예: "rag_search").
+        capability 이름 (예: "api_lookup").
 
     Returns
     -------

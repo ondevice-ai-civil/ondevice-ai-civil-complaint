@@ -91,13 +91,12 @@ class TestRegistry:
         assert "demographics_lookup" in MVP_CAPABILITY_IDS
 
     def test_build_mvp_registry_includes_new_tools(self):
-        """build_mvp_registry가 8개 capability를 모두 반환한다."""
+        """build_mvp_registry가 6개 capability를 모두 반환한다."""
 
         async def dummy_fn(query="", context=None, session=None):
             return {}
 
         registry = build_mvp_registry(
-            rag_search_fn=dummy_fn,
             api_lookup_action=None,
             draft_response_fn=dummy_fn,
         )
@@ -105,7 +104,7 @@ class TestRegistry:
         assert "stats_lookup" in registry
         assert "keyword_analyzer" in registry
         assert "demographics_lookup" in registry
-        assert len(registry) == 7
+        assert len(registry) == 6
 
     def test_all_capabilities_are_capability_base(self):
         """모든 등록된 capability가 CapabilityBase 인스턴스이다."""
@@ -114,7 +113,6 @@ class TestRegistry:
             return {}
 
         registry = build_mvp_registry(
-            rag_search_fn=dummy_fn,
             api_lookup_action=None,
             draft_response_fn=dummy_fn,
         )

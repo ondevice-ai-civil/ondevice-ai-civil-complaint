@@ -14,7 +14,6 @@ if TYPE_CHECKING:
 
 
 SEARCH_TOOL_HINTS: dict[str, str] = {
-    "rag_search": "관련 법령 지침 매뉴얼 공지 내부 문서",
     "api_lookup": "유사 민원 사례 통계 최근 이슈",
 }
 

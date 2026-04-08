@@ -64,7 +64,7 @@ class ToolPlan:
         이 작업이 필요한 이유 (한국어, 1문장).
     tools : List[str]
         실행할 tool 이름 목록 (순서대로).
-        예: ["rag_search", "api_lookup", "draft_response"]
+        예: ["api_lookup", "draft_response"]
     tool_args : Dict[str, Dict[str, Any]]
         tool별 인자 매핑. tool_name → arguments dict.
         예: {"draft_response": {"query": "...", "adapter": "public_admin"}}

@@ -11,7 +11,6 @@ from typing import Any, Dict, List, Optional
 class ToolType(str, Enum):
     """MVP 내부 capability 카탈로그."""
 
-    RAG_SEARCH = "rag_search"
     API_LOOKUP = "api_lookup"
     DRAFT_RESPONSE = "draft_response"
     ISSUE_DETECTOR = "issue_detector"
@@ -71,15 +70,6 @@ _LOOKUP_PATTERNS = [
     r"국민신문고",
 ]
 
-_RAG_PATTERNS = [
-    r"법령",
-    r"규정",
-    r"매뉴얼",
-    r"공지",
-    r"문서",
-    r"근거",
-]
-
 
 class ToolRouter:
     """자연어 요청을 MVP capability 조합으로 정규화한다."""
@@ -87,7 +77,6 @@ class ToolRouter:
     def __init__(self) -> None:
         self._draft_patterns = [re.compile(p) for p in _DRAFT_PATTERNS]
         self._lookup_patterns = [re.compile(p) for p in _LOOKUP_PATTERNS]
-        self._rag_patterns = [re.compile(p) for p in _RAG_PATTERNS]
 
     def plan(
         self,
@@ -103,18 +92,16 @@ class ToolRouter:
 
         needs_draft = self._match_patterns(query, self._draft_patterns)
         needs_lookup = self._match_patterns(query, self._lookup_patterns)
-        needs_rag = self._match_patterns(query, self._rag_patterns)
 
-        if needs_lookup and not needs_draft and not needs_rag:
+        if needs_lookup and not needs_draft:
             return ExecutionPlan(
                 steps=[ToolStep(tool=ToolType.API_LOOKUP)],
                 reason="외부 민원분석/통계/보고서 조회 요청으로 판단",
             )
 
-        if needs_draft or has_context or needs_rag:
+        if needs_draft or has_context:
             return ExecutionPlan(
                 steps=[
-                    ToolStep(tool=ToolType.RAG_SEARCH),
                     ToolStep(tool=ToolType.API_LOOKUP),
                     ToolStep(
                         tool=ToolType.DRAFT_RESPONSE,
@@ -126,7 +113,6 @@ class ToolRouter:
 
         return ExecutionPlan(
             steps=[
-                ToolStep(tool=ToolType.RAG_SEARCH),
                 ToolStep(tool=ToolType.API_LOOKUP),
                 ToolStep(
                     tool=ToolType.DRAFT_RESPONSE,

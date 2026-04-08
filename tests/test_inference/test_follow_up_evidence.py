@@ -64,7 +64,7 @@ _SAMPLE_API_EVIDENCE = {
 def test_synthesis_generates_evidence_text_from_search_results():
     """search 타입일 때 evidence items 기반으로 참조 근거 텍스트를 생성한다."""
     accumulated = {
-        "rag_search": {
+        "api_lookup": {
             "success": True,
             "evidence": {
                 "status": "ok",
@@ -83,7 +83,7 @@ def test_synthesis_generates_evidence_text_from_search_results():
 def test_synthesis_evidence_only_rag():
     """RAG evidence만 있을 때 근거 섹션을 반환한다."""
     accumulated = {
-        "rag_search": {
+        "api_lookup": {
             "success": True,
             "evidence": {
                 "status": "ok",
@@ -124,7 +124,7 @@ def test_synthesis_draft_response_type_unaffected():
 def test_collect_evidence_items_from_multiple_tools():
     """여러 tool 결과에서 evidence items를 수집하고 score 내림차순 정렬한다."""
     accumulated = {
-        "rag_search": {
+        "api_lookup": {
             "evidence": {
                 "status": "ok",
                 "items": [_SAMPLE_RAG_EVIDENCE],
@@ -165,7 +165,7 @@ def test_collect_evidence_items_max_10():
         {"source_type": "rag", "title": f"doc{i}", "excerpt": "", "score": float(i)}
         for i in range(15)
     ]
-    accumulated = {"rag_search": {"evidence": {"status": "ok", "items": many_items, "errors": []}}}
+    accumulated = {"api_lookup": {"evidence": {"status": "ok", "items": many_items, "errors": []}}}
 
     items = _collect_evidence_items(accumulated)
     assert len(items) == 10
@@ -182,7 +182,7 @@ class StubEvidenceExecutorAdapter(ExecutorAdapter):
     """테스트용 executor: tool별로 고정된 결과 반환."""
 
     def list_tools(self) -> list[str]:
-        return ["rag_search", "api_lookup", "draft_response"]
+        return ["api_lookup", "draft_response"]
 
     async def execute(self, tool_name: str, query: str, context: dict) -> dict:
         if tool_name == "draft_response":
@@ -191,7 +191,7 @@ class StubEvidenceExecutorAdapter(ExecutorAdapter):
                 "text": "도로 파손 민원을 접수해드리겠습니다.",
                 "latency_ms": 1.0,
             }
-        if tool_name == "rag_search":
+        if tool_name == "api_lookup":
             return {
                 "success": True,
                 "text": "",

@@ -38,14 +38,14 @@ class TestBuildQueryVariants:
 
         variants = build_query_variants(
             "이 답변의 근거를 붙여줘",
-            tool_names=["rag_search", "api_lookup", "draft_response"],
+            tool_names=["api_lookup", "draft_response"],
             context=context,
         )
 
-        assert "도로 포장이 파손되어 위험합니다" in variants["rag_search"]
-        assert "도로 보수 접수를 진행하겠습니다." in variants["rag_search"]
-        assert "이 답변의 근거를 붙여줘" in variants["rag_search"]
-        assert "관련 법령 지침 매뉴얼 공지 내부 문서" in variants["rag_search"]
+        assert "도로 포장이 파손되어 위험합니다" in variants["api_lookup"]
+        assert "도로 보수 접수를 진행하겠습니다." in variants["api_lookup"]
+        assert "이 답변의 근거를 붙여줘" in variants["api_lookup"]
+        assert "관련 법령 지침 매뉴얼 공지 내부 문서" in variants["api_lookup"]
         assert "유사 민원 사례 통계 최근 이슈" in variants["api_lookup"]
 
     def test_query_variants_clip_long_history(self):
@@ -58,23 +58,23 @@ class TestBuildQueryVariants:
 
         variants = build_query_variants(
             "좀 더 정중하게 수정해줘",
-            tool_names=["rag_search", "api_lookup", "draft_response"],
+            tool_names=["api_lookup", "draft_response"],
             context=context,
         )
 
-        assert len(variants["rag_search"]) <= 480
         assert len(variants["api_lookup"]) <= 480
-        assert long_assistant not in variants["rag_search"]
+        assert len(variants["api_lookup"]) <= 480
+        assert long_assistant not in variants["api_lookup"]
         assert long_assistant not in variants["api_lookup"]
 
     def test_resolve_tool_query_uses_variant_only_for_registered_tool(self):
         context = {
             "query": "원본 요청",
             "query_variants": {
-                "rag_search": "원본 요청 관련 법령",
+                "api_lookup": "원본 요청 관련 법령",
                 "api_lookup": "원본 요청 유사 민원 사례",
             },
         }
 
-        assert resolve_tool_query("rag_search", context) == "원본 요청 관련 법령"
+        assert resolve_tool_query(context) == "원본 요청 관련 법령"
         assert resolve_tool_query("draft_response", context) == "원본 요청"

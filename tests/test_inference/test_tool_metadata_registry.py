@@ -102,7 +102,6 @@ def _make_mock_fn(name: str) -> AsyncMock:
 @pytest.fixture
 def mock_fns():
     return {
-        "rag_search_fn": _make_mock_fn("rag_search"),
         "draft_response_fn": _make_mock_fn("draft_response"),
     }
 
@@ -110,7 +109,6 @@ def mock_fns():
 @pytest.fixture
 def registry(mock_fns):
     return build_mvp_registry(
-        rag_search_fn=mock_fns["rag_search_fn"],
         api_lookup_action=None,
         draft_response_fn=mock_fns["draft_response_fn"],
     )
@@ -125,9 +123,8 @@ class TestMvpCapabilityIds:
     """MVP capability stable identifier 검증."""
 
     def test_expected_ids(self):
-        """MVP capability 7개가 정확히 등록되어 있다."""
+        """MVP capability 6개가 정확히 등록되어 있다."""
         expected = {
-            "rag_search",
             "api_lookup",
             "draft_response",
             "issue_detector",
@@ -148,7 +145,7 @@ class TestMvpCapabilityIds:
     def test_is_mvp_capability_false(self):
         assert is_mvp_capability("non_existent_tool") is False
         assert is_mvp_capability("") is False
-        assert is_mvp_capability("RAG_SEARCH") is False  # case sensitive
+        assert is_mvp_capability("DRAFT_RESPONSE") is False  # case sensitive
 
 
 # ---------------------------------------------------------------------------
@@ -159,8 +156,8 @@ class TestMvpCapabilityIds:
 class TestBuildMvpRegistry:
     """build_mvp_registry() 팩토리 함수 검증."""
 
-    def test_returns_all_four_capabilities(self, registry):
-        """4개 capability 모두 반환된다."""
+    def test_returns_all_capabilities(self, registry):
+        """6개 capability 모두 반환된다."""
         assert set(registry.keys()) == MVP_CAPABILITY_IDS
 
     def test_all_are_capability_base(self, registry):
@@ -200,7 +197,7 @@ class TestGetAllMetadata:
     def test_returns_list_of_dicts(self, registry):
         result = get_all_metadata(registry)
         assert isinstance(result, list)
-        assert len(result) == 7
+        assert len(result) == 6
 
     def test_each_metadata_has_required_fields(self, registry):
         """각 metadata dict에 필수 필드가 포함되어 있다."""
@@ -300,7 +297,7 @@ class TestRegistryExecutorAdapterIntegration:
         """planner용 tool descriptions 메서드가 올바른 목록을 반환한다."""
         adapter = self._make_adapter(registry)
         descriptions = adapter.get_tool_descriptions_for_planner()
-        assert len(descriptions) == 7
+        assert len(descriptions) == 6
         names = {d["name"] for d in descriptions}
         assert names == MVP_CAPABILITY_IDS
 
@@ -352,15 +349,6 @@ class TestCapabilityWrappers:
     """thin wrapper capability들의 execute/metadata 검증."""
 
     @pytest.mark.asyncio
-    async def test_rag_search_delegates_to_fn(self, mock_fns):
-        from src.inference.graph.capabilities.rag_search import RagSearchCapability
-
-        cap = RagSearchCapability(execute_fn=mock_fns["rag_search_fn"])
-        result = await cap.execute("테스트", {}, None)
-        mock_fns["rag_search_fn"].assert_awaited_once()
-        assert result.success is True
-
-    @pytest.mark.asyncio
     async def test_draft_response_delegates_to_fn(self, mock_fns):
         from src.inference.graph.capabilities.draft_response import (
             DraftResponseCapability,
@@ -372,21 +360,11 @@ class TestCapabilityWrappers:
         assert result.success is True
 
     @pytest.mark.asyncio
-    async def test_rag_search_error_handling(self):
-        from src.inference.graph.capabilities.rag_search import RagSearchCapability
-
-        error_fn = AsyncMock(return_value={"error": "검색 실패"})
-        cap = RagSearchCapability(execute_fn=error_fn)
-        result = await cap.execute("테스트", {}, None)
-        assert result.success is False
-        assert result.error == "검색 실패"
-
-    @pytest.mark.asyncio
     async def test_capability_call_returns_dict(self, mock_fns):
         """__call__이 dict를 반환한다 (RegistryExecutorAdapter 호환)."""
-        from src.inference.graph.capabilities.rag_search import RagSearchCapability
+        from src.inference.graph.capabilities.draft_response import DraftResponseCapability
 
-        cap = RagSearchCapability(execute_fn=mock_fns["rag_search_fn"])
+        cap = DraftResponseCapability(execute_fn=mock_fns["draft_response_fn"])
         result = await cap("테스트", {}, None)
         assert isinstance(result, dict)
         assert "success" in result

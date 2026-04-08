@@ -20,7 +20,6 @@ from .demographics_lookup import DemographicsLookupCapability
 from .draft_response import DraftResponseCapability
 from .issue_detector import IssueDetectorCapability
 from .keyword_analyzer import KeywordAnalyzerCapability
-from .rag_search import RagSearchCapability
 from .stats_lookup import StatsLookupCapability
 
 # ---------------------------------------------------------------------------
@@ -41,26 +40,20 @@ def get_mvp_capability_ids() -> frozenset[str]:
 
 def build_mvp_registry(
     *,
-    rag_search_fn: Callable[..., Any],
     api_lookup_action: Any = None,
     draft_response_fn: Callable[..., Any],
-    rag_low_confidence_threshold: float = 0.3,
 ) -> Dict[str, CapabilityBase]:
-    """MVP 4개 capability를 CapabilityBase 인스턴스로 구성한 registry를 반환한다.
+    """MVP capability를 CapabilityBase 인스턴스로 구성한 registry를 반환한다.
 
     모든 capability가 CapabilityBase를 구현하므로,
     RegistryExecutorAdapter.get_tool_metadata()가 일관된 metadata를 반환한다.
 
     Parameters
     ----------
-    rag_search_fn : Callable
-        ``async (query, context, session) -> dict`` 형태의 RAG 검색 함수.
     api_lookup_action : Any, optional
         ``MinwonAnalysisAction`` 인스턴스. None이면 빈 결과 반환.
     draft_response_fn : Callable
         ``async (query, context, session) -> dict`` 형태의 답변 생성 함수.
-    rag_low_confidence_threshold : float
-        RAG 검색 저신뢰도 임계값. 기본값 0.3.
 
     Returns
     -------
@@ -68,10 +61,6 @@ def build_mvp_registry(
         capability name -> CapabilityBase 인스턴스 매핑.
     """
     return {
-        "rag_search": RagSearchCapability(
-            execute_fn=rag_search_fn,
-            low_confidence_threshold=rag_low_confidence_threshold,
-        ),
         "api_lookup": ApiLookupCapability(action=api_lookup_action),
         "draft_response": DraftResponseCapability(
             execute_fn=draft_response_fn,

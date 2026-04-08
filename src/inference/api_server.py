@@ -5,7 +5,7 @@ import re
 import time
 import uuid
 from contextlib import asynccontextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
@@ -34,11 +34,7 @@ except ImportError:
 from .adapter_registry import AdapterRegistry
 from .agent_loop import AgentLoop, AgentTrace
 from .agent_manager import AgentManager
-from .bm25_indexer import BM25Indexer
 from .feature_flags import FeatureFlags
-from .hybrid_search import HybridSearchEngine, SearchMode
-from .index_manager import IndexType, MultiIndexManager
-from .retriever import CivilComplaintRetriever
 from .runtime_config import RuntimeConfig
 from .schemas import (
     AgentRunRequest,
@@ -48,17 +44,11 @@ from .schemas import (
     GenerateCivilResponseResponse,
     GenerateRequest,
     GenerateResponse,
-    RetrievedCase,
-    SearchRequest,
-    SearchResponse,
-    SearchResult,
     ToolResultSchema,
 )
 from .session_context import SessionContext, SessionStore
 from .tool_router import ToolType, tool_name
 
-SessionLocal = None
-LocalDocumentIndexer = None
 SKIP_MODEL_LOAD = os.getenv("SKIP_MODEL_LOAD", "false").lower() in ("true", "1", "yes")
 
 
@@ -116,42 +106,10 @@ AGENTS_DIR = runtime_config.paths.agents_dir
 class PreparedGeneration:
     prompt: str
     sampling_params: SamplingParams
-    retrieved_cases: List[dict]
-    search_results: List[SearchResult]
 
 
 if not SKIP_MODEL_LOAD:
     apply_transformers_patch()
-
-
-def _extract_content_by_type(result: dict, index_type: IndexType) -> str:
-    extras = result.get("extras", {})
-    if index_type == IndexType.CASE:
-        case_text = "\n".join(
-            part
-            for part in (extras.get("complaint_text", ""), extras.get("answer_text", ""))
-            if part
-        ).strip()
-        text = case_text or extras.get("content", "") or extras.get("chunk_text", "")
-    elif index_type == IndexType.LAW:
-        text = (
-            extras.get("law_text", "") or extras.get("content", "") or extras.get("chunk_text", "")
-        )
-    elif index_type == IndexType.MANUAL:
-        text = (
-            extras.get("manual_text", "")
-            or extras.get("content", "")
-            or extras.get("chunk_text", "")
-        )
-    elif index_type == IndexType.NOTICE:
-        text = (
-            extras.get("notice_text", "")
-            or extras.get("content", "")
-            or extras.get("chunk_text", "")
-        )
-    else:
-        text = ""
-    return text or result.get("title", "")
 
 
 def _extract_approval_request(graph_state: Any) -> Any:
@@ -181,19 +139,11 @@ class vLLMEngineManager:
 
     def __init__(self):
         self.engine: AsyncLLM = None
-        self.retriever: CivilComplaintRetriever = None
-        self.index_manager: Optional[MultiIndexManager] = None
-        self.hybrid_engine: Optional[HybridSearchEngine] = None
-        self.bm25_indexers: dict[IndexType, BM25Indexer] = {}
-        self.embed_model = None
         self.feature_flags = FeatureFlags.from_env()
         self.session_store = SessionStore()
         self.agent_manager = AgentManager(AGENTS_DIR)
         self.agent_loop: Optional[AgentLoop] = None
         self.graph = None  # LangGraph CompiledGraph (v2 엔드포인트용)
-        self.local_document_indexer: Optional[Any] = None
-        self.local_document_sync_status: Optional[Dict[str, Any]] = None
-        self._local_document_sync_task: Optional[asyncio.Task] = None
         self._checkpointer_ctx = None  # AsyncSqliteSaver 컨텍스트 매니저 (lifespan에서 관리)
         self._sync_checkpointer_conn = None  # SqliteSaver용 sqlite3 connection (leak 방지)
         self._init_agent_loop()
@@ -242,139 +192,6 @@ class vLLMEngineManager:
             logger.error(f"vLLM 엔진 초기화 실패: {exc}")
             raise
 
-        logger.info(f"Initializing retriever with index: {INDEX_PATH}")
-        self.retriever = CivilComplaintRetriever(
-            index_path=INDEX_PATH if os.path.exists(INDEX_PATH) else None,
-            data_path=DATA_PATH if not os.path.exists(INDEX_PATH) else None,
-        )
-        if self.retriever.index is not None and not os.path.exists(INDEX_PATH):
-            self.retriever.save_index(INDEX_PATH)
-
-        faiss_index_dir = runtime_config.paths.faiss_index_dir
-        local_docs_root = runtime_config.paths.local_docs_root
-        if os.path.isdir(faiss_index_dir) or local_docs_root:
-            self.index_manager = MultiIndexManager(base_dir=faiss_index_dir)
-            logger.info(f"MultiIndexManager 초기화 완료: {faiss_index_dir}")
-        else:
-            logger.warning(f"FAISS 인덱스 디렉터리 미존재: {faiss_index_dir}")
-
-        bm25_index_dir = os.getenv("BM25_INDEX_DIR", "models/bm25_index")
-        if os.path.isdir(bm25_index_dir):
-            for idx_type in IndexType:
-                bm25_path = os.path.join(bm25_index_dir, f"{idx_type.value}.pkl")
-                if not os.path.exists(bm25_path):
-                    continue
-                try:
-                    indexer = BM25Indexer()
-                    indexer.load(bm25_path)
-                    self.bm25_indexers[idx_type] = indexer
-                    logger.info(f"BM25 인덱스 로드 완료: {idx_type.value} ({indexer.doc_count}건)")
-                except Exception as exc:
-                    logger.warning(f"BM25 인덱스 로드 실패 ({idx_type.value}): {exc}")
-
-        if self.retriever and hasattr(self.retriever, "model"):
-            self.embed_model = self.retriever.model
-
-        if self.index_manager and self.embed_model:
-            self.hybrid_engine = HybridSearchEngine(
-                index_manager=self.index_manager,
-                bm25_indexers=self.bm25_indexers,
-                embed_model=self.embed_model,
-            )
-            logger.info("HybridSearchEngine 초기화 완료")
-            self._schedule_local_document_sync()
-        else:
-            logger.warning("HybridSearchEngine 미초기화: index_manager 또는 embed_model 없음")
-
-    def _schedule_local_document_sync(self) -> None:
-        indexer = self._build_local_document_indexer()
-        if indexer is None:
-            return
-        if self._local_document_sync_task and not self._local_document_sync_task.done():
-            return
-
-        self.local_document_sync_status = {
-            "status": "syncing",
-            "root_dir": str(indexer.root_dir),
-            "source_name": indexer.source_name,
-        }
-        self._local_document_sync_task = asyncio.create_task(self._sync_local_documents_async())
-
-    async def _sync_local_documents_async(self) -> Optional[Dict[str, Any]]:
-        try:
-            return await asyncio.to_thread(self.sync_local_documents)
-        except Exception as exc:
-            logger.error(f"백그라운드 로컬 문서 인덱싱 실패: {exc}", exc_info=True)
-            if self.local_document_indexer is None:
-                return None
-            self.local_document_sync_status = {
-                "status": "error",
-                "root_dir": str(self.local_document_indexer.root_dir),
-                "source_name": self.local_document_indexer.source_name,
-                "error": str(exc),
-            }
-            return self.local_document_sync_status
-
-    def _build_local_document_indexer(self) -> Optional[Any]:
-        global SessionLocal, LocalDocumentIndexer
-
-        root_dir = runtime_config.paths.local_docs_root
-        if not root_dir:
-            return None
-        if self.index_manager is None or self.embed_model is None:
-            logger.warning(
-                "LOCAL_DOCS_ROOT가 설정됐지만 index_manager 또는 embed_model이 없습니다."
-            )
-            return None
-        if self.local_document_indexer is None:
-            if SessionLocal is None:
-                from .db.database import SessionLocal as _SessionLocal
-
-                SessionLocal = _SessionLocal
-            if LocalDocumentIndexer is None:
-                from .local_document_indexer import LocalDocumentIndexer as _LocalDocumentIndexer
-
-                LocalDocumentIndexer = _LocalDocumentIndexer
-
-            self.local_document_indexer = LocalDocumentIndexer(
-                root_dir=root_dir,
-                index_manager=self.index_manager,
-                embed_model=self.embed_model,
-                session_factory=SessionLocal,
-            )
-        return self.local_document_indexer
-
-    def sync_local_documents(self) -> Optional[Dict[str, Any]]:
-        indexer = self._build_local_document_indexer()
-        if indexer is None:
-            return None
-
-        try:
-            summary = indexer.sync()
-        except Exception as exc:
-            logger.error(f"로컬 문서 인덱싱 실패: {exc}", exc_info=True)
-            self.local_document_sync_status = {
-                "status": "error",
-                "root_dir": str(indexer.root_dir),
-                "source_name": indexer.source_name,
-                "error": str(exc),
-            }
-            return self.local_document_sync_status
-
-        self.local_document_sync_status = {
-            "status": "ok",
-            "root_dir": str(indexer.root_dir),
-            "source_name": indexer.source_name,
-            **asdict(summary),
-        }
-        logger.info(
-            "로컬 문서 인덱싱 완료: "
-            f"root={indexer.root_dir}, scanned={summary.scanned_files}, "
-            f"indexed={summary.indexed_files}, unchanged={summary.unchanged_files}, "
-            f"removed={summary.removed_files}"
-        )
-        return self.local_document_sync_status
-
     def _escape_special_tokens(self, text: str) -> str:
         tokens = [
             "[|user|]",
@@ -401,37 +218,6 @@ class vLLMEngineManager:
         text = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL)
         return text.strip()
 
-    def _build_rag_context(self, retrieved_cases: List[dict]) -> str:
-        if not retrieved_cases:
-            return ""
-        rag_context = "### 참고 사례 (유사 민원 및 답변):\n"
-        for i, case in enumerate(retrieved_cases, start=1):
-            complaint = self._escape_special_tokens(case.get("complaint", ""))
-            answer = self._escape_special_tokens(case.get("answer", ""))
-            rag_context += f"{i}. [민원]: {complaint}\n   [답변]: {answer}\n\n"
-        return rag_context
-
-    def _augment_prompt(self, prompt: str, retrieved_cases: List[dict]) -> str:
-        rag_context = self._build_rag_context(retrieved_cases)
-        if not rag_context:
-            return prompt
-        user_tag = "[|user|]"
-        if user_tag in prompt:
-            return prompt.replace(user_tag, f"{user_tag}{rag_context}\n", 1)
-        return f"{rag_context}\n{prompt}"
-
-    def _build_search_result_context(self, search_results: List[SearchResult], heading: str) -> str:
-        if not search_results:
-            return ""
-
-        lines = [heading]
-        for index, result in enumerate(search_results, start=1):
-            safe_title = self._escape_special_tokens(result.title)
-            safe_content = self._escape_special_tokens(result.content[:300])
-            lines.append(f"{index}. [{result.source_type.value}] {safe_title}")
-            lines.append(f"   근거: {safe_content}")
-        return "\n".join(lines)
-
     def _build_persona_prompt(self, agent_name: str, user_message: str) -> str:
         if self.agent_manager and self.agent_manager.get_agent(agent_name):
             return self.agent_manager.build_prompt(agent_name, user_message)
@@ -446,27 +232,6 @@ class vLLMEngineManager:
                 return complaint_match.group(1).strip()
             return user_block.strip()
         return prompt
-
-    def _search_results_to_cases(self, search_results: List[SearchResult]) -> List[dict]:
-        retrieved_cases: List[dict] = []
-        for result in search_results:
-            if result.source_type != IndexType.CASE:
-                continue
-            metadata = result.metadata or {}
-            complaint = (
-                metadata.get("complaint_text") or metadata.get("complaint") or result.content
-            )
-            answer = metadata.get("answer_text") or metadata.get("answer") or result.content
-            retrieved_cases.append(
-                {
-                    "id": result.doc_id,
-                    "category": metadata.get("category", ""),
-                    "complaint": complaint,
-                    "answer": answer,
-                    "score": result.score,
-                }
-            )
-        return retrieved_cases
 
     @staticmethod
     def _is_evidence_request(query: str) -> bool:
@@ -514,71 +279,6 @@ class vLLMEngineManager:
 
         return "\n\n".join(parts) if parts else query
 
-    async def _retrieve_search_results(
-        self,
-        query: str,
-        index_types: List[IndexType],
-        top_k_per_type: int = 2,
-    ) -> List[SearchResult]:
-        if not query.strip():
-            return []
-
-        collected: List[SearchResult] = []
-
-        if self.hybrid_engine:
-
-            async def _search_index(index_type: IndexType) -> List[SearchResult]:
-                results_raw, _ = await self.hybrid_engine.search(
-                    query=query,
-                    index_type=index_type,
-                    top_k=top_k_per_type,
-                    mode=SearchMode.HYBRID,
-                )
-                return [
-                    SearchResult(
-                        doc_id=item.get("doc_id", ""),
-                        source_type=IndexType(item.get("doc_type", index_type.value)),
-                        title=item.get("title", ""),
-                        content=_extract_content_by_type(item, index_type),
-                        score=item.get("score", 0.0),
-                        reliability_score=item.get("reliability_score", 1.0),
-                        metadata=item.get("extras", {}),
-                        chunk_index=item.get("chunk_index", 0),
-                        total_chunks=item.get("chunk_total", 1),
-                    )
-                    for item in results_raw
-                ]
-
-            grouped = await asyncio.gather(
-                *[_search_index(index_type) for index_type in index_types],
-                return_exceptions=True,
-            )
-            for result in grouped:
-                if isinstance(result, BaseException):
-                    logger.warning(f"로컬 검색 실패: {result}")
-                    continue
-                collected.extend(result)
-
-        elif self.retriever and IndexType.CASE in index_types:
-            for raw in self.retriever.search(query, top_k=max(3, top_k_per_type)):
-                collected.append(
-                    SearchResult(
-                        doc_id=raw.get("id", raw.get("doc_id", "")),
-                        source_type=IndexType.CASE,
-                        title=raw.get("category", "유사 민원 사례"),
-                        content=(raw.get("complaint", "") + "\n" + raw.get("answer", "")).strip(),
-                        score=raw.get("score", 0.0),
-                        reliability_score=raw.get("reliability_score", 1.0),
-                        metadata={
-                            "complaint": raw.get("complaint", ""),
-                            "answer": raw.get("answer", ""),
-                            "category": raw.get("category", ""),
-                        },
-                    )
-                )
-
-        return collected
-
     @staticmethod
     def _format_evidence_items(evidence_dict: Dict[str, Any]) -> str:
         """EvidenceEnvelope dict를 소비하여 출처 목록 텍스트를 생성한다.
@@ -594,15 +294,8 @@ class vLLMEngineManager:
             source_type = item.get("source_type", "")
             title = item.get("title", "")
             link = item.get("link_or_path", "")
-            page = item.get("page")
 
-            if source_type == "rag":
-                loc = link or title or "로컬 문서"
-                if page:
-                    lines.append(f"[{idx}] {loc} (p.{page})")
-                else:
-                    lines.append(f"[{idx}] {loc}")
-            elif source_type == "api":
+            if source_type == "api":
                 label = title or "외부 API 결과"
                 if link:
                     lines.append(f"[{idx}] {label} - {link}")
@@ -619,21 +312,13 @@ class vLLMEngineManager:
 
     def _summarize_evidence(
         self,
-        search_results: List[SearchResult],
         api_lookup_data: Dict[str, Any],
     ) -> str:
         # EvidenceEnvelope가 있으면 우선 사용
         evidence = api_lookup_data.get("evidence")
         if isinstance(evidence, dict) and evidence.get("items"):
             lines = ["근거 요약"]
-            rag_items = [i for i in evidence["items"] if i.get("source_type") == "rag"]
             api_items = [i for i in evidence["items"] if i.get("source_type") == "api"]
-            if rag_items:
-                titles = ", ".join(i["title"] for i in rag_items[:3] if i.get("title"))
-                lines.append(
-                    f"- 로컬 문서 {len(rag_items)}건을 참고했습니다."
-                    + (f" 주요 문서: {titles}" if titles else "")
-                )
             if api_items:
                 titles = ", ".join(i["title"] for i in api_items[:3] if i.get("title"))
                 lines.append(
@@ -648,13 +333,6 @@ class vLLMEngineManager:
 
         # Legacy 포매터 (EvidenceItem 없을 때)
         lines = ["근거 요약"]
-
-        if search_results:
-            titles = ", ".join(result.title for result in search_results[:3] if result.title)
-            lines.append(
-                f"- 로컬 문서 {len(search_results)}건을 참고했습니다."
-                + (f" 주요 문서: {titles}" if titles else "")
-            )
 
         api_results = api_lookup_data.get("results", [])
         if api_results:
@@ -676,23 +354,6 @@ class vLLMEngineManager:
         return "\n".join(lines)
 
     @staticmethod
-    def _rag_source_line(index: int, item: Dict[str, Any]) -> str:
-        metadata = item.get("metadata", {}) or {}
-        location = (
-            metadata.get("file_path")
-            or metadata.get("source_path")
-            or metadata.get("path")
-            or metadata.get("source")
-            or item.get("title")
-            or item.get("doc_id")
-            or "로컬 문서"
-        )
-        page = metadata.get("page") or metadata.get("page_number") or metadata.get("page_no")
-        if page:
-            return f"[{index}] {location} (p.{page})"
-        return f"[{index}] {location}"
-
-    @staticmethod
     def _api_source_line(index: int, item: Dict[str, Any]) -> str:
         title = item.get("title") or item.get("qnaTitle") or item.get("question") or "외부 API 결과"
         url = item.get("url") or item.get("detailUrl") or ""
@@ -704,7 +365,6 @@ class vLLMEngineManager:
         self,
         session: SessionContext,
         current_query: str,
-        rag_data: Dict[str, Any],
         api_data: Dict[str, Any],
     ) -> str:
         _, previous_answer = self._latest_prior_turns(session, current_query)
@@ -712,26 +372,7 @@ class vLLMEngineManager:
         cursor = 1
 
         # EvidenceEnvelope가 있으면 단일 포매터로 우선 처리
-        rag_evidence = rag_data.get("evidence")
         api_evidence = api_data.get("evidence")
-
-        if rag_evidence and isinstance(rag_evidence, dict) and rag_evidence.get("items"):
-            for item in rag_evidence["items"][:5]:
-                source_type = item.get("source_type", "rag")
-                if source_type == "rag":
-                    link = item.get("link_or_path", "")
-                    page = item.get("page")
-                    loc = link or item.get("title", "") or "로컬 문서"
-                    if page:
-                        lines.append(f"[{cursor}] {loc} (p.{page})")
-                    else:
-                        lines.append(f"[{cursor}] {loc}")
-                    cursor += 1
-        else:
-            # Legacy RAG 포매터
-            for item in rag_data.get("results", [])[:5]:
-                lines.append(self._rag_source_line(cursor, item))
-                cursor += 1
 
         if api_evidence and isinstance(api_evidence, dict) and api_evidence.get("items"):
             for item in api_evidence["items"][:5]:
@@ -763,41 +404,12 @@ class vLLMEngineManager:
         flags: Optional[FeatureFlags] = None,
         external_cases: Optional[List[dict]] = None,
     ) -> PreparedGeneration:
-        effective_flags = flags or self.feature_flags
-        query = self._escape_special_tokens(self._extract_query(request.prompt))
-        search_results: List[SearchResult] = []
-
-        if request.use_rag and effective_flags.use_rag_pipeline:
-            search_results = await self._retrieve_search_results(
-                query,
-                [IndexType.CASE, IndexType.LAW, IndexType.MANUAL, IndexType.NOTICE],
-            )
-
-        retrieved_cases = self._search_results_to_cases(search_results)
-        if external_cases:
-            retrieved_cases.extend(external_cases)
-
-        safe_message = self._escape_special_tokens(request.prompt)
-        sections = []
-        if search_results:
-            sections.append(
-                self._build_search_result_context(
-                    search_results,
-                    "### 민원 답변 참고 자료 (사례/법률/매뉴얼/공시정보):",
-                )
-            )
-        if retrieved_cases:
-            sections.append(self._build_rag_context(retrieved_cases[:5]))
-        sections.append(
-            "위 근거를 바탕으로 민원인의 불편에 공감하고, 현재 조치 상황과 처리 절차를 포함한 회신 초안을 작성하세요."
-        )
-        sections.append(safe_message)
-        augmented_prompt = self._build_persona_prompt(
-            "draft_response",
-            "\n\n".join(section for section in sections if section),
-        )
-
         gen_defaults = runtime_config.generation
+
+        safe_message = self._escape_special_tokens(self._extract_query(request.prompt))
+        user_content = f"다음 민원에 대한 답변을 작성해 주세요.\n\n{safe_message}"
+        prompt = self._build_persona_prompt("draft_response", user_content)
+
         sampling_params = SamplingParams(
             temperature=request.temperature,
             top_p=request.top_p,
@@ -807,10 +419,8 @@ class vLLMEngineManager:
         )
 
         return PreparedGeneration(
-            prompt=augmented_prompt,
+            prompt=prompt,
             sampling_params=sampling_params,
-            retrieved_cases=retrieved_cases[:5],
-            search_results=search_results,
         )
 
     async def _prepare_draft_only(
@@ -818,12 +428,10 @@ class vLLMEngineManager:
         request: GenerateCivilResponseRequest,
         flags: Optional[FeatureFlags] = None,
     ) -> PreparedGeneration:
-        """LoRA 초안 생성용: 검색 없이 쿼리만으로 프롬프트 생성.
+        """LoRA 초안 생성용: 쿼리만으로 프롬프트 생성.
 
-        self-RAG를 건너뛰고, 사용자 쿼리를 persona 프롬프트로 감싸서 반환한다.
-        별도 rag_search 도구가 검색을 담당하므로 중복 제거.
+        사용자 쿼리를 persona 프롬프트로 감싸서 반환한다.
         """
-        effective_flags = flags if flags else self.feature_flags
         gen_defaults = runtime_config.generation
 
         safe_message = self._escape_special_tokens(self._extract_query(request.prompt))
@@ -844,8 +452,6 @@ class vLLMEngineManager:
         return PreparedGeneration(
             prompt=prompt,
             sampling_params=sampling_params,
-            retrieved_cases=[],
-            search_results=[],
         )
 
     async def synthesize_final(
@@ -869,9 +475,7 @@ class vLLMEngineManager:
             source_type = item.get("source_type", "")
             title = item.get("title", "")
             excerpt = item.get("excerpt", "")[:200]
-            label = (
-                "[로컬]" if source_type == "rag" else "[외부]" if source_type == "api" else "[생성]"
-            )
+            label = "[외부]" if source_type == "api" else "[생성]"
             if title or excerpt:
                 evidence_text += f"- {label} {title}: {excerpt}\n"
 
@@ -941,9 +545,8 @@ class vLLMEngineManager:
         request: GenerateRequest,
         request_id: str,
         flags: Optional[FeatureFlags] = None,
-    ) -> tuple[Any, List[dict]]:
-        output, retrieved_cases, _ = await self.generate_civil_response(request, request_id, flags)
-        return output, retrieved_cases
+    ) -> Any:
+        return await self.generate_civil_response(request, request_id, flags)
 
     async def generate_civil_response(
         self,
@@ -952,49 +555,30 @@ class vLLMEngineManager:
         flags: Optional[FeatureFlags] = None,
         external_cases: Optional[List[dict]] = None,
         lora_request=None,
-    ) -> tuple[Any, List[dict], List[SearchResult]]:
+    ) -> Any:
         prepared = await self._prepare_civil_response_generation(request, flags, external_cases)
-        output = await self._run_engine(
+        return await self._run_engine(
             prepared.prompt, prepared.sampling_params, request_id, lora_request=lora_request
         )
-        return output, prepared.retrieved_cases, prepared.search_results
 
     async def generate_stream(
         self,
         request: GenerateRequest,
         request_id: str,
         flags: Optional[FeatureFlags] = None,
-    ) -> tuple[Any, List[dict], List[SearchResult]]:
+    ) -> Any:
         prepared = await self._prepare_civil_response_generation(request, flags)
         if self.engine is None:
             raise RuntimeError("모델 엔진이 초기화되지 않았습니다.")
         if hasattr(self.engine, "stream"):
-            stream = self.engine.stream(prepared.prompt, prepared.sampling_params, request_id)
-        else:
-            stream = self.engine.generate(prepared.prompt, prepared.sampling_params, request_id)
-        return stream, prepared.retrieved_cases, prepared.search_results
+            return self.engine.stream(prepared.prompt, prepared.sampling_params, request_id)
+        return self.engine.generate(prepared.prompt, prepared.sampling_params, request_id)
 
     def _init_agent_loop(self) -> None:
         from src.inference.actions.data_go_kr import MinwonAnalysisAction
 
         engine_ref = self
         minwon_action = MinwonAnalysisAction()
-
-        async def _rag_search_tool(query: str, context: dict, session: SessionContext) -> dict:
-            working_query = query.strip()
-            search_results = await engine_ref._retrieve_search_results(
-                working_query,
-                [IndexType.CASE, IndexType.LAW, IndexType.MANUAL, IndexType.NOTICE],
-            )
-            return {
-                "query": working_query,
-                "count": len(search_results),
-                "results": [result.model_dump() for result in search_results],
-                "context_text": engine_ref._build_search_result_context(
-                    search_results,
-                    "### 로컬 문서 검색 결과:",
-                ),
-            }
 
         async def _api_lookup_tool(query: str, context: dict, session: SessionContext) -> dict:
             working_query = query.strip()
@@ -1022,7 +606,7 @@ class vLLMEngineManager:
         ) -> dict:
             working_query = engine_ref._build_working_query(query, session)
 
-            # LoRA-First: 검색 없이 쿼리만으로 초안 생성 (self-RAG 제거)
+            # LoRA-First: 쿼리만으로 초안 생성
             adapter_name = context.get("adapter") if context else None
             if not adapter_name:
                 adapter_name = "public_admin"
@@ -1033,7 +617,6 @@ class vLLMEngineManager:
                 prompt=working_query,
                 max_tokens=2048,
                 temperature=0.7,
-                use_rag=False,
             )
             request_id = str(uuid.uuid4())
             prepared = await engine_ref._prepare_draft_only(gen_request)
@@ -1064,7 +647,6 @@ class vLLMEngineManager:
             }
 
         tool_registry = {
-            ToolType.RAG_SEARCH: _rag_search_tool,
             ToolType.API_LOOKUP: _api_lookup_tool,
             ToolType.DRAFT_RESPONSE: _draft_response_tool,
         }
@@ -1088,7 +670,6 @@ class vLLMEngineManager:
         }
 
         return build_mvp_registry(
-            rag_search_fn=raw_tools.get("rag_search", _noop_tool),
             api_lookup_action=self._get_api_lookup_action(),
             draft_response_fn=raw_tools.get("draft_response", _noop_tool),
         )
@@ -1295,41 +876,12 @@ if _RATE_LIMIT_AVAILABLE and limiter is not None:
 
 @app.get("/health")
 async def health():
-    index_summary = None
-    if manager.index_manager:
-        stats = manager.index_manager.get_index_stats()
-        index_summary = {
-            idx_type: {
-                "loaded": info.get("loaded", False),
-                "doc_count": info.get("doc_count", 0),
-            }
-            for idx_type, info in stats.get("indexes", {}).items()
-        }
-
-    bm25_summary = {}
-    for idx_type in IndexType:
-        indexer = manager.bm25_indexers.get(idx_type)
-        if indexer and indexer.is_ready():
-            bm25_summary[idx_type.value] = {"loaded": True, "doc_count": indexer.doc_count}
-        else:
-            bm25_summary[idx_type.value] = {"loaded": False}
-
     return {
         "status": "healthy",
         "profile": runtime_config.profile.value,
         "model": runtime_config.model.model_path,
-        "rag_enabled": manager.index_manager is not None or manager.retriever is not None,
         "agents_loaded": manager.agent_manager.list_agents() if manager.agent_manager else [],
-        "indexes": index_summary,
-        "bm25_indexes": bm25_summary,
-        "hybrid_search_enabled": manager.hybrid_engine is not None,
-        "local_documents": {
-            "enabled": bool(runtime_config.paths.local_docs_root),
-            "root_dir": runtime_config.paths.local_docs_root or None,
-            "last_sync": manager.local_document_sync_status,
-        },
         "feature_flags": {
-            "use_rag_pipeline": manager.feature_flags.use_rag_pipeline,
             "model_version": manager.feature_flags.model_version,
         },
         "session_store": {
@@ -1365,7 +917,7 @@ async def generate_civil_response(
         raise HTTPException(status_code=400, detail="민원 답변 스트리밍은 /v1/stream을 사용하세요.")
 
     request_id = str(uuid.uuid4())
-    final_output, retrieved_cases, search_results = await manager.generate_civil_response(
+    final_output = await manager.generate_civil_response(
         request,
         request_id,
         flags,
@@ -1379,8 +931,6 @@ async def generate_civil_response(
         text=manager._strip_thought_blocks(final_output.outputs[0].text),
         prompt_tokens=len(final_output.prompt_token_ids),
         completion_tokens=len(final_output.outputs[0].token_ids),
-        retrieved_cases=[RetrievedCase(**case) for case in retrieved_cases],
-        search_results=search_results,
     )
 
 
@@ -1395,7 +945,7 @@ async def generate(
         raise HTTPException(status_code=400, detail="Use /v1/stream for streaming.")
 
     request_id = str(uuid.uuid4())
-    final_output, retrieved_cases = await manager.generate(request, request_id, flags)
+    final_output = await manager.generate(request, request_id, flags)
     if final_output is None:
         raise HTTPException(status_code=500, detail="Generation failed.")
 
@@ -1405,7 +955,6 @@ async def generate(
         text=manager._strip_thought_blocks(final_output.outputs[0].text),
         prompt_tokens=len(final_output.prompt_token_ids),
         completion_tokens=len(final_output.outputs[0].token_ids),
-        retrieved_cases=[RetrievedCase(**case) for case in retrieved_cases],
     )
 
 
@@ -1521,16 +1070,13 @@ async def stream_generate(
         request.stream = True
 
     request_id = str(uuid.uuid4())
-    results_stream, retrieved_cases, search_results = await manager.generate_stream(
+    results_stream = await manager.generate_stream(
         request,
         request_id,
         flags,
     )
 
     async def stream_results() -> AsyncGenerator[str, None]:
-        cases_data = [RetrievedCase(**case).model_dump() for case in retrieved_cases]
-        search_data = [result.model_dump() for result in search_results]
-
         async for request_output in results_stream:
             text = request_output.outputs[0].text
             finished = request_output.finished
@@ -1538,75 +1084,9 @@ async def stream_generate(
                 text = manager._strip_thought_blocks(text)
 
             response_obj = {"request_id": request_id, "text": text, "finished": finished}
-            if finished:
-                response_obj["retrieved_cases"] = cases_data
-                response_obj["search_results"] = search_data
-
             yield f"data: {json.dumps(response_obj, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(stream_results(), media_type="text/event-stream")
-
-
-@app.post("/v1/search", response_model=SearchResponse)
-@app.post("/search", response_model=SearchResponse)
-@_rate_limit("60/minute")
-async def search(request: SearchRequest, _: Request, __: None = Depends(verify_api_key)):
-    start_time = time.monotonic()
-    try:
-        if manager.hybrid_engine:
-            results_raw, actual_mode = await manager.hybrid_engine.search(
-                query=request.query,
-                index_type=request.doc_type,
-                top_k=request.top_k,
-                mode=request.search_mode,
-            )
-            results = [
-                SearchResult(
-                    doc_id=result.get("doc_id", ""),
-                    source_type=IndexType(result.get("doc_type", request.doc_type.value)),
-                    title=result.get("title", ""),
-                    content=_extract_content_by_type(result, request.doc_type),
-                    score=result.get("score", 0.0),
-                    reliability_score=result.get("reliability_score", 1.0),
-                    metadata=result.get("extras", {}),
-                    chunk_index=result.get("chunk_index", 0),
-                    total_chunks=result.get("chunk_total", 1),
-                )
-                for result in results_raw
-            ]
-        elif manager.retriever:
-            raw_results = manager.retriever.search(request.query, top_k=request.top_k)
-            results = [
-                SearchResult(
-                    doc_id=raw.get("id", raw.get("doc_id", "")),
-                    source_type=request.doc_type,
-                    title=raw.get("category", ""),
-                    content=raw.get("complaint", "") + "\n" + raw.get("answer", ""),
-                    score=raw.get("score", 0.0),
-                    reliability_score=raw.get("reliability_score", 1.0),
-                )
-                for raw in raw_results
-            ]
-            actual_mode = SearchMode.DENSE
-        else:
-            raise HTTPException(status_code=503, detail="검색 엔진이 아직 초기화되지 않았습니다.")
-
-        elapsed_ms = (time.monotonic() - start_time) * 1000
-        actual_search_mode = actual_mode if actual_mode != request.search_mode else None
-        return SearchResponse(
-            query=request.query,
-            doc_type=request.doc_type,
-            search_mode=request.search_mode,
-            actual_search_mode=actual_search_mode,
-            results=results,
-            total=len(results),
-            search_time_ms=round(elapsed_ms, 2),
-        )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error(f"검색 중 오류 발생: {exc}", exc_info=True)
-        raise HTTPException(status_code=500, detail="검색 처리 중 내부 오류가 발생했습니다.")
 
 
 def _trace_to_schema(trace: AgentTrace) -> AgentTraceSchema:
@@ -1650,23 +1130,11 @@ async def agent_run(
         force_tools=request.force_tools,
     )
 
-    search_results = None
-    for result in trace.tool_results:
-        if tool_name(result.tool) == ToolType.RAG_SEARCH.value and result.success:
-            search_results = result.data.get("results")
-        elif (
-            tool_name(result.tool) == ToolType.API_LOOKUP.value
-            and result.success
-            and not search_results
-        ):
-            search_results = result.data.get("results")
-
     return AgentRunResponse(
         request_id=request_id,
         session_id=session.session_id,
         text=trace.final_text,
         trace=_trace_to_schema(trace),
-        search_results=search_results,
     )
 
 
@@ -1766,7 +1234,7 @@ async def v2_agent_stream(
                     # 전제: stream_mode="updates"에서 state_delta는 노드의 raw return dict다.
                     # LangGraph 버전 업그레이드 시 이 구조가 변경될 수 있으므로 주의.
                     # evidence_items 스키마: EvidenceItem.to_dict() 필드를 따른다.
-                    #   source_type: "rag" | "api" | "llm_generated"
+                    #   source_type: "api" | "llm_generated"
                     #   title, excerpt, link_or_path, page, score, provider_meta
                     #   (웹 프론트엔드에서 직접 렌더링 시 XSS 방지를 위해 이스케이프 필요)
                     if node_name == "synthesis" and isinstance(state_delta, dict):

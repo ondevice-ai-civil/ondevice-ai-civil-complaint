@@ -10,17 +10,6 @@ from src.inference.session_context import SessionContext
 from src.inference.tool_router import ToolType
 
 
-async def mock_rag_search(query: str, context: dict, session: Any) -> dict:
-    return {
-        "query": query,
-        "results": [
-            {"title": "도로 보수 매뉴얼", "content": "보수 절차 안내", "metadata": {"page": 3}},
-            {"title": "민원 처리 지침", "content": "담당 부서 이관 기준", "metadata": {"page": 5}},
-        ],
-        "count": 2,
-    }
-
-
 async def mock_api_lookup(query: str, context: dict, session: Any) -> dict:
     return {
         "query": query,
@@ -51,7 +40,6 @@ async def mock_timeout_tool(query: str, context: dict, session: Any) -> dict:
 class TestAgentLoop:
     def _make_loop(self, overrides: Dict[ToolType | str, Any] | None = None) -> AgentLoop:
         registry = {
-            ToolType.RAG_SEARCH: mock_rag_search,
             ToolType.API_LOOKUP: mock_api_lookup,
             ToolType.DRAFT_RESPONSE: mock_draft_response,
         }
@@ -67,8 +55,8 @@ class TestAgentLoop:
         trace = await loop.run("도로 포장이 파손되어 위험합니다", session)
 
         assert trace.error is None
-        assert trace.plan.tool_names == ["rag_search", "api_lookup", "draft_response"]
-        assert len(trace.tool_results) == 3
+        assert trace.plan.tool_names == ["api_lookup", "draft_response"]
+        assert len(trace.tool_results) == 2
         assert all(result.success for result in trace.tool_results)
         assert "최종 초안" in trace.final_text
 
@@ -82,7 +70,7 @@ class TestAgentLoop:
         assert len(session.conversations) == 2
         assert session.conversations[0].role == "user"
         assert session.conversations[1].role == "assistant"
-        assert len(session.tool_runs) == 3
+        assert len(session.tool_runs) == 2
         assert len(session.graph_runs) == 1
         assert all(
             tool_run.graph_run_request_id == session.graph_runs[0].request_id
@@ -90,7 +78,6 @@ class TestAgentLoop:
         )
         assert session.graph_runs[0].approval_status == "not_requested"
         assert session.graph_runs[0].executed_capabilities == [
-            "rag_search",
             "api_lookup",
             "draft_response",
         ]
@@ -98,14 +85,13 @@ class TestAgentLoop:
 
     @pytest.mark.asyncio
     async def test_tool_failure_does_not_abort_remaining_tools(self):
-        loop = self._make_loop(overrides={ToolType.RAG_SEARCH: mock_failing_tool})
+        loop = self._make_loop(overrides={ToolType.API_LOOKUP: mock_failing_tool})
         session = SessionContext()
 
         trace = await loop.run("민원 답변 초안 작성", session)
 
         assert trace.tool_results[0].success is False
         assert trace.tool_results[1].success is True
-        assert trace.tool_results[2].success is True
         assert "최종 초안" in trace.final_text
         assert session.graph_runs[0].status == "completed_with_errors"
         assert all(
@@ -119,10 +105,10 @@ class TestAgentLoop:
 
         trace = await loop.run("민원 답변 초안 작성", session)
 
-        api_result = trace.tool_results[1]
+        api_result = trace.tool_results[0]
         assert api_result.success is False
         assert "타임아웃" in api_result.error
-        assert session.tool_runs[1].graph_run_request_id == trace.request_id
+        assert session.tool_runs[0].graph_run_request_id == trace.request_id
 
     @pytest.mark.asyncio
     async def test_force_tools_runs_single_tool(self):
@@ -160,19 +146,14 @@ class TestAgentLoop:
         trace = await loop.run(
             "근거를 보여줘",
             session,
-            force_tools=[ToolType.RAG_SEARCH, ToolType.API_LOOKUP],
+            force_tools=[ToolType.API_LOOKUP],
         )
 
-        assert "[로컬 문서 근거]" in trace.final_text
         assert "공공데이터포털" in trace.final_text
 
     @pytest.mark.asyncio
     async def test_follow_up_uses_context_aware_query_variants_for_search_tools(self):
         seen_queries: Dict[str, str] = {}
-
-        async def capture_rag(query: str, context: dict, session: Any) -> dict:
-            seen_queries["rag_search"] = query
-            return {"query": query, "results": [], "count": 0}
 
         async def capture_api(query: str, context: dict, session: Any) -> dict:
             seen_queries["api_lookup"] = query
@@ -184,7 +165,6 @@ class TestAgentLoop:
 
         loop = AgentLoop(
             tool_registry={
-                ToolType.RAG_SEARCH: capture_rag,
                 ToolType.API_LOOKUP: capture_api,
                 ToolType.DRAFT_RESPONSE: capture_draft,
             },
@@ -200,11 +180,7 @@ class TestAgentLoop:
         trace = await loop.run("이 답변의 근거를 붙여줘", session)
 
         assert trace.error is None
-        assert "도로 포장이 파손되어 위험합니다" in seen_queries["rag_search"]
-        assert "담당 부서 검토 후 보수 일정을 안내드리겠습니다." in seen_queries["rag_search"]
-        assert "관련 법령 지침 매뉴얼 공지 내부 문서" in seen_queries["rag_search"]
         assert "유사 민원 사례 통계 최근 이슈" in seen_queries["api_lookup"]
-        assert seen_queries["rag_search"] != seen_queries["api_lookup"]
 
 
 class TestAgentLoopStream:
@@ -212,7 +188,6 @@ class TestAgentLoopStream:
     async def test_stream_events_are_emitted_in_order(self):
         loop = AgentLoop(
             tool_registry={
-                ToolType.RAG_SEARCH: mock_rag_search,
                 ToolType.API_LOOKUP: mock_api_lookup,
                 ToolType.DRAFT_RESPONSE: mock_draft_response,
             }
@@ -235,8 +210,7 @@ class TestAgentLoopStream:
     async def test_stream_reports_tool_failure(self):
         loop = AgentLoop(
             tool_registry={
-                ToolType.RAG_SEARCH: mock_failing_tool,
-                ToolType.API_LOOKUP: mock_api_lookup,
+                ToolType.API_LOOKUP: mock_failing_tool,
                 ToolType.DRAFT_RESPONSE: mock_draft_response,
             }
         )

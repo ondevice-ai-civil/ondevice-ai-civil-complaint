@@ -7,16 +7,11 @@ RAG/API 조회용 query variant를 만든다.
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, Dict, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Dict, Sequence
 
 if TYPE_CHECKING:
     from .session_context import SessionContext
 
-
-SEARCH_TOOL_HINTS: dict[str, str] = {
-    "rag_search": "관련 법령 지침 매뉴얼 공지 내부 문서",
-    "api_lookup": "유사 민원 사례 통계 최근 이슈",
-}
 
 _FOLLOW_UP_PATTERNS = tuple(
     re.compile(pattern)
@@ -124,56 +119,6 @@ def build_recent_tool_summary(session: "SessionContext") -> str:
     return " | ".join(parts)
 
 
-def build_query_variants(
-    query: str,
-    *,
-    tool_names: Sequence[str],
-    context: Mapping[str, Any],
-) -> Dict[str, str]:
-    """RAG/API lookup용 tool-specific query variant를 생성한다."""
-    normalized_query = normalize_text(query)
-    previous_user = clip_text(context.get("previous_user_query", ""), _MAX_USER_LEN)
-    previous_assistant = clip_text(
-        context.get("previous_assistant_response", ""), _MAX_ASSISTANT_LEN
-    )
-    recent_tool_summary = clip_text(context.get("recent_tool_summary", ""), _MAX_TOOL_SUMMARY_LEN)
-    follow_up = should_use_follow_up_context(
-        normalized_query,
-        tool_names=tool_names,
-        previous_user=previous_user,
-        previous_assistant=previous_assistant,
-    )
-
-    base_segments = [normalized_query]
-    if follow_up:
-        base_segments = []
-        if previous_user:
-            base_segments.append(previous_user)
-        if previous_assistant:
-            base_segments.append(previous_assistant)
-        base_segments.append(normalized_query)
-        if recent_tool_summary:
-            base_segments.append(recent_tool_summary)
-
-    variants: Dict[str, str] = {}
-    for tool_name in tool_names:
-        hint = SEARCH_TOOL_HINTS.get(tool_name)
-        if not hint:
-            continue
-        variants[tool_name] = compose_query([*base_segments, hint], limit=_MAX_QUERY_LEN)
-    return variants
-
-
-def resolve_tool_query(tool_name: str, context: Mapping[str, Any]) -> str:
-    """tool별 query variant가 있으면 사용하고, 없으면 원문 요청을 사용한다."""
-    query_variants = context.get("query_variants", {})
-    if isinstance(query_variants, Mapping):
-        variant = normalize_text(query_variants.get(tool_name, ""))
-        if variant:
-            return variant
-    return normalize_text(context.get("query", ""))
-
-
 def is_self_contained_query(query: str) -> bool:
     """쿼리가 이전 맥락 없이 독립적으로 이해 가능한지 판정한다.
 
@@ -207,21 +152,6 @@ def should_use_follow_up_context(
         return False
 
     return any(pattern.search(query) for pattern in _FOLLOW_UP_PATTERNS)
-
-
-def compose_query(parts: Sequence[Any], *, limit: int) -> str:
-    """중복과 과도한 길이를 줄여 검색용 query를 합성한다."""
-    deduped: list[str] = []
-    seen: set[str] = set()
-    for part in parts:
-        normalized = normalize_text(part)
-        if not normalized or normalized in seen:
-            continue
-        seen.add(normalized)
-        deduped.append(normalized)
-
-    query = " ".join(deduped).strip()
-    return clip_text(query, limit)
 
 
 def clip_text(value: Any, limit: int) -> str:

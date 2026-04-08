@@ -100,7 +100,7 @@ class LookupResult:
 class CapabilityBase(ABC):
     """LangGraph tool capability 추상 베이스.
 
-    RegistryExecutorAdapter의 tool_registry에 등록 가능한 async callable 인터페이스.
+    LangGraph ToolNode에서 사용할 수 있는 async callable 인터페이스.
     """
 
     @property
@@ -121,7 +121,7 @@ class CapabilityBase(ABC):
         context: Dict[str, Any],
         session: Any,
     ) -> Dict[str, Any]:
-        """RegistryExecutorAdapter 호환 진입점."""
+        """async callable 진입점."""
         import time
 
         start = time.monotonic()

@@ -38,10 +38,9 @@ _NARROW_WARNING_LOCK = Lock()
 
 NODE_STATUS_MESSAGES: dict[str, str] = {
     "session_load": "세션 로드 중…",
-    "planner": "계획 수립 중…",
+    "agent": "에이전트 추론 중…",
     "approval_wait": "승인 대기 중…",
-    "tool_execute": "도구 실행 중…",
-    "synthesis": "답변 생성 중…",
+    "tools": "도구 실행 중…",
     "persist": "저장 중…",
 }
 

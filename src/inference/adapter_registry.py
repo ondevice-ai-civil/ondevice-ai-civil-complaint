@@ -50,6 +50,8 @@ class AdapterMeta:
     domain: str
     lora_id: int
     keywords: tuple = ()  # 분야 판단용 키워드 목록
+    tool_description: str = ""  # LLM이 도구 선택 시 읽는 상세 설명
+    requires_approval: bool = True  # 도구 실행 전 승인 필요 여부
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +139,8 @@ class AdapterRegistry:
                 domain=meta.get("domain", ""),
                 lora_id=idx,
                 keywords=tuple(meta.get("keywords", [])),
+                tool_description=meta.get("tool_description", ""),
+                requires_approval=meta.get("requires_approval", True),
             )
 
         if self._adapters:
@@ -198,6 +202,26 @@ class AdapterRegistry:
         """어댑터의 LoRA ID를 반환한다. 없으면 ``None``."""
         adapter = self._adapters.get(name)
         return adapter.lora_id if adapter else None
+
+    def build_tool_names(self) -> List[str]:
+        """가용 어댑터의 도구명 리스트를 반환한다."""
+        return [f"{name}_adapter" for name in self.list_available()]
+
+    def get_tool_description(self, name: str) -> str:
+        """어댑터의 tool_description을 반환한다.
+
+        tool_description이 비어 있으면 description + keywords를 결합하여 생성한다.
+        """
+        adapter = self._adapters.get(name)
+        if adapter is None:
+            return ""
+        if adapter.tool_description:
+            return adapter.tool_description.strip()
+        # fallback: description + keywords 결합
+        parts = [adapter.description]
+        if adapter.keywords:
+            parts.append(f"키워드: {', '.join(adapter.keywords)}")
+        return " ".join(parts)
 
     # ------------------------------------------------------------------
     # 유틸리티

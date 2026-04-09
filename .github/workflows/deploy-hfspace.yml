@@ -6,7 +6,7 @@
 #   3. Space 이름을 아래 SPACE_ID 에 맞게 변경 후 workflow_dispatch 실행
 #
 # Space 필수 환경변수 (HF Space Settings > Variables):
-#   ADAPTER_PATHS = civil=umyunsang/GovOn-EXAONE-LoRA-v2,legal=siwo/govon-legal-adapter
+#   ADAPTER_PATHS = public_admin=umyunsang/govon-civil-adapter,legal=siwo/govon-legal-adapter
 #   SERVING_PROFILE = container
 #   GPU_UTILIZATION = 0.90       (기본값, Dockerfile.hfspace 에 설정됨)
 #   MAX_MODEL_LEN = 8192         (기본값, Dockerfile.hfspace 에 설정됨)

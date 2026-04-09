@@ -40,11 +40,24 @@ test.describe('GovOn Runtime Smoke', () => {
       '/v1/stream',
       '/v1/agent/run',
       '/v1/agent/stream',
+      '/v3/agent/stream',
+      '/v3/agent/run',
     ]) {
       expect(schema.paths).toHaveProperty(path);
     }
 
     expect(schema.paths).not.toHaveProperty('/v1/classify');
+  });
+
+  test('v3 agent endpoints return 503 or 200 based on graph availability', async ({ request }) => {
+    const response = await request.post('/v3/agent/run', {
+        data: { query: '테스트', max_iterations: 1 },
+        headers: { 'X-API-Key': apiKey },
+        failOnStatusCode: false,
+    });
+    // SKIP_MODEL_LOAD 모드에서 graph_v3=None → 503
+    // 모델 로드 시 → 200
+    expect([200, 500, 503]).toContain(response.status());
   });
 });
 

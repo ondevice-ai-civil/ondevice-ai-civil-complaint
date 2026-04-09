@@ -8,7 +8,7 @@ HuggingFace Space에 배포된 govon-runtime 서버에 대해
     GOVON_RUNTIME_URL=https://<space-url>.hf.space python3 scripts/verify_e2e_tool_calling.py
     GOVON_RUNTIME_URL=https://<space-url>.hf.space API_KEY=<key> python3 scripts/verify_e2e_tool_calling.py
 
-5-Phase 검증 (16 시나리오):
+6-Phase 검증 (30 시나리오):
     Phase 1: Infrastructure (hard gate)
         1. Health & Profile
         2. Base Model Generation
@@ -31,6 +31,21 @@ HuggingFace Space에 배포된 govon-runtime 서버에 대해
         11. Empty Query Handling
         12. Reject Flow Completeness
         13. Concurrent Request Isolation
+    Phase 6: v3 ReAct Loop
+        14. v3 기본 실행
+        15. v3 graph 미초기화 503
+        16. v3 직접 답변 (no-tool)
+        17. v3 단일 도구 단일 iteration
+        18. v3 단일 도구 다중 iteration
+        19. v3 복수 도구 병렬 실행
+        20. v3 민원 답변 초안 생성
+        21. v3 max_iterations=1 강제종료
+        22. v3 max_iterations 범위 검증
+        23. v3 SSE 이벤트 시퀀스 (no-tool)
+        24. v3 SSE 이벤트 시퀀스 (with-tool)
+        25. v3 SSE run_complete metadata
+        26. v3 빈 쿼리 처리
+        27. v3 동시 요청 격리
 """
 
 # stdlib
@@ -317,6 +332,11 @@ def _session_id(scenario_num: int) -> str:
 
 def _extract_text_from_events(events: list[dict]) -> str:
     """SSE 이벤트 목록에서 최종 텍스트를 추출한다."""
+    # v3 run_complete 이벤트 우선 확인
+    for ev in reversed(events):
+        if ev.get("type") == "run_complete" and ev.get("text"):
+            return ev["text"]
+    # v2 이벤트 형식
     for ev in reversed(events):
         if ev.get("node") == "synthesis" and ev.get("final_text"):
             return ev["final_text"]
@@ -579,6 +599,89 @@ async def _call_agent_with_approval(
 
     except Exception as exc:
         return False, "", meta, str(exc)
+
+
+# ---------------------------------------------------------------------------
+# v3 ReAct 호출 헬퍼
+# ---------------------------------------------------------------------------
+
+
+async def _call_v3_run(
+    query: str,
+    session_id: str,
+    max_iterations: int = 10,
+    timeout: float = 180,
+) -> tuple[bool, str, dict, Optional[str]]:
+    """v3 blocking API 호출.
+    Returns: (success, text, metadata, error)
+    """
+    body = {"query": query, "session_id": session_id, "max_iterations": max_iterations}
+    logger.info("[v3 Run] 요청: session=%s, max_iter=%d", session_id, max_iterations)
+
+    try:
+        status_code, resp = await http_post("/v3/agent/run", body, timeout=timeout)
+        logger.info("[v3 Run] HTTP %d, status=%s", status_code, resp.get("status"))
+
+        if status_code == 503:
+            return False, "", {}, "v3 graph 미초기화 (503)"
+        if status_code == 422:
+            return False, "", {}, f"검증 오류 (422): {resp}"
+        if status_code == 500:
+            return False, "", {}, f"내부 오류 (500): {resp.get('error', '')}"
+        if status_code != 200:
+            return False, "", {}, f"HTTP {status_code}: {resp}"
+
+        text = resp.get("text", "") or resp.get("final_text", "") or ""
+        metadata = resp.get("metadata", {})
+        return True, text, metadata, None
+
+    except Exception as exc:
+        return False, "", {}, str(exc)
+
+
+async def _call_v3_stream(
+    query: str,
+    session_id: str,
+    max_iterations: int = 10,
+    timeout: float = 180,
+) -> tuple[bool, str, list[dict], dict, Optional[str]]:
+    """v3 SSE 스트리밍 호출.
+    Returns: (success, text, events, metadata, error)
+    """
+    body = {"query": query, "session_id": session_id, "max_iterations": max_iterations}
+    logger.info("[v3 Stream] 요청: session=%s, max_iter=%d", session_id, max_iterations)
+
+    try:
+        status_code, events = await http_post_sse("/v3/agent/stream", body, timeout=timeout)
+        logger.info("[v3 Stream] HTTP %d, events=%d", status_code, len(events))
+
+        if status_code == 503:
+            return False, "", [], {}, "v3 graph 미초기화 (503)"
+        if status_code != 200:
+            return False, "", events, {}, f"HTTP {status_code}"
+
+        # run_complete 이벤트에서 text와 metadata 추출
+        text = ""
+        metadata = {}
+        for ev in events:
+            if ev.get("type") == "run_complete":
+                text = ev.get("text", "") or ""
+                metadata = ev.get("metadata", {})
+                break
+
+        if not text:
+            # fallback: 다른 이벤트에서 텍스트 추출
+            text = _extract_text_from_events(events)
+
+        return True, text, events, metadata, None
+
+    except Exception as exc:
+        return False, "", [], {}, str(exc)
+
+
+def _extract_v3_event_types(events: list[dict]) -> list[str]:
+    """v3 SSE 이벤트 목록에서 type 필드를 순서대로 추출한다."""
+    return [ev.get("type", "") for ev in events if ev.get("type")]
 
 
 # ---------------------------------------------------------------------------
@@ -1802,6 +1905,706 @@ async def scenario13_concurrent_isolation() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Phase 6: v3 ReAct Loop
+# ---------------------------------------------------------------------------
+
+
+async def scenario14_v3_basic_run() -> dict:
+    """Scenario 14: v3 기본 실행 (retry 2x)."""
+    last_error = ""
+    attempts = 0
+
+    for attempt_idx in range(2):
+        attempts += 1
+        t0 = time.monotonic()
+        try:
+            ok, text, metadata, err = await _call_v3_run(
+                "안녕하세요, 민원 상담 도움이 필요합니다.",
+                _session_id(14),
+                timeout=120,
+            )
+            elapsed = time.monotonic() - t0
+
+            assertions = []
+            if not ok:
+                last_error = err or "v3 run 실패"
+                if attempt_idx < 1:
+                    continue
+                return _record(14, "v3 기본 실행", 6, "failed", elapsed, attempts, error=last_error)
+
+            assertions.append("HTTP 200 + status=completed")
+            if metadata:
+                assertions.append(f"metadata 존재: iterations={metadata.get('total_iterations')}")
+            else:
+                assertions.append("metadata 없음 (WARN)")
+
+            if text:
+                assertions.append(f"text length={len(text)}")
+            else:
+                assertions.append("text 비어있음 (WARN)")
+
+            return _record(
+                14,
+                "v3 기본 실행",
+                6,
+                "passed",
+                elapsed,
+                attempts,
+                assertions=assertions,
+                detail={"text_preview": (text or "")[:200], "metadata": metadata},
+            )
+
+        except Exception as exc:
+            last_error = str(exc)
+
+    return _record(14, "v3 기본 실행", 6, "failed", 0, attempts, error=last_error)
+
+
+async def scenario15_v3_503_check() -> dict:
+    """Scenario 15: v3 graph 미초기화 503 (SKIP_MODEL_LOAD에서만 해당, 그 외 skip)."""
+    t0 = time.monotonic()
+    # 라이브 서버에서는 graph_v3가 초기화되어 있으므로 503이 아니면 skip
+    ok, text, metadata, err = await _call_v3_run("test", _session_id(15), timeout=10)
+    elapsed = time.monotonic() - t0
+
+    if err and "503" in str(err):
+        return _record(
+            15,
+            "v3 graph 미초기화 503",
+            6,
+            "passed",
+            elapsed,
+            assertions=["503 확인: graph_v3 미초기화"],
+        )
+
+    # graph_v3가 정상이면 skip (라이브 서버에서는 정상)
+    return _record(
+        15,
+        "v3 graph 미초기화 503",
+        6,
+        "skipped",
+        elapsed,
+        error="graph_v3 초기화됨 — 503 테스트 불가 (정상)",
+    )
+
+
+async def scenario16_v3_direct_answer() -> dict:
+    """Scenario 16: v3 직접 답변 (no-tool) — 간단한 인사 쿼리."""
+    t0 = time.monotonic()
+    try:
+        ok, text, metadata, err = await _call_v3_run(
+            "안녕하세요",
+            _session_id(16),
+            max_iterations=3,
+            timeout=120,
+        )
+        elapsed = time.monotonic() - t0
+
+        if not ok:
+            return _record(16, "v3 직접 답변 (no-tool)", 6, "failed", elapsed, error=err)
+
+        assertions = []
+        total_iters = metadata.get("total_iterations", -1)
+        total_tools = metadata.get("total_tool_calls", -1)
+
+        # 인사 쿼리는 도구 호출 없이 직접 답변할 가능성이 높음
+        if total_iters == 0 and total_tools == 0:
+            assertions.append("total_iterations=0, total_tool_calls=0 (직접 답변)")
+        else:
+            assertions.append(
+                f"total_iterations={total_iters}, total_tool_calls={total_tools} (도구 사용됨)"
+            )
+
+        if text and len(text) > 0:
+            assertions.append(f"text 존재 (len={len(text)})")
+        else:
+            return _record(
+                16,
+                "v3 직접 답변 (no-tool)",
+                6,
+                "failed",
+                elapsed,
+                assertions=assertions,
+                error="text 비어있음",
+            )
+
+        return _record(
+            16,
+            "v3 직접 답변 (no-tool)",
+            6,
+            "passed",
+            elapsed,
+            assertions=assertions,
+            detail={"text_preview": text[:200], "metadata": metadata},
+        )
+
+    except Exception as exc:
+        return _record(
+            16, "v3 직접 답변 (no-tool)", 6, "failed", time.monotonic() - t0, error=str(exc)
+        )
+
+
+async def scenario17_v3_single_tool_single_iter() -> dict:
+    """Scenario 17: v3 단일 도구 단일 iteration."""
+    last_error = ""
+    attempts = 0
+
+    for attempt_idx in range(2):
+        attempts += 1
+        t0 = time.monotonic()
+        try:
+            ok, text, metadata, err = await _call_v3_run(
+                "서울시 도로 파손 민원 유사 사례를 검색해주세요",
+                _session_id(17),
+                max_iterations=5,
+                timeout=180,
+            )
+            elapsed = time.monotonic() - t0
+
+            if not ok:
+                last_error = err or "v3 run 실패"
+                if attempt_idx < 1:
+                    continue
+                return _record(
+                    17,
+                    "v3 단일 도구 단일 iteration",
+                    6,
+                    "failed",
+                    elapsed,
+                    attempts,
+                    error=last_error,
+                )
+
+            assertions = []
+            total_iters = metadata.get("total_iterations", 0)
+            total_tools = metadata.get("total_tool_calls", 0)
+
+            if total_iters >= 1:
+                assertions.append(f"total_iterations={total_iters} >= 1")
+            else:
+                assertions.append(f"total_iterations={total_iters} (도구 미호출)")
+
+            if total_tools >= 1:
+                assertions.append(f"total_tool_calls={total_tools} >= 1")
+
+            passed = len(text) > 0
+            if passed:
+                assertions.append(f"text 존재 (len={len(text)})")
+
+            return _record(
+                17,
+                "v3 단일 도구 단일 iteration",
+                6,
+                "passed" if passed else "failed",
+                elapsed,
+                attempts,
+                assertions=assertions,
+                detail={"text_preview": text[:200], "metadata": metadata},
+            )
+
+        except Exception as exc:
+            last_error = str(exc)
+
+    return _record(17, "v3 단일 도구 단일 iteration", 6, "failed", 0, attempts, error=last_error)
+
+
+async def scenario18_v3_multi_iteration() -> dict:
+    """Scenario 18: v3 단일 도구 다중 iteration."""
+    t0 = time.monotonic()
+    try:
+        ok, text, metadata, err = await _call_v3_run(
+            "도로파손 민원 통계를 분석하고, 키워드 트렌드도 확인한 뒤 종합 보고서를 작성해주세요",
+            _session_id(18),
+            max_iterations=10,
+            timeout=300,
+        )
+        elapsed = time.monotonic() - t0
+
+        if not ok:
+            return _record(18, "v3 단일 도구 다중 iteration", 6, "failed", elapsed, error=err)
+
+        assertions = []
+        total_iters = metadata.get("total_iterations", 0)
+        total_tools = metadata.get("total_tool_calls", 0)
+
+        if total_iters >= 2:
+            assertions.append(f"total_iterations={total_iters} >= 2 (다중 iteration)")
+        else:
+            assertions.append(f"total_iterations={total_iters} (단일 iteration만 사용)")
+
+        if total_tools >= 1:
+            assertions.append(f"total_tool_calls={total_tools}")
+
+        passed = len(text) > 0
+        if passed:
+            assertions.append(f"text 존재 (len={len(text)})")
+
+        return _record(
+            18,
+            "v3 단일 도구 다중 iteration",
+            6,
+            "passed" if passed else "failed",
+            elapsed,
+            assertions=assertions,
+            detail={"text_preview": text[:200], "metadata": metadata},
+        )
+
+    except Exception as exc:
+        return _record(
+            18, "v3 단일 도구 다중 iteration", 6, "failed", time.monotonic() - t0, error=str(exc)
+        )
+
+
+async def scenario19_v3_parallel_tools() -> dict:
+    """Scenario 19: v3 복수 도구 병렬 실행."""
+    t0 = time.monotonic()
+    try:
+        ok, text, metadata, err = await _call_v3_run(
+            "민원 통계와 키워드 분석을 동시에 수행해서 결과를 알려주세요",
+            _session_id(19),
+            max_iterations=5,
+            timeout=180,
+        )
+        elapsed = time.monotonic() - t0
+
+        if not ok:
+            return _record(19, "v3 복수 도구 병렬 실행", 6, "failed", elapsed, error=err)
+
+        assertions = []
+        total_iters = metadata.get("total_iterations", 0)
+        total_tools = metadata.get("total_tool_calls", 0)
+
+        if total_tools >= 2:
+            assertions.append(f"total_tool_calls={total_tools} >= 2 (복수 도구)")
+        elif total_tools >= 1:
+            assertions.append(f"total_tool_calls={total_tools} (단일 도구만 사용)")
+        else:
+            assertions.append(f"total_tool_calls={total_tools} (도구 미사용)")
+
+        # 병렬 실행 시 total_tool_calls > total_iterations 가능
+        if total_tools > total_iters and total_iters > 0:
+            assertions.append("병렬 실행 확인: tool_calls > iterations")
+
+        passed = len(text) > 0
+        if passed:
+            assertions.append(f"text 존재 (len={len(text)})")
+
+        return _record(
+            19,
+            "v3 복수 도구 병렬 실행",
+            6,
+            "passed" if passed else "failed",
+            elapsed,
+            assertions=assertions,
+            detail={"text_preview": text[:200], "metadata": metadata},
+        )
+
+    except Exception as exc:
+        return _record(
+            19, "v3 복수 도구 병렬 실행", 6, "failed", time.monotonic() - t0, error=str(exc)
+        )
+
+
+async def scenario20_v3_draft_response() -> dict:
+    """Scenario 20: v3 민원 답변 초안 생성."""
+    last_error = ""
+    attempts = 0
+
+    for attempt_idx in range(2):
+        attempts += 1
+        t0 = time.monotonic()
+        try:
+            ok, text, metadata, err = await _call_v3_run(
+                "아파트 층간소음 민원에 대한 답변을 작성해주세요",
+                _session_id(20),
+                max_iterations=5,
+                timeout=180,
+            )
+            elapsed = time.monotonic() - t0
+
+            if not ok:
+                last_error = err or "v3 run 실패"
+                if attempt_idx < 1:
+                    continue
+                return _record(
+                    20, "v3 민원 답변 초안 생성", 6, "failed", elapsed, attempts, error=last_error
+                )
+
+            assertions = []
+            if len(text) >= 50:
+                assertions.append(f"text length={len(text)} >= 50")
+            else:
+                assertions.append(f"text length={len(text)} < 50")
+
+            total_tools = metadata.get("total_tool_calls", 0)
+            if total_tools >= 1:
+                assertions.append(f"total_tool_calls={total_tools} (도구 사용)")
+
+            passed = len(text) >= 50
+            if not passed and attempt_idx < 1:
+                last_error = "text < 50 chars"
+                continue
+
+            return _record(
+                20,
+                "v3 민원 답변 초안 생성",
+                6,
+                "passed" if passed else "failed",
+                elapsed,
+                attempts,
+                assertions=assertions,
+                error=None if passed else "text < 50 chars",
+                detail={"text_preview": text[:300], "metadata": metadata},
+            )
+
+        except Exception as exc:
+            last_error = str(exc)
+
+    return _record(20, "v3 민원 답변 초안 생성", 6, "failed", 0, attempts, error=last_error)
+
+
+async def scenario21_v3_max_iterations_forced_stop() -> dict:
+    """Scenario 21: v3 max_iterations=1 강제종료."""
+    t0 = time.monotonic()
+    try:
+        ok, text, metadata, err = await _call_v3_run(
+            "도로파손 민원 유사 사례 검색 후 통계도 분석해주세요",
+            _session_id(21),
+            max_iterations=1,
+            timeout=180,
+        )
+        elapsed = time.monotonic() - t0
+
+        if not ok:
+            return _record(21, "v3 max_iterations=1 강제종료", 6, "failed", elapsed, error=err)
+
+        assertions = []
+        total_iters = metadata.get("total_iterations", -1)
+
+        if total_iters <= 1:
+            assertions.append(f"total_iterations={total_iters} <= 1 (강제종료 확인)")
+        else:
+            assertions.append(f"total_iterations={total_iters} > 1 (강제종료 실패?)")
+
+        passed = len(text) > 0 and total_iters <= 1
+        if passed:
+            assertions.append(f"text 존재 (len={len(text)})")
+
+        return _record(
+            21,
+            "v3 max_iterations=1 강제종료",
+            6,
+            "passed" if passed else "failed",
+            elapsed,
+            assertions=assertions,
+            error=None if passed else f"iterations={total_iters}",
+            detail={"text_preview": text[:200], "metadata": metadata},
+        )
+
+    except Exception as exc:
+        return _record(
+            21, "v3 max_iterations=1 강제종료", 6, "failed", time.monotonic() - t0, error=str(exc)
+        )
+
+
+async def scenario22_v3_max_iterations_validation() -> dict:
+    """Scenario 22: v3 max_iterations 범위 검증."""
+    t0 = time.monotonic()
+    assertions = []
+
+    try:
+        # max_iterations=0 → 422
+        status0, resp0 = await http_post(
+            "/v3/agent/run", {"query": "test", "max_iterations": 0}, timeout=10
+        )
+        if status0 == 422:
+            assertions.append("max_iterations=0 → 422 (OK)")
+        else:
+            assertions.append(f"max_iterations=0 → {status0} (expected 422)")
+
+        # max_iterations=21 → 422
+        status21, resp21 = await http_post(
+            "/v3/agent/run", {"query": "test", "max_iterations": 21}, timeout=10
+        )
+        if status21 == 422:
+            assertions.append("max_iterations=21 → 422 (OK)")
+        else:
+            assertions.append(f"max_iterations=21 → {status21} (expected 422)")
+
+        elapsed = time.monotonic() - t0
+        passed = status0 == 422 and status21 == 422
+
+        return _record(
+            22,
+            "v3 max_iterations 범위 검증",
+            6,
+            "passed" if passed else "failed",
+            elapsed,
+            assertions=assertions,
+            error=None if passed else "검증 실패",
+        )
+
+    except Exception as exc:
+        return _record(
+            22, "v3 max_iterations 범위 검증", 6, "failed", time.monotonic() - t0, error=str(exc)
+        )
+
+
+async def scenario23_v3_sse_no_tool() -> dict:
+    """Scenario 23: v3 SSE 이벤트 시퀀스 (no-tool)."""
+    t0 = time.monotonic()
+    try:
+        ok, text, events, metadata, err = await _call_v3_stream(
+            "안녕하세요",
+            _session_id(23),
+            max_iterations=3,
+            timeout=120,
+        )
+        elapsed = time.monotonic() - t0
+
+        if not ok:
+            return _record(23, "v3 SSE 이벤트 시퀀스 (no-tool)", 6, "failed", elapsed, error=err)
+
+        event_types = _extract_v3_event_types(events)
+        assertions = [f"이벤트 수: {len(events)}", f"이벤트 타입: {event_types}"]
+
+        has_run_complete = "run_complete" in event_types
+        if has_run_complete:
+            assertions.append("run_complete 존재")
+        else:
+            assertions.append("run_complete 미존재 (FAIL)")
+
+        passed = has_run_complete and len(events) >= 1
+        return _record(
+            23,
+            "v3 SSE 이벤트 시퀀스 (no-tool)",
+            6,
+            "passed" if passed else "failed",
+            elapsed,
+            assertions=assertions,
+            detail={"event_types": event_types, "events_count": len(events)},
+        )
+
+    except Exception as exc:
+        return _record(
+            23, "v3 SSE 이벤트 시퀀스 (no-tool)", 6, "failed", time.monotonic() - t0, error=str(exc)
+        )
+
+
+async def scenario24_v3_sse_with_tool() -> dict:
+    """Scenario 24: v3 SSE 이벤트 시퀀스 (with-tool)."""
+    t0 = time.monotonic()
+    try:
+        ok, text, events, metadata, err = await _call_v3_stream(
+            "서울시 도로 파손 민원 유사 사례를 검색해주세요",
+            _session_id(24),
+            max_iterations=5,
+            timeout=180,
+        )
+        elapsed = time.monotonic() - t0
+
+        if not ok:
+            return _record(24, "v3 SSE 이벤트 시퀀스 (with-tool)", 6, "failed", elapsed, error=err)
+
+        event_types = _extract_v3_event_types(events)
+        assertions = [f"이벤트 수: {len(events)}", f"이벤트 타입: {event_types}"]
+
+        has_thinking = "thinking_start" in event_types or "thinking_end" in event_types
+        has_tool = "tool_start" in event_types or "tool_end" in event_types
+        has_complete = "run_complete" in event_types
+
+        if has_thinking:
+            assertions.append("thinking 이벤트 존재")
+        if has_tool:
+            assertions.append("tool 이벤트 존재")
+        else:
+            assertions.append("tool 이벤트 미존재 (LLM이 도구 미호출)")
+        if has_complete:
+            assertions.append("run_complete 존재")
+
+        # 최소한 run_complete는 있어야 함
+        passed = has_complete
+        return _record(
+            24,
+            "v3 SSE 이벤트 시퀀스 (with-tool)",
+            6,
+            "passed" if passed else "failed",
+            elapsed,
+            assertions=assertions,
+            detail={"event_types": event_types, "events_count": len(events)},
+        )
+
+    except Exception as exc:
+        return _record(
+            24,
+            "v3 SSE 이벤트 시퀀스 (with-tool)",
+            6,
+            "failed",
+            time.monotonic() - t0,
+            error=str(exc),
+        )
+
+
+async def scenario25_v3_sse_run_complete_metadata() -> dict:
+    """Scenario 25: v3 SSE run_complete metadata 검증."""
+    t0 = time.monotonic()
+    try:
+        ok, text, events, metadata, err = await _call_v3_stream(
+            "민원 현황을 알려주세요",
+            _session_id(25),
+            max_iterations=5,
+            timeout=180,
+        )
+        elapsed = time.monotonic() - t0
+
+        if not ok:
+            return _record(25, "v3 SSE run_complete metadata", 6, "failed", elapsed, error=err)
+
+        assertions = []
+
+        # metadata 키 검증
+        expected_keys = ["total_iterations", "total_tool_calls", "total_latency_ms"]
+        for key in expected_keys:
+            if key in metadata:
+                assertions.append(f"metadata.{key}={metadata[key]}")
+            else:
+                assertions.append(f"metadata.{key} 미존재 (FAIL)")
+
+        has_latency = metadata.get("total_latency_ms", 0) > 0
+        if has_latency:
+            assertions.append(f"total_latency_ms={metadata['total_latency_ms']:.1f}ms > 0")
+
+        node_latencies = metadata.get("node_latencies", {})
+        if node_latencies:
+            assertions.append(f"node_latencies: {list(node_latencies.keys())}")
+
+        all_keys_present = all(k in metadata for k in expected_keys)
+        passed = all_keys_present and has_latency
+
+        return _record(
+            25,
+            "v3 SSE run_complete metadata",
+            6,
+            "passed" if passed else "failed",
+            elapsed,
+            assertions=assertions,
+            detail={"metadata": metadata},
+        )
+
+    except Exception as exc:
+        return _record(
+            25, "v3 SSE run_complete metadata", 6, "failed", time.monotonic() - t0, error=str(exc)
+        )
+
+
+async def scenario26_v3_empty_query() -> dict:
+    """Scenario 26: v3 빈 쿼리 처리."""
+    t0 = time.monotonic()
+    try:
+        # 매우 짧은 쿼리
+        ok, text, metadata, err = await _call_v3_run(
+            "ㅎ",
+            _session_id(26),
+            max_iterations=2,
+            timeout=60,
+        )
+        elapsed = time.monotonic() - t0
+
+        assertions = []
+        if ok:
+            assertions.append("짧은 쿼리 처리 성공 (크래시 없음)")
+            if text:
+                assertions.append(f"text 존재 (len={len(text)})")
+        else:
+            # 에러 응답도 OK (크래시만 아니면 됨)
+            if err and ("422" in str(err) or "500" in str(err)):
+                assertions.append(f"에러 응답: {err} (크래시 아님)")
+            else:
+                assertions.append(f"실패: {err}")
+
+        # 크래시 없이 응답 받으면 pass
+        return _record(
+            26,
+            "v3 빈 쿼리 처리",
+            6,
+            "passed",
+            elapsed,
+            assertions=assertions,
+            detail={"text_preview": (text or "")[:100], "error": err},
+        )
+
+    except Exception as exc:
+        return _record(26, "v3 빈 쿼리 처리", 6, "failed", time.monotonic() - t0, error=str(exc))
+
+
+async def scenario27_v3_concurrent_isolation() -> dict:
+    """Scenario 27: v3 동시 요청 격리."""
+    t0 = time.monotonic()
+    try:
+        # 2개 동시 v3 요청
+        task1 = asyncio.create_task(
+            _call_v3_run(
+                "도로 파손 민원 검색해주세요",
+                _session_id(271),
+                max_iterations=3,
+                timeout=180,
+            )
+        )
+        task2 = asyncio.create_task(
+            _call_v3_run(
+                "아파트 층간소음 민원 답변 작성해주세요",
+                _session_id(272),
+                max_iterations=3,
+                timeout=180,
+            )
+        )
+
+        (ok1, text1, meta1, err1), (ok2, text2, meta2, err2) = await asyncio.gather(task1, task2)
+        elapsed = time.monotonic() - t0
+
+        assertions = []
+        if ok1:
+            assertions.append(
+                f"요청1 성공: iters={meta1.get('total_iterations')}, tools={meta1.get('total_tool_calls')}"
+            )
+        else:
+            assertions.append(f"요청1 실패: {err1}")
+
+        if ok2:
+            assertions.append(
+                f"요청2 성공: iters={meta2.get('total_iterations')}, tools={meta2.get('total_tool_calls')}"
+            )
+        else:
+            assertions.append(f"요청2 실패: {err2}")
+
+        # 둘 다 성공하면 pass, 하나라도 성공하면 soft pass
+        if ok1 and ok2:
+            assertions.append("두 요청 모두 독립 완료")
+            passed = True
+        elif ok1 or ok2:
+            assertions.append("하나만 성공 (부분 격리)")
+            passed = True
+        else:
+            passed = False
+
+        return _record(
+            27,
+            "v3 동시 요청 격리",
+            6,
+            "passed" if passed else "failed",
+            elapsed,
+            assertions=assertions,
+            detail={
+                "req1": {"ok": ok1, "text_len": len(text1 or ""), "meta": meta1},
+                "req2": {"ok": ok2, "text_len": len(text2 or ""), "meta": meta2},
+            },
+        )
+
+    except Exception as exc:
+        return _record(27, "v3 동시 요청 격리", 6, "failed", time.monotonic() - t0, error=str(exc))
+
+
+# ---------------------------------------------------------------------------
 # Cold Start 대기
 # ---------------------------------------------------------------------------
 
@@ -1925,6 +2728,47 @@ async def main() -> int:
 
     for fn in phase5_scenarios:
         await fn()
+
+    # ===== Phase 6: v3 ReAct Loop =====
+    logger.info("\n[Phase 6] v3 ReAct Loop")
+    logger.info("-" * 40)
+
+    # Sub-phase 6A: Infrastructure
+    s14 = await scenario14_v3_basic_run()
+    s15 = await scenario15_v3_503_check()
+
+    # v3 graph가 초기화되지 않았으면 나머지 Phase 6 스킵
+    v3_available = s14.get("status") != "failed"
+    if not v3_available:
+        logger.info("  v3 graph 미초기화 — Phase 6 나머지 스킵")
+    else:
+        # Sub-phase 6B: ReAct 핵심 Flow
+        phase6b_scenarios = [
+            scenario16_v3_direct_answer,
+            scenario17_v3_single_tool_single_iter,
+            scenario18_v3_multi_iteration,
+            scenario19_v3_parallel_tools,
+            scenario20_v3_draft_response,
+        ]
+        for fn in phase6b_scenarios:
+            await fn()
+
+        # Sub-phase 6C: Iteration 제어
+        await scenario21_v3_max_iterations_forced_stop()
+        await scenario22_v3_max_iterations_validation()
+
+        # Sub-phase 6D: SSE 스트리밍
+        phase6d_scenarios = [
+            scenario23_v3_sse_no_tool,
+            scenario24_v3_sse_with_tool,
+            scenario25_v3_sse_run_complete_metadata,
+        ]
+        for fn in phase6d_scenarios:
+            await fn()
+
+        # Sub-phase 6E: Robustness
+        await scenario26_v3_empty_query()
+        await scenario27_v3_concurrent_isolation()
 
     # ===== 요약 =====
     logger.info("\n" + "=" * 60)

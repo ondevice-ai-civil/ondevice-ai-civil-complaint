@@ -41,14 +41,52 @@ from typing import Any, Dict, List, Optional
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-from langgraph.checkpoint.memory import MemorySaver
 
 # 기존 test_graph_e2e에서 공통 도구/LLM을 재사용
+from langchain_core.tools import StructuredTool
+from langgraph.checkpoint.memory import MemorySaver
+
 from tests.test_inference.test_graph_e2e import (
+    SimpleInput,
     SimpleToolNode,
     StubLLM,
     make_test_tool,
 )
+
+# ---------------------------------------------------------------------------
+# 추가 테스트 도구 팩토리
+# ---------------------------------------------------------------------------
+
+
+def make_failing_tool(name: str) -> StructuredTool:
+    """success=false를 반환하는 테스트용 도구."""
+
+    async def _execute(query: str) -> str:
+        return json.dumps(
+            {"success": False, "error": f"{name} 실패: not found"}, ensure_ascii=False
+        )
+
+    return StructuredTool.from_function(
+        coroutine=_execute,
+        name=name,
+        description=f"실패 도구: {name}",
+        args_schema=SimpleInput,
+    )
+
+
+def make_plain_text_tool(name: str) -> StructuredTool:
+    """JSON이 아닌 plain text를 반환하는 도구."""
+
+    async def _execute(query: str) -> str:
+        return f"plain text result for {query}"
+
+    return StructuredTool.from_function(
+        coroutine=_execute,
+        name=name,
+        description=f"텍스트 도구: {name}",
+        args_schema=SimpleInput,
+    )
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -372,3 +410,205 @@ class TestV3EmptyToolCalls:
         assert result["final_text"] == "바로 답변합니다."
         assert result.get("iteration_count", 0) == 0
         assert result.get("tool_call_history", []) == []
+
+
+# ---------------------------------------------------------------------------
+# TestV3ThreadIsolation
+# ---------------------------------------------------------------------------
+
+
+class TestV3ThreadIsolation:
+    """thread_id 격리: tool_call_history가 thread별로 독립인지 검증."""
+
+    @pytest.mark.asyncio
+    async def test_different_thread_ids_have_independent_history(self, session_store):
+        """서로 다른 thread_id로 2회 실행 → 각각 history length=1."""
+        call = AIMessage(
+            content="",
+            tool_calls=[{"name": "api_lookup", "args": {"query": "q"}, "id": "c1"}],
+        )
+        final = AIMessage(content="답변.")
+
+        # Run 1
+        llm1 = StubLLM(responses=[call, final])
+        tools = [make_test_tool("api_lookup")]
+        graph1 = _make_v3_graph(llm1, tools, session_store)
+        config1 = _make_config()  # new thread_id
+        state1 = _initial_state("테스트 1")
+        result1 = await graph1.ainvoke(state1, config1)
+
+        # Run 2
+        llm2 = StubLLM(responses=[call, final])
+        graph2 = _make_v3_graph(llm2, tools, session_store)
+        config2 = _make_config()  # different thread_id
+        state2 = _initial_state("테스트 2")
+        result2 = await graph2.ainvoke(state2, config2)
+
+        assert len(result1.get("tool_call_history", [])) == 1
+        assert len(result2.get("tool_call_history", [])) == 1
+
+    @pytest.mark.asyncio
+    async def test_same_thread_id_accumulates_history(self, session_store):
+        """동일 thread_id로 2회 실행 → _append_list로 history 누적됨을 문서화."""
+        call = AIMessage(
+            content="",
+            tool_calls=[{"name": "api_lookup", "args": {"query": "q"}, "id": "c1"}],
+        )
+        final = AIMessage(content="답변.")
+
+        tools = [make_test_tool("api_lookup")]
+        graph = _make_v3_graph(StubLLM(responses=[call, final, call, final]), tools, session_store)
+        config = _make_config("shared-thread")
+
+        # Run 1
+        state1 = _initial_state("테스트 1")
+        result1 = await graph.ainvoke(state1, config)
+        assert len(result1.get("tool_call_history", [])) == 1
+
+        # Run 2 with same config (same thread_id → same checkpoint)
+        state2 = _initial_state("테스트 2")
+        result2 = await graph.ainvoke(state2, config)
+        # _append_list causes accumulation
+        history = result2.get("tool_call_history", [])
+        assert len(history) >= 2, f"Expected accumulation with same thread_id, got {len(history)}"
+
+
+# ---------------------------------------------------------------------------
+# TestV3ToolFailureReporting
+# ---------------------------------------------------------------------------
+
+
+class TestV3ToolFailureReporting:
+    """도구 실행 실패 시 tool_call_history 기록 검증."""
+
+    @pytest.mark.asyncio
+    async def test_tool_failure_recorded_as_success_false(self, session_store):
+        """도구가 {"success": false} 반환 → history.success=False."""
+        call = AIMessage(
+            content="",
+            tool_calls=[{"name": "fail_tool", "args": {"query": "q"}, "id": "c1"}],
+        )
+        final = AIMessage(content="실패 후 답변.")
+        llm = StubLLM(responses=[call, final])
+        tools = [make_failing_tool("fail_tool")]
+
+        graph = _make_v3_graph(llm, tools, session_store)
+        result = await graph.ainvoke(_initial_state("실패 테스트"), _make_config())
+
+        history = result.get("tool_call_history", [])
+        assert len(history) >= 1
+        assert history[0]["tool"] == "fail_tool"
+        assert history[0]["success"] is False
+
+    @pytest.mark.asyncio
+    async def test_tool_non_json_response_defaults_success_true(self, session_store):
+        """도구가 plain text 반환 → JSON parse 실패 → success=True (낙관적 기본값)."""
+        call = AIMessage(
+            content="",
+            tool_calls=[{"name": "text_tool", "args": {"query": "q"}, "id": "c1"}],
+        )
+        final = AIMessage(content="텍스트 도구 후 답변.")
+        llm = StubLLM(responses=[call, final])
+        tools = [make_plain_text_tool("text_tool")]
+
+        graph = _make_v3_graph(llm, tools, session_store)
+        result = await graph.ainvoke(_initial_state("텍스트 테스트"), _make_config())
+
+        history = result.get("tool_call_history", [])
+        assert len(history) >= 1
+        assert history[0]["tool"] == "text_tool"
+        assert history[0]["success"] is True  # optimistic default on parse failure
+
+    @pytest.mark.asyncio
+    async def test_tool_exception_creates_error_tool_message(self, session_store):
+        """도구 실행 중 예외 → ToolMessage에 error JSON 기록."""
+        call = AIMessage(
+            content="",
+            tool_calls=[{"name": "error_tool", "args": {"query": "q"}, "id": "c1"}],
+        )
+        final = AIMessage(content="예외 후 답변.")
+        llm = StubLLM(responses=[call, final])
+
+        # 예외를 발생시키는 도구
+        async def _raise(query: str) -> str:
+            raise RuntimeError("도구 내부 오류")
+
+        error_tool = StructuredTool.from_function(
+            coroutine=_raise,
+            name="error_tool",
+            description="예외 도구",
+            args_schema=SimpleInput,
+        )
+
+        graph = _make_v3_graph(llm, [error_tool], session_store)
+        result = await graph.ainvoke(_initial_state("예외 테스트"), _make_config())
+
+        # ToolMessage에 오류가 포함되어 있어야 한다
+        tool_msgs = [m for m in result["messages"] if isinstance(m, ToolMessage)]
+        assert len(tool_msgs) >= 1
+        assert "오류" in tool_msgs[0].content or "error" in tool_msgs[0].content.lower()
+
+
+# ---------------------------------------------------------------------------
+# TestV3EvidenceCollection
+# ---------------------------------------------------------------------------
+
+
+class TestV3EvidenceCollection:
+    """synthesize 노드의 evidence 수집 검증."""
+
+    @pytest.mark.asyncio
+    async def test_evidence_items_collected_from_tool_messages(self, session_store):
+        """ToolMessage의 evidence.items가 evidence_items로 수집된다."""
+        call = AIMessage(
+            content="",
+            tool_calls=[{"name": "api_lookup", "args": {"query": "민원"}, "id": "c1"}],
+        )
+        final = AIMessage(content="근거 기반 답변.")
+        llm = StubLLM(responses=[call, final])
+        tools = [make_test_tool("api_lookup")]
+
+        graph = _make_v3_graph(llm, tools, session_store)
+        result = await graph.ainvoke(_initial_state("evidence 테스트"), _make_config())
+
+        evidence = result.get("evidence_items", [])
+        assert len(evidence) >= 1
+        assert evidence[0].get("source") == "api_lookup"
+
+    @pytest.mark.asyncio
+    async def test_evidence_max_10_items(self, session_store):
+        """evidence_items는 최대 10개로 잘린다."""
+
+        # 15개의 evidence item을 반환하는 도구
+        async def _many_evidence(query: str) -> str:
+            items = [
+                {"source": f"src_{i}", "text": f"evidence {i}", "score": 0.9} for i in range(15)
+            ]
+            return json.dumps(
+                {
+                    "success": True,
+                    "context_text": "many results",
+                    "evidence": {"items": items},
+                },
+                ensure_ascii=False,
+            )
+
+        many_tool = StructuredTool.from_function(
+            coroutine=_many_evidence,
+            name="many_tool",
+            description="다수 결과 도구",
+            args_schema=SimpleInput,
+        )
+
+        call = AIMessage(
+            content="",
+            tool_calls=[{"name": "many_tool", "args": {"query": "q"}, "id": "c1"}],
+        )
+        final = AIMessage(content="결과 답변.")
+        llm = StubLLM(responses=[call, final])
+
+        graph = _make_v3_graph(llm, [many_tool], session_store)
+        result = await graph.ainvoke(_initial_state("max evidence 테스트"), _make_config())
+
+        evidence = result.get("evidence_items", [])
+        assert len(evidence) <= 10, f"Expected max 10 evidence items, got {len(evidence)}"

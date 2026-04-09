@@ -63,38 +63,48 @@ jobs:
         env:
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_SHA256: ${{ inputs.pypi_sha256 }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             VERSION="${INPUT_VERSION}"
             SHA256="${INPUT_SHA256}"
             PYPI_URL="https://files.pythonhosted.org/packages/source/G/GovOn/GovOn-${VERSION}.tar.gz"
           else
-            # workflow_run 트리거: PyPI에서 최신 릴리즈 정보 자동 조회
+            # workflow_run 트리거: PyPI에서 최신 릴리즈 정보를 파일로 안전하게 추출
             pip install requests --quiet
-            eval "$(python - <<'EOF'
-          import requests, sys
+            python3 - <<'PYEOF' > /tmp/pypi_info.env
+import requests, sys, re
 
-          resp = requests.get("https://pypi.org/pypi/GovOn/json", timeout=30)
-          resp.raise_for_status()
-          data = resp.json()
+resp = requests.get("https://pypi.org/pypi/govon/json", timeout=30)
+resp.raise_for_status()
+data = resp.json()
 
-          version = data["info"]["version"]
-          releases = data["releases"][version]
+version = data["info"]["version"]
+releases = data["releases"][version]
 
-          # sdist(tar.gz) 파일 선택
-          sdist = next((r for r in releases if r["packagetype"] == "sdist"), None)
-          if not sdist:
-              print("echo 'ERROR: sdist not found on PyPI' >&2; exit 1", file=sys.stderr)
-              sys.exit(1)
+sdist = next((r for r in releases if r["packagetype"] == "sdist"), None)
+if not sdist:
+    print("ERROR: sdist not found on PyPI", file=sys.stderr)
+    sys.exit(1)
 
-          url = sdist["url"]
-          sha256 = sdist["digests"]["sha256"]
+url = sdist["url"]
+sha256 = sdist["digests"]["sha256"]
 
-          print(f"VERSION={version}")
-          print(f"SHA256={sha256}")
-          print(f"PYPI_URL={url}")
-          EOF
-          )"
+# 값 검증 후 출력
+if not re.match(r'^[0-9]+\.[0-9]+\.[0-9]+', version):
+    print(f"ERROR: invalid version: {version}", file=sys.stderr)
+    sys.exit(1)
+if not re.match(r'^[a-f0-9]{64}$', sha256):
+    print(f"ERROR: invalid sha256: {sha256}", file=sys.stderr)
+    sys.exit(1)
+
+print(f"VERSION={version}")
+print(f"SHA256={sha256}")
+print(f"PYPI_URL={url}")
+PYEOF
+            # eval 대신 source로 안전하게 로드
+            source /tmp/pypi_info.env
+            rm -f /tmp/pypi_info.env
           fi
 
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
@@ -112,14 +122,15 @@ jobs:
           # url 업데이트
           sed -i "s|url \"https://files.pythonhosted.org/packages/source/G/GovOn/.*\"|url \"${PYPI_URL}\"|" "$FORMULA"
 
-          # sha256 플레이스홀더 또는 기존 값 업데이트
-          sed -i "s|sha256 \".*\"|sha256 \"${SHA256}\"|" "$FORMULA"
+          # 메인 패키지 sha256만 업데이트 (resource 블록의 sha256은 건드리지 않음)
+          # 메인 stanza는 url 바로 다음 줄에 위치
+          sed -i "/^  url /{ n; s|sha256 \".*\"|sha256 \"${SHA256}\"| }" "$FORMULA"
 
-          # version 업데이트
+          # version 업데이트 (메인 stanza만)
           sed -i "s|version \".*\"|version \"${VERSION}\"|" "$FORMULA"
 
-          # TODO 주석 제거 (실제 값으로 교체된 경우)
-          sed -i '/# TODO: PyPI 배포 후 업데이트$/d' "$FORMULA"
+          # 메인 url 줄의 TODO 주석만 제거
+          sed -i '/^  url /{n; /# TODO/d}' "$FORMULA"
 
           echo "=== Updated formula ==="
           cat "$FORMULA"

@@ -28,7 +28,10 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
+
+      - name: Upgrade npm (Trusted Publishing requires 11.5.1+)
+        run: npm install -g npm@latest
 
       - name: Validate package.json
         run: node -e "const p = require('./package.json'); console.log('name:', p.name, '/ version:', p.version);"
@@ -52,18 +55,21 @@ jobs:
     if: github.ref_type == 'tag'
     permissions:
       contents: read
-      id-token: write  # npm provenance
+      id-token: write  # OIDC Trusted Publishing
     defaults:
       run:
         working-directory: packages/npm
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup Node.js (npm registry)
+      - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Upgrade npm (Trusted Publishing requires 11.5.1+)
+        run: npm install -g npm@latest
 
       - name: Extract version from tag
         id: version
@@ -84,10 +90,9 @@ jobs:
             npm version "$TAG_VERSION" --no-git-tag-version
           fi
 
-      - name: Publish to npm
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish with Trusted Publishing
+        run: npm publish --provenance --access public
+        # NPM_TOKEN 불필요 — OIDC Trusted Publishing 사용
 
       - name: Publish Summary
         run: |
@@ -97,4 +102,4 @@ jobs:
           echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| npm pack dry-run | Done (validate job) |" >> $GITHUB_STEP_SUMMARY
           echo "| npm publish | Done |" >> $GITHUB_STEP_SUMMARY
-          echo "| Provenance | Enabled |" >> $GITHUB_STEP_SUMMARY
+          echo "| Provenance | OIDC Trusted Publishing |" >> $GITHUB_STEP_SUMMARY

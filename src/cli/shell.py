@@ -549,11 +549,11 @@ def main() -> None:
     else:
         # Interactive REPL mode
         if not args.no_banner:
-            from importlib.metadata import version as pkg_version
+            from importlib.metadata import PackageNotFoundError, version as pkg_version
 
             try:
                 ver = pkg_version("govon")
-            except Exception:
+            except PackageNotFoundError:
                 ver = "dev"
             mode = "remote" if runtime_url else "local"
             render_banner(version=ver, mode=mode, runtime_url=runtime_url)

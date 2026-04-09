@@ -74,7 +74,7 @@ def _mode_label(mode: str, runtime_url: str | None) -> str:
     if mode == "remote" and runtime_url:
         try:
             host = urlparse(runtime_url).hostname or runtime_url
-        except Exception:
+        except (ValueError, AttributeError):
             host = runtime_url
         return f"원격: {host}"
     if mode == "remote":

@@ -422,14 +422,17 @@ curl http://localhost:8000/health
 | `healthy` | vLLM 연결 정상 (또는 `SKIP_MODEL_LOAD=true`) |
 | `degraded` | vLLM 연결 실패 (FastAPI는 동작하지만 추론 불가) |
 
-상세 헬스체크(`HealthChecker` 클래스)는 컴포넌트별 상태를 확인한다.
+`/health` 엔드포인트는 다음 상태를 반환한다:
 
-| 컴포넌트 | 체크 내용 |
-|---------|---------|
-| `model` | vLLM 서버 `/health` 응답 |
-| `faiss_index` | FAISS 인덱스 로드 상태 |
-| `bm25_index` | BM25 인덱스 로드 상태 |
-| `database` | SQLite 세션 저장소 접근 |
+| 필드 | 내용 |
+|------|------|
+| `status` | `healthy` 또는 `degraded` |
+| `profile` | 서빙 프로필 (`local`, `container` 등) |
+| `model` | 로드된 모델 경로 |
+| `vllm_connected` | vLLM 서버 연결 상태 (boolean) |
+| `agents_loaded` | 로드된 에이전트 목록 (array) |
+| `feature_flags` | 활성화된 기능 플래그 (object) |
+| `session_store` | 세션 저장소 드라이버 정보 (object) |
 
 ### Docker 헬스체크
 

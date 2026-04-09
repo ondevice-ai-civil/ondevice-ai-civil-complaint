@@ -41,10 +41,10 @@ jobs:
 
       - name: Compose 설정 검증
         run: |
-          docker compose -f docker-compose.ci.yml config > /tmp/govon-compose-ci.yaml
-          docker compose -f docker-compose.yml config > /tmp/govon-compose-online.yaml
-          docker compose --env-file /tmp/govon-offline.env -f docker-compose.offline.yml config > /tmp/govon-compose-offline.yaml
-          docker compose --env-file /tmp/govon-prod.env -f docker-compose.prod.yml --profile blue --profile router config > /tmp/govon-compose-prod.yaml
+          docker compose -f deploy/compose/docker-compose.ci.yml config > /tmp/govon-compose-ci.yaml
+          docker compose -f deploy/compose/docker-compose.yml config > /tmp/govon-compose-online.yaml
+          docker compose --env-file /tmp/govon-offline.env -f deploy/compose/docker-compose.offline.yml config > /tmp/govon-compose-offline.yaml
+          docker compose --env-file /tmp/govon-prod.env -f deploy/compose/docker-compose.prod.yml --profile blue --profile router config > /tmp/govon-compose-prod.yaml
 
   compose-smoke:
     needs: compose-config
@@ -78,13 +78,13 @@ jobs:
           status=1
           cleanup() {
             if [ "$status" -ne 0 ]; then
-              docker compose -f docker-compose.ci.yml logs --no-color || true
+              docker compose -f deploy/compose/docker-compose.ci.yml logs --no-color || true
             fi
-            docker compose -f docker-compose.ci.yml down --remove-orphans || true
+            docker compose -f deploy/compose/docker-compose.ci.yml down --remove-orphans || true
           }
           trap cleanup EXIT
 
-          docker compose -f docker-compose.ci.yml up -d --build
+          docker compose -f deploy/compose/docker-compose.ci.yml up -d --build
 
           for i in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:18000/health > /tmp/govon-health.json 2>/dev/null; then
@@ -152,13 +152,13 @@ jobs:
           status=1
           cleanup() {
             if [ "$status" -ne 0 ]; then
-              docker compose --env-file /tmp/govon-gpu.env -f docker-compose.yml logs --no-color || true
+              docker compose --env-file /tmp/govon-gpu.env -f deploy/compose/docker-compose.yml logs --no-color || true
             fi
-            docker compose --env-file /tmp/govon-gpu.env -f docker-compose.yml down --remove-orphans || true
+            docker compose --env-file /tmp/govon-gpu.env -f deploy/compose/docker-compose.yml down --remove-orphans || true
           }
           trap cleanup EXIT
 
-          docker compose --env-file /tmp/govon-gpu.env -f docker-compose.yml up -d --build
+          docker compose --env-file /tmp/govon-gpu.env -f deploy/compose/docker-compose.yml up -d --build
 
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:18001/health > /tmp/govon-gpu-health.json 2>/dev/null; then

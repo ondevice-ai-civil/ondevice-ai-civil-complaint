@@ -103,7 +103,12 @@ def _detect_compose_command() -> list[str] | None:
 def _find_compose_file() -> Path | None:
     """docker-compose.yml 파일을 현재 디렉토리 또는 프로젝트 루트에서 찾는다."""
     cwd = Path.cwd()
-    for candidate in [cwd / "docker-compose.yml", cwd / "docker-compose.yaml"]:
+    for candidate in [
+        cwd / "deploy" / "compose" / "docker-compose.yml",
+        cwd / "deploy" / "compose" / "docker-compose.yaml",
+        cwd / "docker-compose.yml",
+        cwd / "docker-compose.yaml",
+    ]:
         if candidate.is_file():
             return candidate
     return None

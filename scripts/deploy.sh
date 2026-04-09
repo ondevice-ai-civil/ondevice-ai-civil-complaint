@@ -13,7 +13,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-COMPOSE_FILE="${PROJECT_DIR}/docker-compose.prod.yml"
+COMPOSE_FILE="${PROJECT_DIR}/deploy/compose/docker-compose.prod.yml"
 STATE_FILE="${PROJECT_DIR}/.deploy-state"
 HEALTH_TIMEOUT=120
 HEALTH_INTERVAL=5

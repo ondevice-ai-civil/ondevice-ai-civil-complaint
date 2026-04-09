@@ -17,7 +17,7 @@ inputs:
   working-directory:
     description: 'Directory to run npm ci in (must contain package.json and package-lock.json)'
     required: false
-    default: '.'
+    default: 'e2e'
 runs:
   using: 'composite'
   steps:
@@ -25,6 +25,7 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
         cache: 'npm'
+        cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
     - name: Install npm dependencies
       shell: bash
       working-directory: ${{ inputs.working-directory }}
@@ -35,14 +36,16 @@ runs:
       id: playwright-cache
       with:
         path: ~/.cache/ms-playwright
-        key: playwright-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
+        key: playwright-${{ runner.os }}-${{ hashFiles('e2e/package-lock.json') }}
         restore-keys: |
           playwright-${{ runner.os }}-
     - name: Install Playwright browsers
       if: inputs.install-browsers == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: npx playwright install --with-deps chromium
     - name: Install Playwright system deps only (cache hit)
       if: inputs.install-browsers == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: npx playwright install-deps chromium

@@ -38,9 +38,9 @@ jobs:
         with:
           filters: |
             docker:
-              - 'Dockerfile'
+              - 'deploy/docker/Dockerfile'
               - '.dockerignore'
-              - 'docker-compose*.yml'
+              - 'deploy/compose/docker-compose*.yml'
               - 'src/**'
               - 'pyproject.toml'
               - 'uv.lock'
@@ -128,6 +128,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
+          file: deploy/docker/Dockerfile
           push: true
           tags: ${{ steps.build-metadata.outputs.tags }}
           cache-from: type=gha

@@ -403,9 +403,10 @@ GovOn/
 ├── .github/
 │   └── workflows/                  # CI/CD 워크플로우 21개
 ├── pyproject.toml                  # 패키지 설정 (v1.0.1)
-├── Dockerfile                      # 컨테이너 빌드
-├── docker-compose.yml              # 로컬 개발 환경
-└── .env.example                    # 환경변수 템플릿
+├── deploy/
+│   ├── docker/Dockerfile           # 컨테이너 빌드
+│   ├── compose/docker-compose.yml  # 로컬 개발 환경
+│   └── env/.env.example            # 환경변수 템플릿
 ```
 
 ---
@@ -414,7 +415,7 @@ GovOn/
 
 ### 필수 환경변수
 
-`.env.example` 기반 환경변수 레퍼런스이다. `cp .env.example .env` 후 필수 값을 수정한다.
+`deploy/env/.env.example` 기반 환경변수 레퍼런스이다. `cp deploy/env/.env.example .env` 후 필수 값을 수정한다.
 
 #### 서버 설정
 

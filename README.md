@@ -192,7 +192,7 @@ export GOVON_RUNTIME_URL=https://umyunsang-govon-runtime.hf.space
 export API_KEY=your-api-key
 ```
 
-See [`.env.example`](.env.example) for the full list of server-side configuration options.
+See [`deploy/env/.env.example`](deploy/env/.env.example) for the full list of server-side configuration options.
 
 ## Documentation
 

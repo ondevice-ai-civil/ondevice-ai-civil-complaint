@@ -58,11 +58,11 @@ GPU가 탑재된 서버에서 Docker로 직접 실행할 수 있다.
 
 ```bash
 # 1. 환경변수 파일 준비
-cp .env.example .env
+cp deploy/env/.env.example .env
 # .env 파일에서 API_KEY, MODEL_PATH 등 수정
 
 # 2. Docker Compose로 실행
-docker compose up -d --build
+docker compose -f deploy/compose/docker-compose.yml up -d --build
 ```
 
 서버가 `http://localhost:8000` 에서 기동된다. CLI에서 연결하려면 다음과 같이 설정한다.

@@ -101,8 +101,8 @@ playwright/.cache/
 
 # Node.js (Playwright)
 node_modules/
-!package.json
-!package-lock.json
+!e2e/package.json
+!e2e/package-lock.json
 # Tool contexts
 .gemini/
 .codex/

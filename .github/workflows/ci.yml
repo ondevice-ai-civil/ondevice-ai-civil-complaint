@@ -44,15 +44,12 @@ jobs:
             runtime_contract:
               - 'src/inference/**'
               - 'e2e/**'
-              - 'playwright.config.ts'
-              - 'package.json'
-              - 'package-lock.json'
               - '.github/actions/**'
               - '.github/workflows/ci.yml'
             packaging:
-              - 'Dockerfile'
+              - 'deploy/docker/Dockerfile'
               - '.dockerignore'
-              - 'docker-compose*.yml'
+              - 'deploy/compose/docker-compose*.yml'
               - 'pyproject.toml'
               - 'uv.lock'
               - '.github/workflows/docker-publish.yml'
@@ -175,24 +172,28 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+          cache-dependency-path: e2e/package-lock.json
 
       - name: Cache Playwright browsers
         uses: actions/cache@v5
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: playwright-${{ runner.os }}-${{ hashFiles('e2e/package-lock.json') }}
 
       - name: Install Node dependencies
         run: npm ci
+        working-directory: e2e
 
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
+        working-directory: e2e
 
       - name: Install Playwright deps (cache hit)
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
+        working-directory: e2e
 
       - name: Run shell-first runtime contract tests
         env:
@@ -205,12 +206,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          mkdir -p test-results playwright-report
+          mkdir -p e2e/test-results e2e/playwright-report
 
           .venv/bin/python -m uvicorn src.inference.api_server:app \
             --host 127.0.0.1 \
             --port 8000 \
-            > test-results/runtime-server.log 2>&1 &
+            > e2e/test-results/runtime-server.log 2>&1 &
           SERVER_PID=$!
 
           cleanup() {
@@ -229,7 +230,7 @@ jobs:
           done
 
           curl -fsS http://127.0.0.1:8000/health > /dev/null
-          npx playwright test
+          cd e2e && npx playwright test
 
       - name: Upload runtime contract artifacts
         if: ${{ !cancelled() }}
@@ -237,8 +238,8 @@ jobs:
         with:
           name: runtime-contract-report
           path: |
-            test-results/
-            playwright-report/
+            e2e/test-results/
+            e2e/playwright-report/
           retention-days: 7
 
   build:

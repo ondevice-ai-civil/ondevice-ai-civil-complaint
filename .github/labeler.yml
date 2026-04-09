@@ -58,10 +58,10 @@ infra:
   - changed-files:
     - any-glob-to-any-file:
       - ".github/**"
-      - "Dockerfile"
-      - "Dockerfile.*"
-      - "docker-compose*.yml"
-      - "docker-compose*.yaml"
+      - "deploy/docker/Dockerfile"
+      - "deploy/docker/Dockerfile.*"
+      - "deploy/compose/docker-compose*.yml"
+      - "deploy/compose/docker-compose*.yaml"
       - ".dockerignore"
       - "**/*.sh"
       - "requirements*.txt"

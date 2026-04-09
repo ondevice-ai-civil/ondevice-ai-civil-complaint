@@ -9,12 +9,12 @@ services:
     ports:
       - "${HOST_PORT:-8000}:8000"
     volumes:
-      - ./models:/app/models
-      - ./data:/app/data
-      - ./agents:/app/agents
-      - ./configs:/app/configs
-      - ./logs:/var/log/govon
-      - ./.cache:/app/.cache
+      - ../../models:/app/models
+      - ../../data:/app/data
+      - ../../agents:/app/agents
+      - ../../config:/app/config
+      - ../../logs:/var/log/govon
+      - ../../.cache:/app/.cache
     environment:
       SERVING_PROFILE: ${SERVING_PROFILE:-airgap}
       HOST: 0.0.0.0

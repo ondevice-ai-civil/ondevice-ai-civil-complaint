@@ -8,8 +8,8 @@
 # Space 필수 환경변수 (HF Space Settings > Variables):
 #   ADAPTER_PATHS = public_admin=umyunsang/govon-civil-adapter,legal=siwo/govon-legal-adapter
 #   SERVING_PROFILE = container
-#   GPU_UTILIZATION = 0.90       (기본값, Dockerfile.hfspace 에 설정됨)
-#   MAX_MODEL_LEN = 8192         (기본값, Dockerfile.hfspace 에 설정됨)
+#   GPU_UTILIZATION = 0.90       (기본값, deploy/docker/Dockerfile.hfspace 에 설정됨)
+#   MAX_MODEL_LEN = 8192         (기본값, deploy/docker/Dockerfile.hfspace 에 설정됨)
 #
 # Multi-LoRA 서빙 검증:
 #   GOVON_RUNTIME_URL=https://<space-subdomain>.hf.space \
@@ -32,7 +32,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'Dockerfile.hfspace'
+      - 'deploy/docker/Dockerfile.hfspace'
       - 'src/**'
       - 'requirements.txt'
 
@@ -96,8 +96,8 @@ jobs:
           git config user.name "github-actions"
           git config http.extraHeader "Authorization: Bearer $HF_TOKEN"
 
-          # Dockerfile.hfspace → Space의 Dockerfile로 복사
-          cp $GITHUB_WORKSPACE/Dockerfile.hfspace Dockerfile
+          # deploy/docker/Dockerfile.hfspace → Space의 Dockerfile로 복사
+          cp $GITHUB_WORKSPACE/deploy/docker/Dockerfile.hfspace Dockerfile
           cp $GITHUB_WORKSPACE/requirements.txt requirements.txt
           rsync -a --delete $GITHUB_WORKSPACE/src/ src/
 

@@ -32,8 +32,123 @@ from .state import ApprovalStatus, GovOnGraphState
 
 _MAX_CONSECUTIVE_REJECTIONS = 2
 
+# ---------------------------------------------------------------------------
+# Context management constants (프로덕션 표준: Claude API/Code/Codex 패턴)
+# ---------------------------------------------------------------------------
+
+# Tool Result Clearing: iteration N+에서 오래된 ToolMessage를 placeholder로 대체
+_TOOL_CLEAR_AFTER_ITERATION = 2  # iteration 2부터 clearing 적용
+_TOOL_KEEP_RECENT = 2  # 최근 2개 ToolMessage content 보존
+
+# Conversation Summarization: 멀티턴에서 오래된 턴을 요약으로 압축
+_SUMMARY_THRESHOLD_RATIO = 0.6  # older 토큰이 예산의 60% 초과 시 요약 발동
+
+# 메시지 토큰 예산
+_MAX_MESSAGE_TOKENS = 4500
+_KEEP_RECENT = 6
+_AGENT_INPUT_BUDGET = 4500
+
 if TYPE_CHECKING:
     from src.inference.session_context import SessionStore
+
+
+# ---------------------------------------------------------------------------
+# Token estimation (모듈 레벨 — session_load + agent_node 모두 사용)
+# ---------------------------------------------------------------------------
+
+
+def _estimate_tokens(msg: Any) -> int:
+    """메시지의 대략적 토큰 수 추정.
+
+    한국어: 1글자 ≈ 2-3 토큰 (보수적으로 2 적용)
+    영어/JSON: 1문자 ≈ 0.75 토큰
+    ToolMessage는 JSON이 많으므로 별도 계수.
+    """
+    content = getattr(msg, "content", "") or ""
+    if isinstance(content, str):
+        if getattr(msg, "type", "") == "tool":
+            return max(len(content), 10)  # JSON: ~1 token/char
+        return max(len(content) * 2, 10)  # 한국어: ~2 tokens/char
+    return 100
+
+
+# ---------------------------------------------------------------------------
+# Tool Result Clearing (Claude API clear_tool_uses 패턴)
+# ---------------------------------------------------------------------------
+
+
+def _clear_old_tool_results(messages: list, iteration: int) -> list:
+    """이전 iteration의 ToolMessage content를 placeholder로 대체.
+
+    Claude API clear_tool_uses 패턴:
+    - tool_use 블록(호출 기록)은 유지, tool_result content만 교체
+    - LLM이 "이 도구를 호출했지만 결과는 제거됨" 인지 가능
+    - state 변경 없음 (LLM 입력 전용 변환)
+    """
+    if iteration < _TOOL_CLEAR_AFTER_ITERATION:
+        return messages
+
+    from langchain_core.messages import ToolMessage
+
+    tool_indices = [i for i, m in enumerate(messages) if getattr(m, "type", "") == "tool"]
+
+    if len(tool_indices) <= _TOOL_KEEP_RECENT:
+        return messages
+
+    indices_to_clear = set(tool_indices[:-_TOOL_KEEP_RECENT])
+
+    result = []
+    for i, msg in enumerate(messages):
+        if i in indices_to_clear:
+            cleared = ToolMessage(
+                content="[cleared to save context]",
+                tool_call_id=getattr(msg, "tool_call_id", ""),
+                name=getattr(msg, "name", ""),
+            )
+            result.append(cleared)
+        else:
+            result.append(msg)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Extractive Summarization (Claude Code + LangMem 패턴, LLM 호출 없음)
+# ---------------------------------------------------------------------------
+
+
+def _extractive_summarize(older_messages: list) -> str:
+    """룰 기반으로 오래된 메시지를 요약.
+
+    Claude Code의 9-section summary를 GovOn 규모에 맞게 축소.
+    LLM 호출 없이 결정적(deterministic) 요약 생성.
+
+    각 메시지 타입별 처리:
+    - HumanMessage: 질문 원문 첫 100자
+    - AIMessage(tool_calls): 호출된 도구 이름 목록
+    - AIMessage(no tools): 답변 첫 150자
+    - ToolMessage: 도구 이름 + 성공/실패
+    """
+    lines = []
+    for msg in older_messages:
+        msg_type = getattr(msg, "type", "")
+        content = getattr(msg, "content", "") or ""
+        if msg_type == "human":
+            lines.append(f"[User] {content[:100]}")
+        elif msg_type == "ai":
+            tc = getattr(msg, "tool_calls", [])
+            if tc:
+                names = ", ".join(t.get("name", "?") for t in tc)
+                lines.append(f"[Tool calls: {names}]")
+            else:
+                lines.append(f"[Response] {content[:150]}")
+        elif msg_type == "tool":
+            name = getattr(msg, "name", "tool")
+            try:
+                status = "fail" if json.loads(content).get("success") is False else "ok"
+            except (json.JSONDecodeError, TypeError):
+                status = "done"
+            lines.append(f"[Tool result: {name} - {status}]")
+    return "[Previous conversation summary]\n" + "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -65,43 +180,14 @@ _SYSTEM_PROMPT = _BASE_SYSTEM_PROMPT
 
 
 def make_session_load_node(session_store: "SessionStore"):
-    """세션 로드 + 컨텍스트 윈도우 관리 노드 팩토리.
+    """세션 로드 + 컨텍스트 윈도우 관리 + 대화 요약 노드 팩토리.
 
     멀티턴 대화에서 messages가 누적되면 LLM 컨텍스트 윈도우(max_model_len=8192)를
-    초과할 수 있다. session_load에서 토큰 예산 기반으로 오래된 메시지를 정리한다.
+    초과할 수 있다. session_load에서 다음 순서로 컨텍스트를 관리한다:
 
-    EXAONE-4.0-32B-AWQ 스펙: max_position_embeddings=131072
-    현재 vLLM 설정: --max-model-len=8192 (GPU 메모리 제약)
-
-    토큰 예산 분배 (max_model_len=8192):
-      시스템 프롬프트:     ~500 토큰
-      도구 스키마 (7개):   ~1,000 토큰
-      대화 이력 (messages): ~4,500 토큰
-      LLM 응답 (max_tokens): ~1,024 토큰
-      안전 마진:           ~168 토큰
+    1. older 메시지 토큰이 예산 60% 초과 → extractive summary로 압축
+    2. 그 외 → 토큰 예산 기반 RemoveMessage trim
     """
-
-    # 메시지에 할당 가능한 토큰 예산
-    # max_model_len(8192) - max_tokens(1024) - overhead(2500) - margin(168) = 4500
-    # 오버헤드: 시스템 프롬프트(~600) + 도구 스키마 7개(~1500) + 안전 마진(~400) = ~2500
-    MAX_MESSAGE_TOKENS = 4500
-    # 최근 N개 메시지는 무조건 보존 (현재 턴의 맥락 유지)
-    KEEP_RECENT = 6
-
-    def _estimate_tokens(msg: Any) -> int:
-        """메시지의 대략적 토큰 수 추정.
-
-        한국어: 1글자 ≈ 2-3 토큰 (보수적으로 2 적용)
-        영어/JSON: 1문자 ≈ 0.75 토큰
-        ToolMessage는 JSON이 많으므로 별도 계수.
-        """
-        content = getattr(msg, "content", "") or ""
-        if isinstance(content, str):
-            # ToolMessage는 JSON(영어/숫자 위주), 나머지는 한국어 위주
-            if getattr(msg, "type", "") == "tool":
-                return max(len(content), 10)  # JSON: ~1 token/char
-            return max(len(content) * 2, 10)  # 한국어: ~2 tokens/char
-        return 100
 
     async def session_load_node(state: GovOnGraphState) -> dict:
         t0 = time.monotonic()
@@ -110,40 +196,60 @@ def make_session_load_node(session_store: "SessionStore"):
 
         result: Dict[str, Any] = {}
 
-        # 메시지가 적으면 관리 불필요
-        if len(messages) > KEEP_RECENT:
-            recent = messages[-KEEP_RECENT:]
-            older = messages[:-KEEP_RECENT]
+        if len(messages) > _KEEP_RECENT:
+            recent = messages[-_KEEP_RECENT:]
+            older = messages[:-_KEEP_RECENT]
 
-            recent_tokens = sum(_estimate_tokens(m) for m in recent)
-            remaining_budget = MAX_MESSAGE_TOKENS - recent_tokens
+            older_tokens = sum(_estimate_tokens(m) for m in older)
 
-            if remaining_budget <= 0:
-                trimmed = recent
-            else:
-                kept_older: List = []
-                for msg in reversed(older):
-                    tokens = _estimate_tokens(msg)
-                    if remaining_budget - tokens < 0:
-                        break
-                    kept_older.insert(0, msg)
-                    remaining_budget -= tokens
-                trimmed = kept_older + recent
-
-            if len(trimmed) < len(messages):
+            # 요약 발동: older 토큰이 예산의 60% 초과 시 extractive summary 적용
+            if older_tokens > _MAX_MESSAGE_TOKENS * _SUMMARY_THRESHOLD_RATIO:
+                summary_text = _extractive_summarize(older)
+                summary_msg = SystemMessage(content=summary_text)
                 logger.info(
-                    f"[session_load] context window trim: "
-                    f"{len(messages)} → {len(trimmed)} messages"
+                    f"[session_load] conversation summary: "
+                    f"{len(older)} older messages → extractive summary "
+                    f"({older_tokens} → {_estimate_tokens(summary_msg)} est tokens)"
                 )
-                # RemoveMessage로 오래된 메시지를 state에서 제거
                 from langchain_core.messages import RemoveMessage
 
-                trimmed_ids = {getattr(m, "id", None) for m in trimmed} - {None}
                 removals = []
-                for msg in messages:
+                for msg in older:
                     msg_id = getattr(msg, "id", None)
-                    if msg_id and msg_id not in trimmed_ids:
+                    if msg_id:
                         removals.append(RemoveMessage(id=msg_id))
+                if removals:
+                    result["messages"] = removals
+            else:
+                # 토큰 예산 기반 trim (기존 로직)
+                recent_tokens = sum(_estimate_tokens(m) for m in recent)
+                remaining_budget = _MAX_MESSAGE_TOKENS - recent_tokens
+
+                if remaining_budget <= 0:
+                    trimmed = recent
+                else:
+                    kept_older: List = []
+                    for msg in reversed(older):
+                        tokens = _estimate_tokens(msg)
+                        if remaining_budget - tokens < 0:
+                            break
+                        kept_older.insert(0, msg)
+                        remaining_budget -= tokens
+                    trimmed = kept_older + recent
+
+                if len(trimmed) < len(messages):
+                    logger.info(
+                        f"[session_load] context window trim: "
+                        f"{len(messages)} → {len(trimmed)} messages"
+                    )
+                    from langchain_core.messages import RemoveMessage
+
+                    trimmed_ids = {getattr(m, "id", None) for m in trimmed} - {None}
+                    removals = []
+                    for msg in messages:
+                        msg_id = getattr(msg, "id", None)
+                        if msg_id and msg_id not in trimmed_ids:
+                            removals.append(RemoveMessage(id=msg_id))
                 if removals:
                     result["messages"] = removals
 
@@ -438,9 +544,6 @@ def make_agent_node_v3(llm, tools: list):
     llm_without_tools = llm
     llm_with_tools = llm.bind_tools(tools)
 
-    # ReAct 루프 내 LLM 입력 토큰 예산 (state는 변경하지 않고 LLM 입력만 트리밍)
-    _AGENT_INPUT_BUDGET = 4500  # 시스템 프롬프트 + 도구 스키마 제외한 메시지 예산
-
     async def agent_node_v3(state: GovOnGraphState) -> dict:
         t0 = time.monotonic()
         messages = list(state.get("messages", []))
@@ -459,15 +562,17 @@ def make_agent_node_v3(llm, tools: list):
         system = SystemMessage(content=system_content)
         active_llm = llm_without_tools if force_answer else llm_with_tools
 
-        # ReAct 루프 내 컨텍스트 방어: LLM 입력만 트리밍 (state 변경 없음)
-        # Codex/Claude Code의 2차 방어선 패턴
-        trimmed_messages = messages
-        total_est = sum(_estimate_tokens(m) for m in messages)
+        # ===== 3단계 컨텍스트 파이프라인 (state 변경 없음, LLM 입력만 가공) =====
+
+        # Stage 1: Tool Result Clearing (Claude API clear_tool_uses 패턴)
+        trimmed_messages = _clear_old_tool_results(messages, iteration)
+
+        # Stage 2: 역순 토큰 예산 trim
+        total_est = sum(_estimate_tokens(m) for m in trimmed_messages)
         if total_est > _AGENT_INPUT_BUDGET:
-            # 최근 메시지 우선 보존, 오래된 것부터 제거
             kept: List = []
             budget = _AGENT_INPUT_BUDGET
-            for msg in reversed(messages):
+            for msg in reversed(trimmed_messages):
                 cost = _estimate_tokens(msg)
                 if budget - cost < 0:
                     break
@@ -475,9 +580,15 @@ def make_agent_node_v3(llm, tools: list):
                 budget -= cost
             trimmed_messages = kept
             logger.info(
-                f"[agent_v3] ReAct trim: {len(messages)} → {len(trimmed_messages)} messages "
-                f"({total_est} → {total_est - budget} est tokens)"
+                f"[agent_v3] Stage 2 trim: {len(messages)} → {len(trimmed_messages)} messages"
             )
+
+        # Stage 3: Hard cap (최후 안전장치)
+        while (
+            sum(_estimate_tokens(m) for m in trimmed_messages) > _AGENT_INPUT_BUDGET
+            and len(trimmed_messages) > 2
+        ):
+            trimmed_messages.pop(0)
 
         response = await active_llm.ainvoke([system] + trimmed_messages)
 

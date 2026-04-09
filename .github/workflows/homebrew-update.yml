@@ -31,7 +31,6 @@ jobs:
 
     permissions:
       contents: write
-      pull-requests: write
 
     steps:
       - name: Checkout repository
@@ -160,20 +159,15 @@ jobs:
                   print(line, end="")
           PYEOF
 
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v8
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "chore: update homebrew formula to ${{ steps.resolve.outputs.version }}"
-          branch: "chore/homebrew-${{ steps.resolve.outputs.version }}"
-          delete-branch: true
-          title: "chore: Homebrew formula v${{ steps.resolve.outputs.version }}"
-          body: |
-            Automated update after PyPI release.
-
-            - Version: `${{ steps.resolve.outputs.version }}`
-            - SHA256: `${{ steps.resolve.outputs.sha256 }}`
-            - Source: `${{ steps.resolve.outputs.pypi_url }}`
-          labels: |
-            chore
-            automated
+      - name: Commit and push directly to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add homebrew/govon.rb
+          if git diff --cached --quiet; then
+            echo "No formula changes to commit"
+          else
+            git commit -m "chore: update homebrew formula to ${{ steps.resolve.outputs.version }}"
+            git push
+            echo "Homebrew formula updated to ${{ steps.resolve.outputs.version }}"
+          fi

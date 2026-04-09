@@ -82,8 +82,9 @@ def make_session_load_node(session_store: "SessionStore"):
     """
 
     # 메시지에 할당 가능한 토큰 예산
-    # max_model_len(8192) - max_tokens(2048) - overhead(1500) - margin(644) = 4000
-    MAX_MESSAGE_TOKENS = 4000
+    # max_model_len(8192) - max_tokens(2048) - overhead(2500) - margin(644) = 3000
+    # 오버헤드: 시스템 프롬프트(~600) + 도구 스키마 7개(~1500) + 안전 마진(~400) = ~2500
+    MAX_MESSAGE_TOKENS = 3000
     # 최근 N개 메시지는 무조건 보존 (현재 턴의 맥락 유지)
     KEEP_RECENT = 6
 

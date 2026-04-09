@@ -80,7 +80,7 @@ jobs:
               -H "Content-Type: application/json" \
               -d "{\"key\": \"$1\", \"value\": \"$2\"}" | python3 -c "import sys,json; d=json.load(sys.stdin); print('$1 =', list(d.values())[0].get('value') if d else 'error')"
           }
-          set_var "ADAPTER_PATHS" "civil=umyunsang/GovOn-EXAONE-LoRA-v2,legal=siwo/govon-legal-adapter"
+          set_var "ADAPTER_PATHS" "public_admin=umyunsang/govon-civil-adapter,legal=siwo/govon-legal-adapter"
           set_var "SERVING_PROFILE" "container"
 
       - name: Push to HF Space repo

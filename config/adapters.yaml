@@ -14,7 +14,7 @@ adapters:
       LoRA model trained on 74K complaint-response pairs. USE THIS TOOL for queries about
       administrative procedures, permits, applications, objections, or general civil service
       matters. DO NOT use for legal interpretation queries.
-      Returns: JSON with "text" (draft response) and "citations" (source references).
+      Returns: JSON with "text" (draft response) and "success" (boolean).
     requires_approval: true
   legal:
     path: "siwo/govon-legal-adapter"
@@ -31,5 +31,5 @@ adapters:
       on 270K legal documents. USE THIS TOOL for queries requiring legal interpretation,
       statute references, court precedents, ordinances, or enforcement decrees.
       DO NOT use for general administrative complaints.
-      Returns: JSON with "text" (draft response) and "citations" (legal references).
+      Returns: JSON with "text" (draft response) and "success" (boolean).
     requires_approval: true

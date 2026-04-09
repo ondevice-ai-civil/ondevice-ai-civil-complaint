@@ -22,7 +22,6 @@ import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from fastapi.testclient import TestClient
 
 from src.inference.api_server import app, manager

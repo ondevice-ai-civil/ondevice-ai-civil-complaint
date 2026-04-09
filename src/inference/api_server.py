@@ -838,7 +838,12 @@ class vLLMEngineManager:
         # max_tokens 동적 계산: max_model_len에서 입력 오버헤드(시스템 프롬프트+도구 스키마+대화이력)를 제외
         # 시스템 프롬프트 ~500 + 도구 스키마 ~1000 + 안전 마진 ~500 = 2000 오버헤드
         _max_model_len = runtime_config.model.max_model_len
-        _llm_max_tokens = min(2048, _max_model_len - 2000)
+        _llm_max_tokens = max(256, min(2048, _max_model_len - 2000))
+        if _max_model_len < 2500:
+            logger.warning(
+                f"[_init_graph] max_model_len={_max_model_len}이 매우 작습니다. "
+                f"llm_max_tokens={_llm_max_tokens}로 제한됩니다."
+            )
         logger.info(
             f"[_init_graph] max_model_len={_max_model_len}, llm_max_tokens={_llm_max_tokens}"
         )
@@ -1767,9 +1772,11 @@ async def v3_agent_stream(
         has_history = (
             existing_state and existing_state.values and existing_state.values.get("messages")
         )
-    except Exception as exc:
-        logger.warning(f"[v3/agent/stream] aget_state 실패, 신규 세션으로 진행: {exc}")
+    except (KeyError, ValueError):
         has_history = False
+    except Exception as exc:
+        logger.error(f"[v3/agent/stream] checkpointer 저장소 오류: {exc}")
+        raise HTTPException(status_code=500, detail="세션 저장소 오류가 발생했습니다.")
 
     if has_history:
         invoke_input = {
@@ -1916,17 +1923,30 @@ async def v3_agent_run(
     request_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
 
-    # session_id 단위 락: 동시 요청 race condition 방지
+    # session_id 단위 락: aget_state ~ ainvoke 전체를 원자적으로 실행
     async with manager.get_session_lock(thread_id):
-        # checkpointer에서 기존 대화 존재 여부 확인 (graceful degradation)
+        # checkpointer에서 기존 대화 존재 여부 확인
+        # 빈 상태(KeyError 등)는 신규 세션으로 진행, 저장소 오류는 500 반환
         try:
             existing_state = await manager.graph_v3.aget_state(config)
             has_history = (
                 existing_state and existing_state.values and existing_state.values.get("messages")
             )
-        except Exception as exc:
-            logger.warning(f"[v3/agent/run] aget_state 실패, 신규 세션으로 진행: {exc}")
+        except (KeyError, ValueError):
+            # 체크포인트 미존재 또는 빈 상태 — 신규 세션으로 진행
             has_history = False
+        except Exception as exc:
+            logger.error(f"[v3/agent/run] checkpointer 저장소 오류: {exc}")
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "thread_id": thread_id,
+                    "session_id": session_id,
+                    "graph_run_id": request_id,
+                    "error": "세션 저장소 오류가 발생했습니다.",
+                },
+            )
 
         if has_history:
             invoke_input = {
@@ -1947,38 +1967,38 @@ async def v3_agent_run(
                 "pending_tool_calls": [],
             }
 
-    try:
-        t0 = time.monotonic()
-        result = await manager.graph_v3.ainvoke(invoke_input, config)
-        total_latency = round((time.monotonic() - t0) * 1000, 2)
+        try:
+            t0 = time.monotonic()
+            result = await manager.graph_v3.ainvoke(invoke_input, config)
+            total_latency = round((time.monotonic() - t0) * 1000, 2)
 
-        return {
-            "status": "completed",
-            "thread_id": thread_id,
-            "session_id": session_id,
-            "graph_run_id": request_id,
-            "text": result.get("final_text", ""),
-            "evidence_items": result.get("evidence_items", []),
-            "metadata": {
-                "total_iterations": result.get("iteration_count", 0),
-                "total_tool_calls": len(result.get("tool_call_history", [])),
-                "total_messages": len(result.get("messages", [])),
-                "total_latency_ms": total_latency,
-                "node_latencies": result.get("node_latencies", {}),
-            },
-        }
-    except Exception as exc:
-        logger.exception(f"[v3/agent/run] 요청 처리 실패: {exc}")
-        return JSONResponse(
-            status_code=500,
-            content={
-                "status": "error",
+            return {
+                "status": "completed",
                 "thread_id": thread_id,
                 "session_id": session_id,
                 "graph_run_id": request_id,
-                "error": "요청 처리 중 내부 오류가 발생했습니다.",
-            },
-        )
+                "text": result.get("final_text", ""),
+                "evidence_items": result.get("evidence_items", []),
+                "metadata": {
+                    "total_iterations": result.get("iteration_count", 0),
+                    "total_tool_calls": len(result.get("tool_call_history", [])),
+                    "total_messages": len(result.get("messages", [])),
+                    "total_latency_ms": total_latency,
+                    "node_latencies": result.get("node_latencies", {}),
+                },
+            }
+        except Exception as exc:
+            logger.exception(f"[v3/agent/run] 요청 처리 실패: {exc}")
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "thread_id": thread_id,
+                    "session_id": session_id,
+                    "graph_run_id": request_id,
+                    "error": "요청 처리 중 내부 오류가 발생했습니다.",
+                },
+            )
 
 
 if __name__ == "__main__":

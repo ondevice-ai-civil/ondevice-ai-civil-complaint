@@ -70,21 +70,24 @@ def make_session_load_node(session_store: "SessionStore"):
     멀티턴 대화에서 messages가 누적되면 LLM 컨텍스트 윈도우(max_model_len=8192)를
     초과할 수 있다. session_load에서 토큰 예산 기반으로 오래된 메시지를 정리한다.
 
+    EXAONE-4.0-32B-AWQ 스펙: max_position_embeddings=131072
+    현재 vLLM 설정: --max-model-len=8192 (GPU 메모리 제약)
+
     토큰 예산 분배 (max_model_len=8192):
       시스템 프롬프트:     ~500 토큰
       도구 스키마 (7개):   ~1,000 토큰
-      대화 이력 (messages): ~5,000 토큰
-      LLM 응답 여유:       ~1,500 토큰
-      안전 마진:           ~192 토큰
+      대화 이력 (messages): ~4,000 토큰
+      LLM 응답 (max_tokens): ~2,048 토큰
+      안전 마진:           ~644 토큰
     """
 
     # 메시지에 할당 가능한 토큰 예산
-    # max_model_len=8192 - llm_max_tokens=2048 - overhead=2000 = 4192
+    # max_model_len(8192) - max_tokens(2048) - overhead(1500) - margin(644) = 4000
     MAX_MESSAGE_TOKENS = 4000
     # 최근 N개 메시지는 무조건 보존 (현재 턴의 맥락 유지)
     KEEP_RECENT = 6
 
-    def _estimate_tokens(msg) -> int:
+    def _estimate_tokens(msg: Any) -> int:
         """메시지의 대략적 토큰 수 추정.
 
         한국어: 1글자 ≈ 2-3 토큰 (보수적으로 2 적용)

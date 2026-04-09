@@ -14,6 +14,13 @@ import sys
 import httpx
 
 # ---------------------------------------------------------------------------
+# Logging — must be imported before any other internal module so that
+# loguru's default stderr handler is removed on import, preventing debug
+# output from leaking into the terminal UI.
+# ---------------------------------------------------------------------------
+from src.cli.log_config import setup_logging  # noqa: E402  (import order intentional)
+
+# ---------------------------------------------------------------------------
 # Optional dependencies — graceful degradation
 # ---------------------------------------------------------------------------
 _PT_AVAILABLE = False
@@ -485,8 +492,18 @@ def main() -> None:
         dest="no_banner",
         help="시작 배너를 출력하지 않음",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        default=False,
+        help="Enable debug logging to stderr (WARNING+ level)",
+    )
 
     args = parser.parse_args()
+
+    # Configure logging before any other logic so that all subsequent
+    # loguru calls in daemon.py / http_client.py go to the file only.
+    setup_logging(debug=args.debug)
 
     # If GOVON_RUNTIME_URL is set, connect directly to the remote server
     # without managing the daemon.

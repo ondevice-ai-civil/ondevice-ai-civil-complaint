@@ -5,6 +5,7 @@ Uses `rich` when available; falls back to plain print() otherwise.
 
 from __future__ import annotations
 
+import sys
 from threading import Lock
 from typing import Any
 
@@ -133,10 +134,10 @@ class StreamingStatusDisplay:
     def __enter__(self) -> "StreamingStatusDisplay":
         self._use_rich, _ = _resolve_render_mode()
         if self._use_rich:
-            self._status = _console.status(self._initial_message, spinner="dots")
+            self._status = _stderr_console.status(self._initial_message, spinner="dots")
             self._status.__enter__()
         else:
-            print(f"→ {self._initial_message}", flush=True)
+            print(f"→ {self._initial_message}", file=sys.stderr, flush=True)
         return self
 
     def update(self, message: str) -> None:
@@ -144,7 +145,7 @@ class StreamingStatusDisplay:
         if self._use_rich and self._status is not None:
             self._status.update(message)
         else:
-            print(f"→ {message}", flush=True)
+            print(f"→ {message}", file=sys.stderr, flush=True)
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         if self._use_rich and self._status is not None:
@@ -161,7 +162,7 @@ def _warn_narrow_terminal_once(columns: int) -> None:
             return
         _HAS_WARNED_NARROW_TERMINAL = True
 
-    print(get_narrow_terminal_warning(columns), flush=True)
+    print(get_narrow_terminal_warning(columns), file=sys.stderr, flush=True)
 
 
 def _reset_narrow_warning() -> None:

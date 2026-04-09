@@ -438,9 +438,12 @@ def make_agent_node_v3(llm, tools: list):
     llm_without_tools = llm
     llm_with_tools = llm.bind_tools(tools)
 
+    # ReAct 루프 내 LLM 입력 토큰 예산 (state는 변경하지 않고 LLM 입력만 트리밍)
+    _AGENT_INPUT_BUDGET = 4500  # 시스템 프롬프트 + 도구 스키마 제외한 메시지 예산
+
     async def agent_node_v3(state: GovOnGraphState) -> dict:
         t0 = time.monotonic()
-        messages = state.get("messages", [])
+        messages = list(state.get("messages", []))
         iteration = state.get("iteration_count", 0)
         max_iter = state.get("max_iterations", 10)
 
@@ -455,7 +458,28 @@ def make_agent_node_v3(llm, tools: list):
 
         system = SystemMessage(content=system_content)
         active_llm = llm_without_tools if force_answer else llm_with_tools
-        response = await active_llm.ainvoke([system] + list(messages))
+
+        # ReAct 루프 내 컨텍스트 방어: LLM 입력만 트리밍 (state 변경 없음)
+        # Codex/Claude Code의 2차 방어선 패턴
+        trimmed_messages = messages
+        total_est = sum(_estimate_tokens(m) for m in messages)
+        if total_est > _AGENT_INPUT_BUDGET:
+            # 최근 메시지 우선 보존, 오래된 것부터 제거
+            kept: List = []
+            budget = _AGENT_INPUT_BUDGET
+            for msg in reversed(messages):
+                cost = _estimate_tokens(msg)
+                if budget - cost < 0:
+                    break
+                kept.insert(0, msg)
+                budget -= cost
+            trimmed_messages = kept
+            logger.info(
+                f"[agent_v3] ReAct trim: {len(messages)} → {len(trimmed_messages)} messages "
+                f"({total_est} → {total_est - budget} est tokens)"
+            )
+
+        response = await active_llm.ainvoke([system] + trimmed_messages)
 
         tool_calls = getattr(response, "tool_calls", None) or []
         latency = round((time.monotonic() - t0) * 1000, 2)
@@ -500,6 +524,18 @@ def make_tools_node_v3(tool_node_fn):
         LangGraph ToolNode 인스턴스 또는 동등한 async callable.
     """
 
+    # Tool output 크기 제한 (Codex CLI head+tail truncation 패턴)
+    # max_model_len=8192 환경에서 ToolMessage가 컨텍스트를 초과하지 않도록 방지
+    MAX_TOOL_RESULT_CHARS = 3000  # ~1500 토큰 (한국어 기준)
+
+    def _truncate_tool_output(content: str) -> str:
+        """Tool result를 head+tail 방식으로 truncation."""
+        if len(content) <= MAX_TOOL_RESULT_CHARS:
+            return content
+        half = MAX_TOOL_RESULT_CHARS // 2
+        truncated = len(content) - MAX_TOOL_RESULT_CHARS
+        return content[:half] + f"\n\n... [{truncated} chars truncated] ...\n\n" + content[-half:]
+
     async def tools_node_v3(state: GovOnGraphState, config: RunnableConfig) -> dict:
         t0 = time.monotonic()
         iteration = state.get("iteration_count", 0)
@@ -513,10 +549,20 @@ def make_tools_node_v3(tool_node_fn):
 
         latency = round((time.monotonic() - t0) * 1000, 2)
 
+        # Tool output truncation: 큰 ToolMessage를 제한하여 컨텍스트 초과 방지
+        tool_messages = result.get("messages", [])
+        for msg in tool_messages:
+            content = getattr(msg, "content", "")
+            if isinstance(content, str) and len(content) > MAX_TOOL_RESULT_CHARS:
+                original_len = len(content)
+                msg.content = _truncate_tool_output(content)
+                logger.info(
+                    f"[tools_v3] ToolMessage truncated: {original_len} → {len(msg.content)} chars"
+                )
+
         # tool_call_history 기록
         history_entries = []
         now = datetime.now(timezone.utc).isoformat()
-        tool_messages = result.get("messages", [])
 
         # tool_call_id → ToolMessage 매핑 (인덱스 매칭 대신 ID 기반)
         msg_by_id: dict = {}

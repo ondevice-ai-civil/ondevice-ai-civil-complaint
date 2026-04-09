@@ -28,10 +28,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: 'lts/*'
 
-      - name: Upgrade npm (Trusted Publishing requires 11.5.1+)
-        run: npm install -g npm@latest
+      - name: Check npm version
+        run: |
+          echo "node: $(node --version)"
+          echo "npm: $(npm --version)"
 
       - name: Validate package.json
         run: node -e "const p = require('./package.json'); console.log('name:', p.name, '/ version:', p.version);"
@@ -65,11 +67,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: 'lts/*'
           registry-url: 'https://registry.npmjs.org'
-
-      - name: Upgrade npm (Trusted Publishing requires 11.5.1+)
-        run: npm install -g npm@latest
 
       - name: Extract version from tag
         id: version
@@ -92,7 +91,6 @@ jobs:
 
       - name: Publish with Trusted Publishing
         run: npm publish --provenance --access public
-        # NPM_TOKEN 불필요 — OIDC Trusted Publishing 사용
 
       - name: Publish Summary
         run: |

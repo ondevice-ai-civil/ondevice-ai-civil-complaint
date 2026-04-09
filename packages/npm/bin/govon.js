@@ -6,13 +6,13 @@ const { printEnvironmentStatus, isGovonInstalled } = require('../lib/python-chec
 
 const args = process.argv.slice(2);
 
-// If called via postinstall or directly with --check-install, run environment check only and exit
+// On postinstall or direct invocation with --check-install, only run environment check and exit
 if (args[0] === '--check-install') {
   const ok = printEnvironmentStatus();
   process.exit(ok ? 0 : 1);
 }
 
-// Actual CLI execution path: print guidance and exit if environment is not ready
+// Actual CLI execution path: if environment is not valid, print guidance and exit
 if (!printEnvironmentStatus()) {
   process.exit(1);
 }
@@ -28,8 +28,8 @@ child.on('error', (err) => {
     console.error(
       [
         '',
-        '  [govon] Could not run the govon command.',
-        '  Please verify it was installed via pip install govon.',
+        '  [govon] Unable to execute the govon command.',
+        '  Please verify it is installed via: pip install govon',
         '',
       ].join('\n')
     );

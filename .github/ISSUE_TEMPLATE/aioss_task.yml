@@ -1,38 +1,38 @@
-name: "AIOSS 수업 과제"
-description: "AI OSS 수업 주차별 과제 이슈에 사용합니다."
+name: "AIOSS Course Assignment"
+description: "Use for weekly AI OSS course assignment issues."
 title: "[AIOSS-Wxx] "
 labels: ["aioss"]
 body:
   - type: markdown
     attributes:
       value: |
-        > 제목 형식: `[AIOSS-W01]` ~ `[AIOSS-W14]` 중 해당 주차를 작성해 주세요.
+        > Title format: write the applicable week from `[AIOSS-W01]` to `[AIOSS-W14]`.
 
   - type: textarea
     id: objective
     attributes:
-      label: "과제 목표"
-      description: "이번 주차 과제의 목표를 작성해 주세요."
-      placeholder: "예: GitHub 기반 개발 환경을 구축하고 프로젝트 제안서를 작성한다."
+      label: "Assignment Objective"
+      description: "Write the objective of this week's assignment."
+      placeholder: "Example: Set up a GitHub-based development environment and write a project proposal."
     validations:
       required: true
 
   - type: textarea
     id: project_relation
     attributes:
-      label: "프로젝트 연관성"
-      description: "이 과제가 본 프로젝트(GovOn)와 어떻게 연결되는지 설명해 주세요."
+      label: "Project Relevance"
+      description: "Explain how this assignment connects to the GovOn project."
       placeholder: |
-        - 민원 시스템의 어떤 기능/구조에 적용되는지
-        - 기술 스택 선정 근거 등
+        - Which feature/structure of the civil complaint system it applies to
+        - Technology stack selection rationale, etc.
     validations:
       required: false
 
   - type: textarea
     id: checklist
     attributes:
-      label: "과제 체크리스트"
-      description: "완료해야 할 항목을 체크리스트로 작성해 주세요."
+      label: "Assignment Checklist"
+      description: "Write the items to complete as a checklist."
       value: |
         - [ ]
         - [ ]
@@ -43,10 +43,10 @@ body:
   - type: textarea
     id: outputs
     attributes:
-      label: "산출물"
-      description: "과제 결과로 제출하거나 생성할 파일/문서를 작성해 주세요."
+      label: "Deliverables"
+      description: "Write the files/documents to submit or produce as a result of the assignment."
       placeholder: |
         - docs/outputs/...
-        - GitHub 저장소 설정 완료
+        - GitHub repository setup complete
     validations:
       required: false

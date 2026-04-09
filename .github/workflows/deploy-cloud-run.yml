@@ -42,7 +42,7 @@ jobs:
       - name: Check GCP credentials
         run: |
           if [ -z "$GCP_SA_KEY" ]; then
-            echo "::error::GCP_SA_KEY 시크릿이 설정되지 않았습니다. 배포를 중단합니다."
+            echo "::error::GCP_SA_KEY secret is not set. Aborting deployment."
             exit 1
           fi
         env:
@@ -172,7 +172,7 @@ jobs:
             --format='value(REVISION)' 2>/dev/null | wc -l | tr -d ' ')
 
           if [ "$REVISION_COUNT" -lt 2 ]; then
-            echo "::warning::이전 revision이 없어 rollback을 건너뜁니다."
+            echo "::warning::No previous revision found, skipping rollback."
             exit 0
           fi
 

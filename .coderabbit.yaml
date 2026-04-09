@@ -1,8 +1,8 @@
 $schema: "https://coderabbit.ai/integrations/schema.v2.json"
 
-language: "ko"
+language: "en"
 
-tone_instructions: "[MUST]=보안·버그·데이터손실·개인정보노출, [SHOULD]=품질·성능·테스트누락, [MINOR]=가독성·유지보수·스타일. NIT 수준은 코멘트 작성 자체 금지. MUST/SHOULD/MINOR 없으면 Approve. 개인정보·민원 처리 로직 엄격 검토."
+tone_instructions: "[MUST]=security·bug·data-loss·PII-exposure, [SHOULD]=quality·performance·missing-tests, [MINOR]=readability·maintainability·style. Do not write comments for NIT-level issues. Approve if no MUST/SHOULD/MINOR. Strictly review PII and civil complaint processing logic."
 
 early_access: true
 
@@ -52,58 +52,58 @@ reviews:
   path_instructions:
     - path: "src/**/*.py"
       instructions: |
-        - 타입 힌트 누락 여부 확인 (함수 파라미터, 반환값 모두)
-        - 보안 취약점 우선 검토: command injection, path traversal, 민감 데이터 로깅
-        - GovOn은 공공행정 AI 서비스 — 개인정보(이름, 주소, 민원내용) 처리 로직 엄격 검토
-        - FastAPI 엔드포인트는 입력 검증(Pydantic) 여부 확인
-        - 예외 처리 누락 또는 bare except 지적
-        - 비동기(async/await) 패턴의 올바른 사용 여부 확인
+        - Check for missing type hints (function parameters and return values)
+        - Priority security review: command injection, path traversal, sensitive data logging
+        - GovOn is a public administration AI service — strictly review PII (names, addresses, complaint content) handling logic
+        - Verify FastAPI endpoints use input validation (Pydantic)
+        - Flag missing exception handling or bare except clauses
+        - Verify correct usage of async/await patterns
 
     - path: "src/inference/**/*.py"
       instructions: |
-        - LLM 추론 코드: 메모리 누수, GPU OOM 위험 경로 확인
-        - LoRA 어댑터 로드/언로드 생명주기 검토
-        - 배치 처리 시 동시성 이슈 확인
-        - vLLM/HuggingFace API 변경사항 호환성 검토
+        - LLM inference code: check for memory leaks and GPU OOM risk paths
+        - Review LoRA adapter load/unload lifecycle
+        - Check for concurrency issues in batch processing
+        - Review compatibility with vLLM/HuggingFace API changes
 
     - path: "src/cli/**/*.py"
       instructions: |
-        - 터미널 출력에 개인정보가 노출되지 않는지 확인
-        - 사용자 입력에 대한 sanitization 여부 확인
-        - 스트리밍 응답 처리의 예외 안전성 검토
+        - Ensure no PII is exposed in terminal output
+        - Verify sanitization of user input
+        - Review exception safety of streaming response handling
 
     - path: "training/**/*.py"
       instructions: |
-        - 학습 데이터 경로 하드코딩 여부 확인 (환경변수 사용 권장)
-        - 체크포인트 저장 로직의 원자성 확인
-        - GPU 메모리 관리 패턴 검토
-        - 평가 메트릭의 정확성 확인
+        - Check for hardcoded training data paths (prefer environment variables)
+        - Verify atomicity of checkpoint saving logic
+        - Review GPU memory management patterns
+        - Verify accuracy of evaluation metrics
 
     - path: "tests/**/*.py"
       instructions: |
-        - 테스트 커버리지 누락 케이스 지적 (엣지 케이스, 에러 경로)
-        - unittest.mock 과다 사용 지적 — 실제 통합 테스트 권장
-        - pytest fixture 재사용성 확인
-        - 테스트 격리 여부 확인 (테스트 간 상태 공유 금지)
-        - assert 메시지 누락 시 지적
+        - Flag missing test coverage cases (edge cases, error paths)
+        - Flag excessive use of unittest.mock — prefer real integration tests
+        - Check reusability of pytest fixtures
+        - Verify test isolation (no shared state between tests)
+        - Flag missing assert messages
 
     - path: ".github/workflows/*.yml"
       instructions: |
-        - GitHub Actions 보안: script injection (run 내 변수 직접 삽입) 검토
-        - secrets 노출 여부 확인
-        - 최소 권한 원칙: permissions 설정 검토
-        - 외부 Action 버전 고정 여부 확인 (SHA 고정 권장)
+        - GitHub Actions security: review script injection (direct variable insertion in run)
+        - Check for secrets exposure
+        - Least privilege principle: review permissions settings
+        - Verify external Action version pinning (SHA pinning recommended)
 
     - path: "configs/**"
       instructions: |
-        - 민감 정보(API 키, 토큰) 하드코딩 금지
-        - 환경변수 참조 패턴 확인
+        - No hardcoding of sensitive information (API keys, tokens)
+        - Verify environment variable reference patterns
 
     - path: "scripts/**/*.sh"
       instructions: |
-        - ShellCheck 규칙 준수 여부 확인
-        - 변수 인용(quoting) 누락 확인
-        - 오류 처리 (set -e, set -u) 여부 확인
+        - Verify ShellCheck rule compliance
+        - Check for missing variable quoting
+        - Verify error handling (set -e, set -u)
 
   finishing_touches:
     docstrings:
@@ -126,16 +126,16 @@ knowledge_base:
 
 code_generation:
   docstrings:
-    language: "ko-KR"
+    language: "en-US"
   unit_tests:
     path_instructions:
       - path: "tests/**/*.py"
         instructions: |
-          pytest를 사용합니다.
-          - 픽스처는 conftest.py에 정의해주세요.
-          - 통합 테스트는 실제 객체를 우선 사용하고 mock은 외부 API/GPU에만 사용해주세요.
-          - 테스트 함수명은 test_<기능>_<조건>_<기대결과> 패턴을 따릅니다.
-          - 비동기 테스트는 @pytest.mark.asyncio를 사용해주세요.
+          Use pytest.
+          - Define fixtures in conftest.py.
+          - For integration tests, prefer real objects; use mocks only for external APIs/GPU.
+          - Test function names follow the pattern test_<feature>_<condition>_<expected_result>.
+          - Use @pytest.mark.asyncio for async tests.
 
 tools:
   ruff:

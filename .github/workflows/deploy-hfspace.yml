@@ -1,17 +1,17 @@
-# HF Space 배포 및 환경 설정 워크플로
+# HF Space deployment and environment setup workflow
 #
-# 팀원 자체 Space에서 테스트하는 방법:
-#   1. huggingface.co 에서 Docker Space 생성 (hardware: a100-large)
-#   2. GitHub repo Settings > Secrets and variables > Actions 에서 HF_TOKEN 등록
-#   3. Space 이름을 아래 SPACE_ID 에 맞게 변경 후 workflow_dispatch 실행
+# How to test on your own Space:
+#   1. Create a Docker Space on huggingface.co (hardware: a100-large)
+#   2. Register HF_TOKEN in GitHub repo Settings > Secrets and variables > Actions
+#   3. Update SPACE_ID below to match your Space name and run via workflow_dispatch
 #
-# Space 필수 환경변수 (HF Space Settings > Variables):
+# Required Space environment variables (HF Space Settings > Variables):
 #   ADAPTER_PATHS = public_admin=umyunsang/govon-civil-adapter,legal=siwo/govon-legal-adapter
 #   SERVING_PROFILE = container
-#   GPU_UTILIZATION = 0.90       (기본값, deploy/docker/Dockerfile.hfspace 에 설정됨)
-#   MAX_MODEL_LEN = 8192         (기본값, deploy/docker/Dockerfile.hfspace 에 설정됨)
+#   GPU_UTILIZATION = 0.90       (default, set in deploy/docker/Dockerfile.hfspace)
+#   MAX_MODEL_LEN = 8192         (default, set in deploy/docker/Dockerfile.hfspace)
 #
-# Multi-LoRA 서빙 검증:
+# Multi-LoRA serving verification:
 #   GOVON_RUNTIME_URL=https://<space-subdomain>.hf.space \
 #     python3 scripts/verify_lora_serving.py
 
@@ -98,7 +98,7 @@ jobs:
           git config user.email "github-actions@github.com"
           git config user.name "github-actions"
 
-          # deploy/docker/Dockerfile.hfspace → Space의 Dockerfile로 복사
+          # Copy deploy/docker/Dockerfile.hfspace → Space Dockerfile
           cp $GITHUB_WORKSPACE/deploy/docker/Dockerfile.hfspace Dockerfile
           cp $GITHUB_WORKSPACE/requirements.txt requirements.txt
           rsync -a --delete $GITHUB_WORKSPACE/src/ src/

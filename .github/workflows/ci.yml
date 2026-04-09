@@ -27,8 +27,8 @@ jobs:
       runtime: ${{ steps.filter.outputs.runtime }}
       runtime_contract: ${{ steps.filter.outputs.runtime_contract }}
       packaging: ${{ steps.filter.outputs.packaging }}
-      # training/monitoring outputs는 현재 다운스트림 job에서 직접 사용하지 않으나
-      # 향후 training pipeline / monitoring alert job 연동을 위해 미리 노출해 둔다.
+      # training/monitoring outputs are not directly used by downstream jobs currently,
+      # but are pre-exposed for future training pipeline / monitoring alert job integration.
       training: ${{ steps.filter.outputs.training }}
       monitoring: ${{ steps.filter.outputs.monitoring }}
     steps:
@@ -150,7 +150,7 @@ jobs:
       needs.detect-changes.outputs.runtime_contract == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    continue-on-error: true  # SKIP_MODEL_LOAD 환경에서 런타임 기능 제한으로 실패 가능
+    continue-on-error: true  # May fail due to limited runtime features in SKIP_MODEL_LOAD environment
     steps:
       - uses: actions/checkout@v6
 

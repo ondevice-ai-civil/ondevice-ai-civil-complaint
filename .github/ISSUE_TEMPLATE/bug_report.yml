@@ -1,22 +1,22 @@
-name: "버그 리포트"
-description: "버그 또는 예상치 못한 동작을 보고할 때 사용합니다."
+name: "Bug Report"
+description: "Use this to report a bug or unexpected behavior."
 title: "[BUG] "
 labels: ["bug"]
 body:
   - type: textarea
     id: description
     attributes:
-      label: "버그 설명"
-      description: "어떤 문제가 발생했는지 명확하게 설명해 주세요."
-      placeholder: "예: vLLM 서버 기동 시 CUDA OOM 오류 발생"
+      label: "Bug Description"
+      description: "Clearly describe what problem occurred."
+      placeholder: "Example: CUDA OOM error when starting vLLM server"
     validations:
       required: true
 
   - type: textarea
     id: reproduce
     attributes:
-      label: "재현 방법"
-      description: "버그를 재현하는 단계를 작성해 주세요."
+      label: "Steps to Reproduce"
+      description: "Write the steps to reproduce the bug."
       value: |
         1.
         2.
@@ -27,39 +27,39 @@ body:
   - type: textarea
     id: expected
     attributes:
-      label: "기대 동작"
-      description: "정상적으로 동작했다면 어떤 결과가 나와야 했나요?"
-      placeholder: "예: 모델이 정상적으로 로드되고 추론 결과를 반환해야 함"
+      label: "Expected Behavior"
+      description: "What result should have occurred if working correctly?"
+      placeholder: "Example: The model should load successfully and return inference results"
     validations:
       required: true
 
   - type: textarea
     id: actual
     attributes:
-      label: "실제 동작"
-      description: "실제로 어떤 결과가 나왔나요? 에러 로그나 스크린샷을 첨부해 주세요."
-      placeholder: "예: RuntimeError: CUDA out of memory..."
+      label: "Actual Behavior"
+      description: "What result actually occurred? Please attach error logs or screenshots."
+      placeholder: "Example: RuntimeError: CUDA out of memory..."
     validations:
       required: true
 
   - type: textarea
     id: environment
     attributes:
-      label: "환경 정보"
-      description: "발생 환경을 작성해 주세요."
+      label: "Environment"
+      description: "Describe the environment where this occurred."
       value: |
         - OS:
         - GPU / VRAM:
-        - Python 버전:
-        - 관련 패키지 버전 (vLLM, PyTorch 등):
-        - 브랜치:
+        - Python version:
+        - Related package versions (vLLM, PyTorch, etc.):
+        - Branch:
     validations:
       required: false
 
   - type: textarea
     id: related
     attributes:
-      label: "관련 이슈 / PR"
+      label: "Related Issues / PRs"
       placeholder: "- #"
     validations:
       required: false

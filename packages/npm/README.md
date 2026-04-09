@@ -2,44 +2,44 @@
 
 npm wrapper for the [GovOn](https://github.com/umyunsang/GovOn) CLI.
 
-GovOn은 행정 지원 및 민원 처리 워크플로우를 위한 셸 퍼스트 로컬 에이전트 런타임입니다.
+GovOn is a shell-first local agent runtime for administrative support and civil complaint processing workflows.
 
-## 요구 사항
+## Requirements
 
-- **Node.js** 18 이상
-- **Python** 3.10 이상
-- **pip** (Python 패키지 관리자)
+- **Node.js** 18 or later
+- **Python** 3.10 or later
+- **pip** (Python package manager)
 
-## 설치
+## Installation
 
 ```bash
 npm install -g govon
 ```
 
-설치 후 Python 환경이 자동으로 확인됩니다.  
-`govon` Python 패키지가 설치되어 있지 않다면 아래 명령어로 설치하세요.
+After installation the Python environment is automatically verified.  
+If the `govon` Python package is not installed, install it with:
 
 ```bash
 pip install govon
 ```
 
-## 사용법
+## Usage
 
 ```bash
 govon --help
 ```
 
-## 동작 방식
+## How It Works
 
-이 패키지는 Python CLI(`govon`)를 감싸는 thin wrapper입니다.
+This package is a thin wrapper around the Python CLI (`govon`).
 
-1. `govon` 명령어 실행 시 Python 3.10+ 설치 여부를 확인합니다.
-2. `govon` CLI(`pip install govon`)가 설치되어 있는지 확인합니다.
-3. 조건이 충족되면 `child_process.spawn`을 통해 Python CLI에 실행을 위임합니다.
-4. 미충족 시 명확한 설치 안내 메시지를 출력하고 종료합니다.
+1. When the `govon` command is run, it checks whether Python 3.10+ is installed.
+2. It verifies that the `govon` CLI (`pip install govon`) is installed.
+3. If all conditions are met, execution is delegated to the Python CLI via `child_process.spawn`.
+4. If conditions are not met, a clear installation guide message is printed and the process exits.
 
-> Python 자동 설치는 보안 및 권한 이슈로 지원하지 않습니다.
+> Automatic Python installation is not supported due to security and permission concerns.
 
-## 라이선스
+## License
 
 MIT

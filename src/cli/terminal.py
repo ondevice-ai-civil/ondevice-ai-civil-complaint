@@ -9,7 +9,6 @@ MIN_TERMINAL_COLUMNS = 40
 MIN_CONTENT_WIDTH = 20
 APPROVAL_BOX_MAX_WIDTH = 55
 APPROVAL_BOX_MARGIN = 4
-PANEL_MARGIN = 2
 
 assert MIN_CONTENT_WIDTH < MIN_TERMINAL_COLUMNS
 
@@ -40,11 +39,6 @@ def get_approval_box_width(columns: int | None = None) -> int:
         MIN_CONTENT_WIDTH,
         min(APPROVAL_BOX_MAX_WIDTH, current_columns - APPROVAL_BOX_MARGIN),
     )
-
-
-def get_panel_width(columns: int | None = None) -> int:
-    """Return the rich panel width for result rendering."""
-    return max(MIN_CONTENT_WIDTH, _cols(columns) - PANEL_MARGIN)
 
 
 def get_narrow_terminal_warning(columns: int | None = None) -> str:

@@ -41,8 +41,6 @@ from src.cli.approval_ui import show_approval_prompt  # noqa: E402
 from src.cli.banner import render_banner  # noqa: E402
 from src.cli.commands import handle_command, is_command  # noqa: E402
 from src.cli.renderer import (  # noqa: E402
-    StreamingStatusDisplay,
-    get_node_message,
     render_error,
     render_metadata,
     render_result,
@@ -105,7 +103,7 @@ except ImportError:  # pragma: no cover
 # Core helpers
 # ---------------------------------------------------------------------------
 
-_PROMPT_TEXT = "govon> "
+_PROMPT_TEXT = "\u276f "  # ❯ (Claude Code-style prompt)
 
 
 def _get_input(session: "PromptSession | None") -> str:  # type: ignore[name-defined]
@@ -194,50 +192,74 @@ def _process_query_streaming_v3(
     query: str,
     session_id: str | None,
 ) -> tuple[str | None, bool]:
-    """v3 streaming path: calls client.stream_v3() with fine-grained SSE events."""
+    """v3 streaming path: calls client.stream_v3() with fine-grained SSE events.
+
+    Uses SpinnerDisplay (Claude Code-style) that disappears on first content.
+    """
+    from src.cli.spinner import SpinnerDisplay
+
     new_session_id: str | None = None
     final_response: dict = {}
+    spinner = SpinnerDisplay()
+    spinner_active = True
+    spinner.start()
 
-    render_status("✦ 에이전트 추론 중…")
+    try:
+        for event in client.stream_v3(query, session_id):
+            event_type = event.get("type", "")
 
-    for event in client.stream_v3(query, session_id):
-        event_type = event.get("type", "")
+            if event_type == "error":
+                spinner.stop()
+                spinner_active = False
+                render_error(event.get("error", "알 수 없는 오류가 발생했습니다."))
+                return session_id, True
 
-        if event_type == "error":
-            render_error(event.get("error", "✘ 알 수 없는 오류가 발생했습니다."))
-            return session_id, True
+            if event_type == "thinking_start":
+                iteration = event.get("iteration", 0)
+                if iteration > 0 and not spinner_active:
+                    spinner = SpinnerDisplay()
+                    spinner.start()
+                    spinner_active = True
 
-        if event_type == "thinking_start":
-            iteration = event.get("iteration", 0)
-            if iteration > 0:
-                render_status(f"↺ 재추론 중… (반복 {iteration + 1})")
+            elif event_type == "thinking_delta":
+                # First content token → spinner disappears
+                if spinner_active:
+                    spinner.stop()
+                    spinner_active = False
+                content = event.get("content", "")
+                if content:
+                    render_thinking(content)
 
-        elif event_type == "thinking_delta":
-            content = event.get("content", "")
-            if content:
-                render_thinking(content)
+            elif event_type == "thinking_end":
+                if spinner_active:
+                    spinner.stop()
+                    spinner_active = False
+                tool_calls = event.get("tool_calls", [])
+                if tool_calls:
+                    print()  # newline after thinking_delta
+                    for tc in tool_calls:
+                        render_tool_progress(tc.get("name", "unknown"), "start")
 
-        elif event_type == "thinking_end":
-            tool_calls = event.get("tool_calls", [])
-            if tool_calls:
-                print()  # newline after thinking_delta
-                for tc in tool_calls:
-                    render_tool_progress(tc.get("name", "unknown"), "start")
+            elif event_type == "tool_start":
+                pass  # already displayed in thinking_end
 
-        elif event_type == "tool_start":
-            pass  # already displayed in thinking_end
+            elif event_type == "tool_end":
+                tool_name = event.get("tool", "")
+                render_tool_progress(tool_name, "end")
 
-        elif event_type == "tool_end":
-            tool_name = event.get("tool", "")
-            render_tool_progress(tool_name, "end")
-
-        elif event_type == "run_complete":
-            print()  # newline
-            new_session_id = event.get("session_id") or event.get("thread_id")
-            final_response = event
-            metadata = event.get("metadata", {})
-            if metadata:
-                render_metadata(metadata)
+            elif event_type == "run_complete":
+                if spinner_active:
+                    spinner.stop()
+                    spinner_active = False
+                print()  # newline
+                new_session_id = event.get("session_id") or event.get("thread_id")
+                final_response = event
+                metadata = event.get("metadata", {})
+                if metadata:
+                    render_metadata(metadata)
+    finally:
+        if spinner_active:
+            spinner.stop()
 
     if final_response:
         _sid = final_response.get("session_id") or final_response.get("thread_id") or new_session_id
@@ -258,23 +280,24 @@ def _process_query_streaming(
     approval_event: dict | None = None
     new_session_id: str | None = None
 
-    with StreamingStatusDisplay("⊹ 처리 중…") as status_display:
+    from src.cli.spinner import SpinnerDisplay
+
+    spinner = SpinnerDisplay()
+    spinner.start()
+    try:
         for event in client.stream(query, session_id):
             node: str = event.get("node", "")
             event_status: str = event.get("status", "")
 
             if node == "error" or event_status == "error":
-                render_error(event.get("error", "✘ 알 수 없는 오류가 발생했습니다."))
+                spinner.stop()
+                render_error(event.get("error", "알 수 없는 오류가 발생했습니다."))
                 return session_id, True
 
             if event_status == "awaiting_approval":
+                spinner.stop()
                 approval_event = event
                 break
-
-            # Update spinner with node-specific message
-            if node:
-                msg = get_node_message(node)
-                status_display.update(msg)
 
             # Collect session/thread id from any event
             if not new_session_id:
@@ -283,6 +306,8 @@ def _process_query_streaming(
             # Collect final result if present
             if event_status == "completed" or event.get("final_text") or event.get("text"):
                 final_response = event
+    finally:
+        spinner.stop()
 
     # Handle approval
     if approval_event is not None:

@@ -54,26 +54,45 @@ npm install -g govon
 brew tap govon-org/govon && brew install govon
 ```
 
-### Self-hosted server (GPU required)
+### Self-hosted runtime (GPU required)
 
-If you want to run the inference backend locally instead of using the hosted runtime:
+You can host your own GovOn runtime on **Hugging Face Spaces** or on-premises.
+
+#### Option A: Hugging Face Spaces (recommended)
+
+1. Duplicate the reference Space: [umyunsang/govon-runtime](https://huggingface.co/spaces/umyunsang/govon-runtime)
+2. Select **A100 GPU** (80 GB) or higher hardware
+3. Wait for the Space to start, then set your CLI to point at it:
 
 ```bash
-# Option A: Docker (recommended)
+export GOVON_RUNTIME_URL=https://<your-hf-username>-govon-runtime.hf.space
+govon
+```
+
+> **Tip**: Add the export to your shell profile (`~/.zshrc`, `~/.bashrc`) so it persists across sessions.
+
+#### Option B: Docker (on-premises)
+
+```bash
 govon server pull
 govon server start
+```
 
-# Option B: pip extras
+#### Option C: pip extras (bare-metal)
+
+```bash
 pip install govon[server]
 ```
 
-> **Note**: The server requires an NVIDIA GPU (A100 80 GB recommended) and Docker with NVIDIA Container Toolkit.
+> **Hardware requirement**: The runtime requires an NVIDIA GPU with ≥ 80 GB VRAM (A100 80 GB or higher). Smaller GPUs will fail to load the EXAONE 4.0-32B model.
 
 ## Usage
 
 ### Interactive mode (REPL)
 
 ```bash
+# Point the CLI to your runtime (HF Space, Docker, or localhost)
+export GOVON_RUNTIME_URL=https://<your-hf-username>-govon-runtime.hf.space
 govon
 ```
 

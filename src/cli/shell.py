@@ -14,6 +14,13 @@ import sys
 import httpx
 
 # ---------------------------------------------------------------------------
+# Logging — must be imported before any other internal module so that
+# loguru's default stderr handler is removed on import, preventing debug
+# output from leaking into the terminal UI.
+# ---------------------------------------------------------------------------
+from src.cli.log_config import setup_logging  # noqa: E402  (import order intentional)
+
+# ---------------------------------------------------------------------------
 # Optional dependencies — graceful degradation
 # ---------------------------------------------------------------------------
 _PT_AVAILABLE = False
@@ -28,10 +35,10 @@ except ImportError:  # pragma: no cover
 # ---------------------------------------------------------------------------
 # Internal modules
 # ---------------------------------------------------------------------------
-from src.cli.approval_ui import show_approval_prompt
-from src.cli.banner import render_banner
-from src.cli.commands import handle_command, is_command
-from src.cli.renderer import (
+from src.cli.approval_ui import show_approval_prompt  # noqa: E402
+from src.cli.banner import render_banner  # noqa: E402
+from src.cli.commands import handle_command, is_command  # noqa: E402
+from src.cli.renderer import (  # noqa: E402
     StreamingStatusDisplay,
     get_node_message,
     render_error,
@@ -446,6 +453,14 @@ def main() -> None:
     # argparse handles positional + subparser mixing poorly,
     # so intercept 'server' first and delegate to a separate handler.
     raw_args = sys.argv[1:]
+
+    # Bootstrap parse: extract --debug before any subcommand dispatch so
+    # setup_logging() runs even for `govon server ...` (which exits early).
+    _bootstrap = argparse.ArgumentParser(add_help=False)
+    _bootstrap.add_argument("--debug", action="store_true", default=False)
+    _bootstrap_args, _ = _bootstrap.parse_known_args(raw_args)
+    setup_logging(debug=_bootstrap_args.debug)
+
     if raw_args and raw_args[0] == "server":
         from src.cli.server import handle_server
 
@@ -484,6 +499,12 @@ def main() -> None:
         action="store_true",
         dest="no_banner",
         help="시작 배너를 출력하지 않음",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        default=False,
+        help="Enable debug logging to stderr (WARNING+ level)",
     )
 
     args = parser.parse_args()
@@ -549,7 +570,8 @@ def main() -> None:
     else:
         # Interactive REPL mode
         if not args.no_banner:
-            from importlib.metadata import PackageNotFoundError, version as pkg_version
+            from importlib.metadata import PackageNotFoundError
+            from importlib.metadata import version as pkg_version
 
             try:
                 ver = pkg_version("govon")

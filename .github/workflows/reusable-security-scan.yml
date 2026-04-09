@@ -163,7 +163,7 @@ jobs:
               const lastBotComment = comments.data.reverse().find(c => c.user.login === 'github-actions[bot]');
 
               // Only comment if count changed or last comment is old (to avoid spam)
-              if (lastBotComment && lastBotComment.body.includes(`감지된 취약점 | ${vulnCount}건`)) {
+              if (lastBotComment && lastBotComment.body.includes(`Vulnerabilities Detected | ${vulnCount}`)) {
                 core.info(`Vulnerability count (${vulnCount}) hasn't changed since last report. Skipping comment.`);
                 return;
               }
@@ -172,24 +172,24 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: existing.number,
-                body: `## 🔍 보안 스캔 업데이트 (${today})\n\n| 항목 | 값 |\n|------|----|\n| 감지된 취약점 | **${vulnCount}건** |\n| 상태 | 여전히 조치 필요 |\n| Actions Run | [상세 로그 확인](${runUrl}) |\n\n> 동일한 취약점 개수가 감지될 경우 중복 코멘트 작성을 방지하도록 개선되었습니다.`,
+                body: `## 🔍 Security Scan Update (${today})\n\n| Item | Value |\n|------|-------|\n| Vulnerabilities Detected | **${vulnCount}** |\n| Status | Action still required |\n| Actions Run | [View Details](${runUrl}) |\n\n> Duplicate comments are suppressed when the same vulnerability count is detected.`,
               });
               core.info(`Updated existing issue #${existing.number} with new vulnerability data`);
               return;
             }
 
             // No open issue exists — create a new one
-            const title = `🔒 보안 취약점 감지: ${vulnCount}건 (${today})`;
+            const title = `🔒 Security Vulnerabilities Detected: ${vulnCount} (${today})`;
 
-            let body = `## 자동 보안 스캔 결과\n\n`;
-            body += `| 항목 | 값 |\n|------|----|\n`;
-            body += `| 감지된 취약점 | ${vulnCount}건 |\n`;
-            body += `| 스캔 일시 | ${new Date().toISOString()} |\n`;
-            body += `| Actions Run | [링크](${runUrl}) |\n\n`;
-            body += `### 조치 필요\n`;
-            body += `1. Actions Run 링크에서 상세 결과 확인\n`;
-            body += `2. \`audit-results.json\` 아티팩트 다운로드하여 취약점 목록 검토\n`;
-            body += `3. 취약한 패키지 업데이트 후 이 이슈 종료\n`;
+            let body = `## Automated Security Scan Results\n\n`;
+            body += `| Item | Value |\n|------|-------|\n`;
+            body += `| Vulnerabilities Detected | ${vulnCount} |\n`;
+            body += `| Scan Time | ${new Date().toISOString()} |\n`;
+            body += `| Actions Run | [Link](${runUrl}) |\n\n`;
+            body += `### Action Required\n`;
+            body += `1. Check detailed results from the Actions Run link\n`;
+            body += `2. Download \`audit-results.json\` artifact and review vulnerability list\n`;
+            body += `3. Update vulnerable packages and close this issue\n`;
 
             await github.rest.issues.create({
               owner: context.repo.owner,
@@ -203,18 +203,18 @@ jobs:
         if: always()
         run: |
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 보안 스캔 결과 요약" >> $GITHUB_STEP_SUMMARY
-          echo "| 항목 | 결과 |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Bandit (정적 분석) | ✅ 완료 |" >> $GITHUB_STEP_SUMMARY
+          echo "### Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Bandit (Static Analysis) | ✅ Complete |" >> $GITHUB_STEP_SUMMARY
           if [ "${{ inputs.upload-sarif }}" = "true" ]; then
-            echo "| SARIF 업로드 | ✅ Code Scanning |" >> $GITHUB_STEP_SUMMARY
+            echo "| SARIF Upload | ✅ Code Scanning |" >> $GITHUB_STEP_SUMMARY
           fi
           if [ "${{ inputs.pip-audit-enabled }}" = "true" ]; then
-            echo "| pip-audit (의존성) | 취약점 ${{ steps.audit.outputs.vuln_count }}건 |" >> $GITHUB_STEP_SUMMARY
+            echo "| pip-audit (Dependencies) | ${{ steps.audit.outputs.vuln_count }} vulnerabilities |" >> $GITHUB_STEP_SUMMARY
             if [ "${{ steps.audit.outputs.vuln_count }}" != "0" ]; then
-              echo "| 자동 이슈 생성 | ✅ |" >> $GITHUB_STEP_SUMMARY
+              echo "| Auto Issue Created | ✅ |" >> $GITHUB_STEP_SUMMARY
             else
-              echo "| 자동 이슈 생성 | ⏭️ (취약점 없음) |" >> $GITHUB_STEP_SUMMARY
+              echo "| Auto Issue Created | ⏭️ (no vulnerabilities) |" >> $GITHUB_STEP_SUMMARY
             fi
           fi

@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       runtime_url:
-        description: "HF Space URL (예: https://<space>.hf.space)"
+        description: "HF Space URL (e.g. https://<space>.hf.space)"
         required: true
         type: string
       runs:
-        description: "시나리오당 반복 횟수"
+        description: "Number of repetitions per scenario"
         required: false
         default: "3"
         type: string

@@ -1,27 +1,27 @@
-name: "문서화 / 기타 작업"
-description: "문서 작성, 발표 자료 준비, 환경 설정 등 기타 작업에 사용합니다."
+name: "Documentation / Chore"
+description: "Use for documentation, presentation preparation, environment setup, and other miscellaneous tasks."
 title: "docs/chore: "
 labels: ["documentation"]
 body:
   - type: markdown
     attributes:
       value: |
-        > 제목 prefix 예시: `docs:` (문서화), `chore:` (환경설정/기타)
+        > Title prefix examples: `docs:` (documentation), `chore:` (environment setup/other)
 
   - type: textarea
     id: objective
     attributes:
-      label: "목표"
-      description: "이 작업의 목적을 간략히 작성해 주세요."
-      placeholder: "예: 3/16 미팅 발표자료 준비"
+      label: "Objective"
+      description: "Briefly describe the purpose of this task."
+      placeholder: "Example: Prepare presentation materials for 3/16 meeting"
     validations:
       required: true
 
   - type: textarea
     id: tasks
     attributes:
-      label: "작업 내용"
-      description: "수행할 작업을 체크리스트로 작성해 주세요."
+      label: "Tasks"
+      description: "Write the tasks to perform as a checklist."
       value: |
         - [ ]
         - [ ]
@@ -31,18 +31,18 @@ body:
   - type: textarea
     id: outputs
     attributes:
-      label: "산출물"
-      description: "작업 결과 파일이나 링크를 작성해 주세요."
+      label: "Deliverables"
+      description: "Write the resulting files or links."
       placeholder: |
         - docs/presentations/...
-        - README.md 업데이트
+        - README.md update
     validations:
       required: false
 
   - type: textarea
     id: related
     attributes:
-      label: "관련 이슈 / PR"
+      label: "Related Issues / PRs"
       placeholder: "- #"
     validations:
       required: false

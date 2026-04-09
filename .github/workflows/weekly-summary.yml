@@ -24,11 +24,11 @@ jobs:
           WEEK_AGO=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-7d +%Y-%m-%dT%H:%M:%SZ)
           REPO="${{ github.repository }}"
 
-          echo "## GovOn 주간 요약" >> "$GITHUB_STEP_SUMMARY"
+          echo "## GovOn Weekly Summary" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
 
-          echo "### 머지된 PR" >> "$GITHUB_STEP_SUMMARY"
-          echo "| PR | 제목 | 작성자 | 머지일 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Merged PRs" >> "$GITHUB_STEP_SUMMARY"
+          echo "| PR | Title | Author | Merged At |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
           gh pr list --repo "$REPO" --state merged --base main --limit 100 \
             --json number,title,author,mergedAt \
@@ -37,16 +37,16 @@ jobs:
             >> "$GITHUB_STEP_SUMMARY" || true
           echo "" >> "$GITHUB_STEP_SUMMARY"
 
-          echo "### 이슈 현황" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Issue Status" >> "$GITHUB_STEP_SUMMARY"
           NEW_ISSUES=$(gh issue list --repo "$REPO" --state all \
             --search "created:>=${WEEK_AGO}" --json number --jq 'length' || echo "0")
           CLOSED_ISSUES=$(gh issue list --repo "$REPO" --state closed \
             --search "closed:>=${WEEK_AGO}" --json number --jq 'length' || echo "0")
-          echo "- 신규: **${NEW_ISSUES}건** / 종료: **${CLOSED_ISSUES}건**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- New: **${NEW_ISSUES}** / Closed: **${CLOSED_ISSUES}**" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
 
-          echo "### 리뷰 대기 PR" >> "$GITHUB_STEP_SUMMARY"
-          echo "| PR | 제목 | 작성자 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "### PRs Awaiting Review" >> "$GITHUB_STEP_SUMMARY"
+          echo "| PR | Title | Author |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
           gh pr list --repo "$REPO" --state open --base main \
             --json number,title,author \
@@ -54,8 +54,8 @@ jobs:
             >> "$GITHUB_STEP_SUMMARY" || true
           echo "" >> "$GITHUB_STEP_SUMMARY"
 
-          echo "### CI 건강도 (최근 5회)" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Run | 결과 | 날짜 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "### CI Health (Last 5 Runs)" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Run | Result | Date |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
           gh run list --repo "$REPO" --workflow ci.yml --branch main \
             --limit 5 --json conclusion,displayTitle,createdAt \
@@ -63,5 +63,5 @@ jobs:
             >> "$GITHUB_STEP_SUMMARY" || true
           echo "" >> "$GITHUB_STEP_SUMMARY"
 
-          echo "### DORA 메트릭" >> "$GITHUB_STEP_SUMMARY"
+          echo "### DORA Metrics" >> "$GITHUB_STEP_SUMMARY"
           echo "- [Grafana Dashboard](https://umyunsang.grafana.net/d/govon-dora/)" >> "$GITHUB_STEP_SUMMARY"

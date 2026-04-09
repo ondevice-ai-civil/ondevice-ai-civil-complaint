@@ -1,12 +1,12 @@
 name: Homebrew Formula Auto-Update
 
 on:
-  # PyPI 배포 완료 후 자동 트리거
+  # Auto-trigger after PyPI deployment completes
   workflow_run:
     workflows: ["Publish to PyPI"]
     types: [completed]
 
-  # 수동 트리거
+  # Manual trigger
   workflow_dispatch:
     inputs:
       version:
@@ -21,8 +21,8 @@ jobs:
   update-formula:
     name: Update Homebrew Formula
     runs-on: ubuntu-latest
-    # workflow_run: PyPI 배포 성공 + tag push인 경우만
-    # workflow_dispatch: 항상 실행
+    # workflow_run: only when PyPI deployment succeeds + tag push
+    # workflow_dispatch: always runs
     if: >
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'workflow_run' &&

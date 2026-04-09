@@ -22,15 +22,15 @@ jobs:
             const title = issue.title || '';
             const labels = [];
 
-            if (body.includes('버그 리포트') || /^\[BUG\]/i.test(title)) {
+            if (body.includes('Bug Report') || /^\[BUG\]/i.test(title)) {
               labels.push('bug', 'triage');
-            } else if (body.includes('기능 요청') || /^\[FEAT\]/i.test(title)) {
+            } else if (body.includes('Feature Request') || /^\[FEAT\]/i.test(title)) {
               labels.push('enhancement', 'triage');
-            } else if (body.includes('문서') || /^\[DOCS\]/i.test(title)) {
+            } else if (body.includes('Documentation') || /^\[DOCS\]/i.test(title)) {
               labels.push('documentation');
             }
 
-            if (/긴급|critical|blocker/i.test(title + body)) {
+            if (/urgent|critical|blocker/i.test(title + body)) {
               labels.push('priority:high');
             }
 
@@ -52,11 +52,11 @@ jobs:
             if (issue.user.type === 'Bot') return;
 
             const body = [
-              `@${issue.user.login} 이슈 등록 감사합니다.`,
+              `@${issue.user.login} Thank you for opening an issue.`,
               '',
-              '담당자가 확인 후 응답드리겠습니다.',
+              'A maintainer will review and respond shortly.',
               '',
-              '**참고 문서:**',
+              '**Reference Docs:**',
               '- [Getting Started (Wiki)](https://github.com/umyunsang/GovOn/wiki/Getting-Started)',
               '- [Troubleshooting (Wiki)](https://github.com/umyunsang/GovOn/wiki/Troubleshooting)',
             ].join('\n');

@@ -1,6 +1,6 @@
 # Dockerfile for GovOn Backend
-# 단일 Dockerfile로 로컬/HuggingFace Spaces/프로덕션 통합 관리
-# 환경별 설정은 docker-compose.yml 또는 HF Space 환경변수로 오버라이드
+# Single Dockerfile for unified local/HuggingFace Spaces/production management
+# Per-environment configuration is overridden via docker-compose.yml or HF Space environment variables
 
 FROM nvidia/cuda:12.6.3-runtime-ubuntu22.04
 
@@ -29,17 +29,17 @@ COPY requirements.txt .
 ENV UV_INDEX_STRATEGY="unsafe-best-match"
 ENV UV_EXTRA_INDEX_URL="https://download.pytorch.org/whl/cu126"
 
-# 1) torch CUDA 12.6 wheel 설치
+# 1) Install torch CUDA 12.6 wheel
 RUN uv pip install --system --no-cache "torch>=2.8.0"
-# 2) autoawq: 빌드 시 torch 필요 → no-build-isolation
+# 2) autoawq: requires torch at build time → no-build-isolation
 RUN uv pip install --system --no-cache --no-build-isolation "autoawq>=0.2.8"
-# 3) 나머지 패키지 (torch/autoawq 이미 충족)
+# 3) Install remaining packages (torch/autoawq already satisfied)
 RUN grep -vE "^(torch([>=<! ]|$)|autoawq([>=<! ]|$)|#|[[:space:]]*$)" requirements.txt \
     | uv pip install --system --no-cache -r /dev/stdin
-# 4) hf_transfer: 병렬 모델 다운로드 (10x 속도 향상)
+# 4) hf_transfer: parallel model download (10x speed boost)
 RUN uv pip install --system --no-cache hf_transfer
 
-# uid 1000: HF Spaces 호환 + 보안
+# uid 1000: HF Spaces compatible + security
 RUN useradd -m -u 1000 user \
     && mkdir -p models/faiss_index models/bm25_index data/processed .cache logs config
 
@@ -56,6 +56,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=600s --retries=3 \
 
 EXPOSE ${PORT}
 
-# vLLM OpenAI 서버 + FastAPI를 entrypoint script로 순차 기동
+# Start vLLM OpenAI server + FastAPI sequentially via entrypoint script
 COPY scripts/entrypoint.sh ./scripts/entrypoint.sh
 CMD ["bash", "scripts/entrypoint.sh"]

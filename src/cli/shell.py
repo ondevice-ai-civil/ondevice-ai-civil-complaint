@@ -570,7 +570,8 @@ def main() -> None:
     else:
         # Interactive REPL mode
         if not args.no_banner:
-            from importlib.metadata import PackageNotFoundError, version as pkg_version
+            from importlib.metadata import PackageNotFoundError
+            from importlib.metadata import version as pkg_version
 
             try:
                 ver = pkg_version("govon")

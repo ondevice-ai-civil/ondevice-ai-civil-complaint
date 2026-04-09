@@ -15,6 +15,14 @@ _HELP_TEXT = """GovOn CLI 사용법
   govon --status              daemon 상태 확인
   govon --stop                daemon 중지
 
+서버 관리 (Docker 백엔드)
+────────────────────────────────────────
+  govon server pull [TAG]     Docker 이미지 다운로드
+  govon server start          백엔드 시작
+  govon server stop           백엔드 중지
+  govon server status         상태 및 헬스체크
+  govon server logs           로그 스트리밍
+
 슬래시 명령
 ────────────────────────────────────────"""
 

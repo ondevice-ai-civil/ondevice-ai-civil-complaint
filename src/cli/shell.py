@@ -418,10 +418,20 @@ def _run_once(client: "GovOnClient", query: str, session_id: str | None) -> None
 
 def main() -> None:
     """CLI entry point for the `govon` command."""
+    # ── server 서브커맨드 조기 분기 ──────────────────────────────
+    # argparse는 positional + subparser 혼용이 까다로우므로
+    # 'server' 인자를 먼저 가로채서 별도 핸들러로 보낸다.
+    raw_args = sys.argv[1:]
+    if raw_args and raw_args[0] == "server":
+        from src.cli.server import handle_server
+
+        sys.exit(handle_server(raw_args[1:]))
+
     parser = argparse.ArgumentParser(
         prog="govon",
         description="GovOn — shell-first local agentic runtime",
         formatter_class=argparse.RawTextHelpFormatter,
+        epilog="서브커맨드:\n  govon server <command>   Docker 백엔드 관리 (pull/start/stop/status/logs)",
     )
     parser.add_argument(
         "query",

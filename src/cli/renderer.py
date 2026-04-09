@@ -534,25 +534,154 @@ def render_thinking(content: str) -> None:
         print(content, end="", flush=True)
 
 
-def render_tool_progress(tool_name: str, status: str, latency_ms: float = 0) -> None:
-    """도구 실행 3단계 진행 표시 (start / end)."""
-    use_rich, _ = _resolve_render_mode()
+def _tool_separator(fill_char: str, prefix: str, columns: int) -> str:
+    """Return a separator line padded to terminal width with box-drawing characters.
+
+    Args:
+        fill_char: The repeating fill character (e.g. '─').
+        prefix: The non-fill prefix that precedes the fill (e.g. '┌─ ⚙ stats_lookup ').
+        columns: Total terminal width in characters.
+    """
+    prefix_len = len(prefix)
+    fill_len = max(columns - prefix_len - 1, 4)
+    return prefix + fill_char * fill_len
+
+
+def render_tool_progress(
+    tool_name: str,
+    status: str,
+    latency_ms: float = 0,
+    result_summary: str = "",
+) -> None:
+    """도구 실행 진행 표시 (start / end) — Claude Code 스타일 collapsible 헤더.
+
+    For *start*::
+
+        ┌─ ⚙ stats_lookup ──────────────────────
+        │  민원 통계 조회 중…
+
+    For *end* without result_summary::
+
+        └─ ✦ stats_lookup 완료 (245ms) ─────────
+
+    For *end* with result_summary::
+
+        ├─ ✦ stats_lookup 완료 (245ms) ─────────
+        │  총 1,234건 조회됨
+        └────────────────────────────────────────
+
+    Args:
+        tool_name: Name of the tool being called.
+        status: Either ``"start"`` or ``"end"``.
+        latency_ms: Execution time in milliseconds (shown on end).
+        result_summary: Optional one-line summary shown below the end header.
+    """
+    use_rich, columns = _resolve_render_mode()
     theme = get_theme()
 
     if status == "start":
-        msg = f"┌ ⚙ {tool_name}"
-        style = theme.tool_start
-    else:
-        if latency_ms:
-            msg = f"└ ✦ {tool_name} 완료 ({latency_ms:.0f}ms)"
-        else:
-            msg = f"└ ✦ {tool_name} 완료"
-        style = theme.tool_end
+        label = f"┌─ ⚙ {tool_name} "
+        header = _tool_separator("─", label, columns)
+        body = f"│  {tool_name} 실행 중…"
 
-    if use_rich:
-        _console.print(f"[{style}]{msg}[/{style}]")
+        if use_rich:
+            _console.print(f"[{theme.tool_start}]{header}[/{theme.tool_start}]")
+            _console.print(f"[{theme.text_secondary}]{body}[/{theme.text_secondary}]")
+        else:
+            print(header, flush=True)
+            print(body, flush=True)
     else:
-        print(msg, flush=True)
+        # Build end header label
+        if latency_ms:
+            end_label = f"✦ {tool_name} 완료 ({latency_ms:.0f}ms) "
+        else:
+            end_label = f"✦ {tool_name} 완료 "
+
+        if result_summary:
+            # Show result inline: mid-connector, body line, closing rule
+            header_prefix = f"├─ {end_label}"
+            header = _tool_separator("─", header_prefix, columns)
+            body = f"│  {result_summary}"
+            closing_prefix = "└"
+            closing = closing_prefix + "─" * max(columns - len(closing_prefix) - 1, 4)
+
+            if use_rich:
+                _console.print(f"[{theme.tool_end}]{header}[/{theme.tool_end}]")
+                _console.print(f"[{theme.text_secondary}]{body}[/{theme.text_secondary}]")
+                _console.print(f"[{theme.tool_end}]{closing}[/{theme.tool_end}]")
+            else:
+                print(header, flush=True)
+                print(body, flush=True)
+                print(closing, flush=True)
+        else:
+            # Collapsed end: single closing line
+            header_prefix = f"└─ {end_label}"
+            header = _tool_separator("─", header_prefix, columns)
+
+            if use_rich:
+                _console.print(f"[{theme.tool_end}]{header}[/{theme.tool_end}]")
+            else:
+                print(header, flush=True)
+
+
+def render_tool_result(
+    tool_name: str,
+    result_text: str,
+    collapsed: bool = True,
+) -> None:
+    """도구 실행 결과를 bordered 영역에 표시한다.
+
+    When *collapsed* is ``True``, shows only the first line of *result_text*
+    as a compact one-liner::
+
+        │  첫 번째 줄 요약…
+
+    When *collapsed* is ``False``, shows the full *result_text* inside a box::
+
+        ┌─ result: stats_lookup ─────────────────
+        │  전체 결과 텍스트가
+        │  여러 줄로 표시됩니다.
+        └────────────────────────────────────────
+
+    Args:
+        tool_name: Name of the tool whose result is being displayed.
+        result_text: The result content to render.
+        collapsed: When ``True`` (default), show only a one-line summary.
+    """
+    if not result_text:
+        return
+
+    use_rich, columns = _resolve_render_mode()
+    theme = get_theme()
+
+    if collapsed:
+        # One-line summary: truncate to fit terminal width minus indent
+        max_len = max(columns - 5, 20)
+        first_line = result_text.splitlines()[0] if result_text else ""
+        summary = first_line[:max_len] + ("…" if len(first_line) > max_len else "")
+        line = f"│  {summary}"
+
+        if use_rich:
+            _console.print(f"[{theme.text_secondary}]{line}[/{theme.text_secondary}]")
+        else:
+            print(line, flush=True)
+    else:
+        # Full bordered result block
+        header_prefix = f"┌─ result: {tool_name} "
+        header = _tool_separator("─", header_prefix, columns)
+        closing_prefix = "└"
+        closing = closing_prefix + "─" * max(columns - len(closing_prefix) - 1, 4)
+
+        if use_rich:
+            _console.print(f"[{theme.tool_end}]{header}[/{theme.tool_end}]")
+            for text_line in result_text.splitlines():
+                _console.print(f"[{theme.text_secondary}]│  {text_line}[/{theme.text_secondary}]")
+            _console.print(f"[{theme.tool_end}]{closing}[/{theme.tool_end}]")
+        else:
+            print(header, flush=True)
+            for text_line in result_text.splitlines():
+                print(f"│  {text_line}", flush=True)
+            print(closing, flush=True)
 
 
 def render_metadata(metadata: dict) -> None:

@@ -14,6 +14,7 @@ from src.cli.terminal import (
     get_terminal_columns,
     is_layout_supported,
 )
+from src.cli.theme import get_theme
 
 try:
     from rich.console import Console, Group
@@ -408,12 +409,13 @@ def _build_rich_result_content(
     if text_body:
         renderables.append(Markdown(text_body, code_theme=MARKDOWN_CODE_THEME))
 
+    theme = get_theme()
     for title, rows in _iter_structured_result_sections(tool_results):
         table = _build_rich_table(rows, columns)
         if table is None:
             continue
         renderables.append(Text(""))
-        renderables.append(Text(title, style="bold cyan"))
+        renderables.append(Text(title, style=theme.brand_accent))
         renderables.append(table)
 
     if evidence_items:
@@ -461,11 +463,12 @@ def render_result(result: dict) -> None:
             tool_results,
             columns,
         )
+        theme = get_theme()
         _console.print(
             Panel(
                 content,
-                title="[bold green]GovOn[/bold green]",
-                border_style="green",
+                title=f"[{theme.panel_title}]GovOn[/{theme.panel_title}]",
+                border_style=theme.panel_border,
                 width=get_panel_width(columns),
             )
         )
@@ -498,7 +501,8 @@ def render_status(message: str) -> None:
     """Render a transient status / progress message."""
     use_rich, _ = _resolve_render_mode()
     if use_rich:
-        _console.print(f"[dim]→ {message}[/dim]")
+        theme = get_theme()
+        _console.print(f"[{theme.text_secondary}]→ {message}[/{theme.text_secondary}]")
     else:
         print(f"→ {message}")
 
@@ -507,7 +511,8 @@ def render_error(message: str) -> None:
     """Render an error message in red."""
     use_rich, _ = _resolve_render_mode()
     if use_rich:
-        _console.print(f"[bold red]오류:[/bold red] {message}")
+        theme = get_theme()
+        _console.print(f"[{theme.status_error}]오류:[/{theme.status_error}] {message}")
     else:
         print(f"오류: {message}")
 
@@ -516,28 +521,31 @@ def render_thinking(content: str) -> None:
     """LLM thinking 과정을 dim 스타일로 표시."""
     use_rich, _ = _resolve_render_mode()
     if use_rich:
-        _console.print(f"[dim]{content}[/dim]", end="")
+        theme = get_theme()
+        _console.print(f"[{theme.text_secondary}]{content}[/{theme.text_secondary}]", end="")
     else:
         print(content, end="", flush=True)
 
 
 def render_tool_progress(tool_name: str, status: str, latency_ms: float = 0) -> None:
-    """도구 실행 진행 표시."""
+    """도구 실행 3단계 진행 표시 (start / end)."""
     use_rich, _ = _resolve_render_mode()
+    theme = get_theme()
+
     if status == "start":
-        msg = f"도구 실행: {tool_name}…"
+        msg = f"┌ ⚙ {tool_name}"
+        style = theme.tool_start
     else:
-        msg = (
-            f"도구 완료: {tool_name} ({latency_ms:.0f}ms)"
-            if latency_ms
-            else f"도구 완료: {tool_name}"
-        )
+        if latency_ms:
+            msg = f"└ ✦ {tool_name} 완료 ({latency_ms:.0f}ms)"
+        else:
+            msg = f"└ ✦ {tool_name} 완료"
+        style = theme.tool_end
 
     if use_rich:
-        style = "yellow" if status == "start" else "green"
-        _console.print(f"[{style}]  → {msg}[/{style}]")
+        _console.print(f"[{style}]{msg}[/{style}]")
     else:
-        print(f"  → {msg}", flush=True)
+        print(msg, flush=True)
 
 
 def render_metadata(metadata: dict) -> None:
@@ -550,7 +558,8 @@ def render_metadata(metadata: dict) -> None:
 
     use_rich, _ = _resolve_render_mode()
     if use_rich:
-        _console.print(f"[dim]⎯ {summary}[/dim]")
+        theme = get_theme()
+        _console.print(f"[{theme.text_secondary}]⎯ {summary}[/{theme.text_secondary}]")
     else:
         print(f"⎯ {summary}")
 
@@ -560,6 +569,7 @@ def render_session_info(session_id: str) -> None:
     hint = f"[session: {session_id}]  govon --session {session_id} 로 재개 가능"
     use_rich, _ = _resolve_render_mode()
     if use_rich:
-        _console.print(f"[dim]{hint}[/dim]")
+        theme = get_theme()
+        _console.print(f"[{theme.text_secondary}]{hint}[/{theme.text_secondary}]")
     else:
         print(hint)

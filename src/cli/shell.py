@@ -29,6 +29,7 @@ except ImportError:  # pragma: no cover
 # Internal modules
 # ---------------------------------------------------------------------------
 from src.cli.approval_ui import show_approval_prompt
+from src.cli.banner import render_banner
 from src.cli.commands import handle_command, is_command
 from src.cli.renderer import (
     StreamingStatusDisplay,
@@ -478,6 +479,12 @@ def main() -> None:
         action="store_true",
         help="Stop daemon and exit",
     )
+    parser.add_argument(
+        "--no-banner",
+        action="store_true",
+        dest="no_banner",
+        help="시작 배너를 출력하지 않음",
+    )
 
     args = parser.parse_args()
 
@@ -541,7 +548,24 @@ def main() -> None:
         _run_once(client, args.query, args.session)
     else:
         # Interactive REPL mode
-        print("✦ GovOn CLI  (종료: Ctrl+D 또는 /exit)")
+        if not args.no_banner:
+            from importlib.metadata import PackageNotFoundError, version as pkg_version
+
+            try:
+                ver = pkg_version("govon")
+            except PackageNotFoundError:
+                ver = "dev"
+            mode = "remote" if runtime_url else "local"
+            render_banner(version=ver, mode=mode, runtime_url=runtime_url)
+
+            try:
+                from rich.console import Console
+                from rich.rule import Rule
+
+                Console().print(Rule("종료: Ctrl+D 또는 /exit", style="dim"))
+            except ImportError:  # pragma: no cover
+                print("─── 종료: Ctrl+D 또는 /exit ───")
+
         _run_repl(client, initial_session_id=args.session)
 
 

@@ -384,8 +384,8 @@ class TestStreamingStatusDisplay:
                 d.update("업데이트 메시지")
 
         captured = capsys.readouterr()
-        assert "테스트 시작" in captured.out
-        assert "업데이트 메시지" in captured.out
+        assert "테스트 시작" in captured.err
+        assert "업데이트 메시지" in captured.err
 
     def test_streaming_status_display_update_plain(self, capsys):
         """update() 호출 시 plain mode에서 새 메시지가 출력된다."""

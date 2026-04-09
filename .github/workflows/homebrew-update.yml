@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "GovOn version (e.g. 1.0.6)"
+        description: "GovOn version (e.g. 1.1.0)"
         required: false
         type: string
 
@@ -44,7 +44,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Resolve version and sha256 from PyPI
+      - name: Resolve version and sha256 from PyPI (with retry)
         id: resolve
         env:
           INPUT_VERSION: ${{ inputs.version || '' }}
@@ -53,7 +53,7 @@ jobs:
           pip install requests --quiet
 
           python3 << 'PYEOF'
-          import json, os, re, sys
+          import json, os, re, sys, time
           import requests
 
           input_version = os.environ.get("INPUT_VERSION", "").strip()
@@ -66,16 +66,27 @@ jobs:
           elif trigger_branch.startswith("v"):
               version = trigger_branch.lstrip("v")
 
-          # Fetch from PyPI
-          resp = requests.get("https://pypi.org/pypi/govon/json", timeout=30)
-          resp.raise_for_status()
-          data = resp.json()
+          # Fetch from PyPI with retry to handle index cache delay
+          MAX_RETRIES = 6
+          RETRY_DELAY = 30  # seconds
 
-          if not version:
-              version = data["info"]["version"]
+          for attempt in range(1, MAX_RETRIES + 1):
+              resp = requests.get("https://pypi.org/pypi/govon/json", timeout=30)
+              resp.raise_for_status()
+              data = resp.json()
 
-          if version not in data["releases"]:
-              print(f"::error::Version {version} not found on PyPI")
+              if not version:
+                  version = data["info"]["version"]
+
+              if version in data["releases"] and data["releases"][version]:
+                  print(f"Version {version} found on PyPI (attempt {attempt})")
+                  break
+
+              if attempt < MAX_RETRIES:
+                  print(f"::warning::Version {version} not yet on PyPI, retrying in {RETRY_DELAY}s (attempt {attempt}/{MAX_RETRIES})")
+                  time.sleep(RETRY_DELAY)
+          else:
+              print(f"::error::Version {version} not found on PyPI after {MAX_RETRIES} attempts ({MAX_RETRIES * RETRY_DELAY}s)")
               sys.exit(1)
 
           releases = data["releases"][version]
@@ -111,16 +122,43 @@ jobs:
           SHA256: ${{ steps.resolve.outputs.sha256 }}
           PYPI_URL: ${{ steps.resolve.outputs.pypi_url }}
         run: |
-          FORMULA="homebrew/govon.rb"
+          python3 << 'PYEOF'
+          import os, re
 
-          # Update url (first url line = main package)
-          sed -i "0,|url \".*\"|s|url \".*\"|url \"${PYPI_URL}\"|" "$FORMULA"
+          formula_path = "homebrew/govon.rb"
+          version = os.environ["VERSION"]
+          sha256 = os.environ["SHA256"]
+          pypi_url = os.environ["PYPI_URL"]
 
-          # Update sha256 (first sha256 line = main package)
-          sed -i "0,/sha256 \".*\"/s/sha256 \".*\"/sha256 \"${SHA256}\"/" "$FORMULA"
+          with open(formula_path, "r") as f:
+              content = f.read()
 
-          echo "=== Updated formula ==="
-          head -15 "$FORMULA"
+          # Replace first url line
+          content = re.sub(
+              r'url ".*?"',
+              f'url "{pypi_url}"',
+              content,
+              count=1,
+          )
+
+          # Replace first sha256 line
+          content = re.sub(
+              r'sha256 ".*?"',
+              f'sha256 "{sha256}"',
+              content,
+              count=1,
+          )
+
+          with open(formula_path, "w") as f:
+              f.write(content)
+
+          print("=== Updated formula ===")
+          with open(formula_path, "r") as f:
+              for i, line in enumerate(f):
+                  if i >= 15:
+                      break
+                  print(line, end="")
+          PYEOF
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v8

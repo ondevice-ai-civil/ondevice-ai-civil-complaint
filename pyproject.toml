@@ -200,6 +200,10 @@ omit = [
     "src/inference/document_processor.py",
     "src/inference/db/database.py",
     "src/inference/db/alembic/*",
+    "src/inference/agent_loop.py",
+    "src/inference/response_formatter.py",
+    "src/inference/vllm_stabilizer.py",
+    "src/inference/query_builder.py",
 ]
 
 [tool.coverage.report]

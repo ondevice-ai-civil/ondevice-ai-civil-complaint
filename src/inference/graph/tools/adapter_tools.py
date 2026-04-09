@@ -17,9 +17,9 @@ from src.inference.adapter_registry import AdapterRegistry
 
 
 class AdapterToolInput(BaseModel):
-    """어댑터 도구 입력 스키마."""
+    """Adapter tool input schema."""
 
-    query: str = Field(description="민원 또는 법률 관련 질의 내용")
+    query: str = Field(description="Civil complaint or legal query text")
 
 
 def build_adapter_tools(draft_response_fn: Callable) -> List[StructuredTool]:

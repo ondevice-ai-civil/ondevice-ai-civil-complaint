@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, List
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
+from langchain_core.runnables.config import var_child_runnable_config
 from langgraph.types import interrupt
 from loguru import logger
 
@@ -39,17 +41,22 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-_SYSTEM_PROMPT = (
-    "당신은 GovOn 민원 답변 보조 시스템입니다.\n"
-    "사용자의 요청을 분석하여 적절한 도구를 호출하거나 직접 답변하세요.\n\n"
-    "판단 원칙:\n"
-    "- 각 도구의 설명을 읽고 필요한 것만 호출하세요.\n"
-    "- 답변 초안이 필요하면 도메인에 맞는 어댑터 도구를 선택하세요.\n"
-    "- 근거나 출처가 필요하면 검색 도구를 호출하세요.\n"
-    "- 이전 대화에서 이미 초안이 있으면 어댑터 재호출이 불필요할 수 있습니다.\n"
-    "- 충분한 정보가 모이면 최종 답변을 직접 작성하세요.\n"
-    "- 불필요한 도구는 호출하지 마세요.\n"
+_BASE_SYSTEM_PROMPT = (
+    "You are GovOn, a Korean civil complaint response assistant.\n"
+    "Analyze the user's request and actively use the available tools to provide accurate, data-backed answers.\n\n"
+    "Decision rules:\n"
+    "1. For complaint response drafts: ALWAYS call the appropriate adapter tool "
+    "(public_admin_adapter for administrative matters, legal_adapter for legal questions).\n"
+    "2. For data or statistics: Use api_lookup, stats_lookup, issue_detector, "
+    "keyword_analyzer, or demographics_lookup as needed.\n"
+    "3. Call MULTIPLE tools in parallel when the query requires different types of information.\n"
+    "4. Only respond directly WITHOUT tools for simple greetings or questions requiring no data.\n"
+    "5. After collecting tool results, synthesize them into a comprehensive Korean answer.\n"
+    "6. If a previous turn already contains a draft, you may add legal citations "
+    "or data without re-calling the adapter.\n"
 )
+
+_SYSTEM_PROMPT = _BASE_SYSTEM_PROMPT
 
 
 # ---------------------------------------------------------------------------
@@ -58,20 +65,91 @@ _SYSTEM_PROMPT = (
 
 
 def make_session_load_node(session_store: "SessionStore"):
-    """세션 로드 노드 팩토리.
+    """세션 로드 + 컨텍스트 윈도우 관리 노드 팩토리.
 
-    checkpointer가 messages를 복원하므로 최소한의 세션 식별만 수행한다.
+    멀티턴 대화에서 messages가 누적되면 LLM 컨텍스트 윈도우(max_model_len=8192)를
+    초과할 수 있다. session_load에서 토큰 예산 기반으로 오래된 메시지를 정리한다.
+
+    EXAONE-4.0-32B-AWQ 스펙: max_position_embeddings=131072
+    현재 vLLM 설정: --max-model-len=8192 (GPU 메모리 제약)
+
+    토큰 예산 분배 (max_model_len=8192):
+      시스템 프롬프트:     ~500 토큰
+      도구 스키마 (7개):   ~1,000 토큰
+      대화 이력 (messages): ~4,000 토큰
+      LLM 응답 (max_tokens): ~2,048 토큰
+      안전 마진:           ~644 토큰
     """
+
+    # 메시지에 할당 가능한 토큰 예산
+    # max_model_len(8192) - max_tokens(2048) - overhead(1500) - margin(644) = 4000
+    MAX_MESSAGE_TOKENS = 4000
+    # 최근 N개 메시지는 무조건 보존 (현재 턴의 맥락 유지)
+    KEEP_RECENT = 6
+
+    def _estimate_tokens(msg: Any) -> int:
+        """메시지의 대략적 토큰 수 추정.
+
+        한국어: 1글자 ≈ 2-3 토큰 (보수적으로 2 적용)
+        영어/JSON: 1문자 ≈ 0.75 토큰
+        ToolMessage는 JSON이 많으므로 별도 계수.
+        """
+        content = getattr(msg, "content", "") or ""
+        if isinstance(content, str):
+            # ToolMessage는 JSON(영어/숫자 위주), 나머지는 한국어 위주
+            if getattr(msg, "type", "") == "tool":
+                return max(len(content), 10)  # JSON: ~1 token/char
+            return max(len(content) * 2, 10)  # 한국어: ~2 tokens/char
+        return 100
 
     async def session_load_node(state: GovOnGraphState) -> dict:
         t0 = time.monotonic()
         session_id = state.get("session_id", "")
+        messages = list(state.get("messages", []))
+
+        result: Dict[str, Any] = {}
+
+        # 메시지가 적으면 관리 불필요
+        if len(messages) > KEEP_RECENT:
+            recent = messages[-KEEP_RECENT:]
+            older = messages[:-KEEP_RECENT]
+
+            recent_tokens = sum(_estimate_tokens(m) for m in recent)
+            remaining_budget = MAX_MESSAGE_TOKENS - recent_tokens
+
+            if remaining_budget <= 0:
+                trimmed = recent
+            else:
+                kept_older: List = []
+                for msg in reversed(older):
+                    tokens = _estimate_tokens(msg)
+                    if remaining_budget - tokens < 0:
+                        break
+                    kept_older.insert(0, msg)
+                    remaining_budget -= tokens
+                trimmed = kept_older + recent
+
+            if len(trimmed) < len(messages):
+                logger.info(
+                    f"[session_load] context window trim: "
+                    f"{len(messages)} → {len(trimmed)} messages"
+                )
+                # RemoveMessage로 오래된 메시지를 state에서 제거
+                from langchain_core.messages import RemoveMessage
+
+                trimmed_ids = {getattr(m, "id", None) for m in trimmed} - {None}
+                removals = []
+                for msg in messages:
+                    msg_id = getattr(msg, "id", None)
+                    if msg_id and msg_id not in trimmed_ids:
+                        removals.append(RemoveMessage(id=msg_id))
+                if removals:
+                    result["messages"] = removals
+
         latency = round((time.monotonic() - t0) * 1000, 2)
         logger.debug(f"[session_load] session_id={session_id} latency_ms={latency}")
-        return {
-            "session_id": session_id,
-            "node_latencies": {"session_load": latency},
-        }
+        result["node_latencies"] = {"session_load": latency}
+        return result
 
     return session_load_node
 
@@ -160,7 +238,10 @@ def make_approval_wait_node(approval_map: dict[str, bool]):
     거부 시 HumanMessage를 추가하여 agent가 대안을 제시하도록 한다.
     """
 
-    async def approval_wait_node(state: GovOnGraphState) -> dict:
+    async def approval_wait_node(state: GovOnGraphState, config: RunnableConfig) -> dict:
+        # interrupt()가 내부적으로 get_config()를 호출하므로 ContextVar에 config 주입
+        var_child_runnable_config.set(config)
+
         messages = state.get("messages", [])
         if not messages:
             return {"approval_status": ApprovalStatus.REJECTED.value}
@@ -179,6 +260,7 @@ def make_approval_wait_node(approval_map: dict[str, bool]):
         response = interrupt(
             {
                 "tools": tool_names,
+                "planned_tools": tool_names,
                 "message": f"다음 도구를 실행합니다: {', '.join(tool_names)}",
                 "approval_required": approval_required,
             }
@@ -331,21 +413,13 @@ def make_persist_node(session_store: "SessionStore"):
 # ---------------------------------------------------------------------------
 
 _V3_SYSTEM_PROMPT = (
-    "당신은 GovOn 민원 답변 보조 시스템입니다.\n"
-    "사용자의 요청을 분석하여 적절한 도구를 호출하거나 직접 답변하세요.\n\n"
-    "판단 원칙:\n"
-    "- 각 도구의 설명을 읽고 필요한 것만 호출하세요.\n"
-    "- 답변 초안이 필요하면 도메인에 맞는 어댑터 도구를 선택하세요.\n"
-    "- 근거나 출처가 필요하면 검색 도구를 호출하세요.\n"
-    "- 이전 대화에서 이미 초안이 있으면 어댑터 재호출이 불필요할 수 있습니다.\n"
-    "- 충분한 정보가 모이면 최종 답변을 직접 작성하세요.\n"
-    "- 불필요한 도구는 호출하지 마세요.\n"
-    "- 도구 결과가 부족하면 추가 도구를 호출할 수 있습니다.\n"
+    _BASE_SYSTEM_PROMPT
+    + "7. If tool results are insufficient, call additional tools in the next iteration.\n"
 )
 
 _V3_FORCE_ANSWER_SUFFIX = (
-    "\n\n[중요] 최대 반복 횟수에 도달했습니다. "
-    "더 이상 도구를 호출하지 말고, 현재까지 수집한 정보를 기반으로 최선의 답변을 작성하세요."
+    "\n\n[IMPORTANT] Maximum iterations reached. "
+    "Do NOT call any more tools. Write the best answer you can based on the information collected so far."
 )
 
 
@@ -425,13 +499,16 @@ def make_tools_node_v3(tool_node_fn):
         LangGraph ToolNode 인스턴스 또는 동등한 async callable.
     """
 
-    async def tools_node_v3(state: GovOnGraphState) -> dict:
+    async def tools_node_v3(state: GovOnGraphState, config: RunnableConfig) -> dict:
         t0 = time.monotonic()
         iteration = state.get("iteration_count", 0)
         pending = state.get("pending_tool_calls", [])
 
         # ToolNode 실행 (기존 로직 재사용)
-        result = await tool_node_fn(state)
+        if hasattr(tool_node_fn, "ainvoke"):
+            result = await tool_node_fn.ainvoke(state, config)
+        else:
+            result = await tool_node_fn(state)
 
         latency = round((time.monotonic() - t0) * 1000, 2)
 

@@ -58,7 +58,7 @@ jobs:
         run: |
           FLAVOR="${{ inputs.hardware || 'a100-large' }}"
           RESPONSE=$(curl -s -o /tmp/hw_response.json -w "%{http_code}" \
-            -X PATCH "${{ env.HF_API }}/spaces/${{ env.SPACE_ID }}/hardware" \
+            -X POST "${{ env.HF_API }}/spaces/${{ env.SPACE_ID }}/hardware" \
             -H "Authorization: Bearer $HF_TOKEN" \
             -H "Content-Type: application/json" \
             -d "{\"flavor\": \"$FLAVOR\"}")
@@ -90,17 +90,18 @@ jobs:
           git config user.email "github-actions@github.com"
           git config user.name "github-actions"
 
-          # HF Space repo clone (sparse: Dockerfile + src only)
+          # HF Space repo clone (토큰을 URL에 포함하지 않음 — 로그 노출 방지)
           git clone --depth=1 \
-            "https://user:$HF_TOKEN@huggingface.co/spaces/${{ env.SPACE_ID }}" \
+            "https://huggingface.co/spaces/${{ env.SPACE_ID }}" \
             /tmp/hfspace
+          cd /tmp/hfspace
+          git config http.extraHeader "Authorization: Bearer $HF_TOKEN"
 
           # Dockerfile.hfspace → Space의 Dockerfile로 복사
-          cp Dockerfile.hfspace /tmp/hfspace/Dockerfile
-          cp requirements.txt /tmp/hfspace/requirements.txt
-          rsync -a --delete src/ /tmp/hfspace/src/
+          cp $GITHUB_WORKSPACE/Dockerfile.hfspace Dockerfile
+          cp $GITHUB_WORKSPACE/requirements.txt requirements.txt
+          rsync -a --delete $GITHUB_WORKSPACE/src/ src/
 
-          cd /tmp/hfspace
           git add -A
           if git diff --cached --quiet; then
             echo "No changes to push"

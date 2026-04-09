@@ -5,7 +5,7 @@ FastAPI TestClient를 사용해 HTTP 레이어를 검증한다.
 manager.graph를 스텁으로 교체하여 LangGraph 의존성을 격리한다.
 
 테스트 환경:
-- conftest.py가 vllm/sentence_transformers/retriever/database.py/konlpy/rank_bm25/faiss를
+- conftest.py가 vllm/sentence_transformers/database.py/faiss를
   미리 mock으로 등록하므로, 이 파일에서는 중복 mock 불필요.
 - API_KEY 환경변수가 None이면 verify_api_key가 인증을 건너뛰므로
   기본적으로 인증 우회 상태에서 동작한다.
@@ -18,15 +18,9 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi.testclient import TestClient
 
-# retriever mock — api_server.py가 모듈 레벨에서 retriever를 import하므로
-# api_server import 시에만 필요하다. test_retriever.py와 충돌하지 않도록
-# patch.dict로 import 범위 내에서만 mock을 적용하고, import 후 즉시 제거한다.
-_retriever_stub = MagicMock()
-with patch.dict(sys.modules, {"src.inference.retriever": _retriever_stub}):
-    from fastapi.testclient import TestClient
-
-    from src.inference.api_server import app, manager
+from src.inference.api_server import app, manager
 
 # ---------------------------------------------------------------------------
 # 헬퍼: 그래프 스텁

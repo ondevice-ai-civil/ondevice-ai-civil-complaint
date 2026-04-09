@@ -18,10 +18,10 @@ from pydantic import BaseModel, Field
 
 
 class ApiLookupInput(BaseModel):
-    """api_lookup 도구 입력 스키마."""
+    """api_lookup tool input schema."""
 
-    query: str = Field(..., description="유사 민원 검색 질의문")
-    ret_count: int = Field(5, description="반환할 유사 민원 수 (1~20)", ge=1, le=20)
+    query: str = Field(..., description="Search query for similar civil complaints")
+    ret_count: int = Field(5, description="Number of results to return (1-20)", ge=1, le=20)
 
 
 # ---------------------------------------------------------------------------
@@ -63,9 +63,10 @@ def build_search_tools(
         coroutine=_api_lookup,
         name="api_lookup",
         description=(
-            "공공데이터포털(data.go.kr) API로 민원 분석 보고서, 통계, 정책 데이터를 조회합니다. "
-            "최신 정책 정보나 외부 데이터가 필요할 때 사용하세요. "
-            "반환값: API 조회 결과 (제목, 요약, 출처 링크)"
+            "Search the Korea Public Data Portal (data.go.kr) for civil complaint analysis reports, "
+            "statistics, and policy data. USE THIS TOOL when you need official government data, "
+            "recent policy information, or external references to support your answer. "
+            "Returns: title, summary, and source URL for each result."
         ),
         args_schema=ApiLookupInput,
         metadata={"requires_approval": False},

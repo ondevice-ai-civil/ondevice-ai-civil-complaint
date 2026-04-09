@@ -1,41 +1,35 @@
 adapters:
   public_admin:
     path: "umyunsang/govon-civil-adapter"
-    description: "공공행정 민원 답변 초안 생성에 특화. 74K건 민원-답변 쌍으로 학습."
-    domain: "공공행정"
+    description: "Public administration complaint draft generation. Trained on 74K complaint-response pairs."
+    domain: "public_admin"
     keywords:
-      - 민원
-      - 행정
-      - 공공
-      - 처분
-      - 신청
-      - 허가
-      - 이의신청
+      - complaint
+      - administration
+      - permit
+      - application
+      - objection
     tool_description: >
-      공공행정 민원에 대한 답변 초안을 생성합니다.
-      74K건의 민원-답변 쌍으로 학습된 LoRA 어댑터를 사용하여,
-      민원 접수·처분·허가·이의신청 등 행정 절차 관련 질의에 대해
-      구조화된 답변 텍스트를 반환합니다.
-      법률 자문이 아닌 행정 절차·민원 처리에 해당하는 질의에 사용하십시오.
-      반환값: {"text": "답변 초안", "citations": [...]} 형식의 JSON 문자열.
+      Generate a draft response for public administration complaints using a specialized
+      LoRA model trained on 74K complaint-response pairs. USE THIS TOOL for queries about
+      administrative procedures, permits, applications, objections, or general civil service
+      matters. DO NOT use for legal interpretation queries.
+      Returns: JSON with "text" (draft response) and "success" (boolean).
     requires_approval: true
   legal:
     path: "siwo/govon-legal-adapter"
-    description: "법률 초안 생성 및 법령 근거 인용에 특화. 270K건 법률 문서로 학습."
-    domain: "법률"
+    description: "Legal draft generation with statute citations. Trained on 270K legal documents."
+    domain: "legal"
     keywords:
-      - 법률
-      - 법령
-      - 판례
-      - 조례
-      - 시행령
-      - 법적
-      - 소송
+      - law
+      - statute
+      - precedent
+      - ordinance
+      - decree
     tool_description: >
-      법률 관련 질의에 대한 답변 초안을 생성하고 법령 근거를 인용합니다.
-      270K건의 법률 문서로 학습된 LoRA 어댑터를 사용하여,
-      법령·판례·조례·시행령 관련 질의에 대해 법적 근거가 포함된
-      답변 텍스트를 반환합니다.
-      행정 민원이 아닌 법률 해석·판례 참조·법령 근거가 필요한 질의에 사용하십시오.
-      반환값: {"text": "답변 초안", "citations": [...]} 형식의 JSON 문자열.
+      Generate a draft response with legal citations using a specialized LoRA model trained
+      on 270K legal documents. USE THIS TOOL for queries requiring legal interpretation,
+      statute references, court precedents, ordinances, or enforcement decrees.
+      DO NOT use for general administrative complaints.
+      Returns: JSON with "text" (draft response) and "success" (boolean).
     requires_approval: true

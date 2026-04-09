@@ -19,48 +19,54 @@ from pydantic import BaseModel, Field
 
 
 class IssueDetectorInput(BaseModel):
-    """issue_detector 도구 입력 스키마."""
+    """issue_detector tool input schema."""
 
-    query: str = Field(..., description="이슈 탐지 대상 키워드 또는 질의문")
+    query: str = Field(..., description="Keywords or query to detect complaint issues")
     analysis_time: Optional[str] = Field(
         None,
-        description="분석 시간대 (YYYYMMDDHH 형식, 10자리). 예: '2026040814'",
+        description="Analysis timestamp (YYYYMMDDHH, 10 digits). Example: '2026040814'",
     )
-    max_result: int = Field(10, description="반환할 최대 결과 수", ge=1)
+    max_result: int = Field(10, description="Maximum number of results to return", ge=1)
 
 
 class StatsLookupInput(BaseModel):
-    """stats_lookup 도구 입력 스키마."""
+    """stats_lookup tool input schema."""
 
-    query: str = Field(..., description="통계 조회 대상 키워드")
+    query: str = Field(..., description="Keywords for statistics lookup")
     date_from: Optional[str] = Field(
-        None, description="조회 시작일 (YYYYMMDD 형식). 예: '20260101'"
+        None, description="Start date (YYYYMMDD format). Example: '20260101'"
     )
-    date_to: Optional[str] = Field(None, description="조회 종료일 (YYYYMMDD 형식). 예: '20260408'")
+    date_to: Optional[str] = Field(
+        None, description="End date (YYYYMMDD format). Example: '20260408'"
+    )
     period: Optional[str] = Field(
-        None, description="집계 기간 단위 (DAILY, WEEKLY, MONTHLY, YEARLY)"
+        None, description="Aggregation period (DAILY, WEEKLY, MONTHLY, YEARLY)"
     )
 
 
 class KeywordAnalyzerInput(BaseModel):
-    """keyword_analyzer 도구 입력 스키마."""
+    """keyword_analyzer tool input schema."""
 
-    query: str = Field(..., description="키워드 분석 대상 질의문")
+    query: str = Field(..., description="Query text for keyword frequency analysis")
     date_from: Optional[str] = Field(
-        None, description="분석 시작일 (YYYYMMDD 형식). 예: '20260101'"
+        None, description="Start date (YYYYMMDD format). Example: '20260101'"
     )
-    date_to: Optional[str] = Field(None, description="분석 종료일 (YYYYMMDD 형식). 예: '20260408'")
-    result_count: int = Field(20, description="반환할 키워드 수", ge=1)
+    date_to: Optional[str] = Field(
+        None, description="End date (YYYYMMDD format). Example: '20260408'"
+    )
+    result_count: int = Field(20, description="Number of keywords to return", ge=1)
 
 
 class DemographicsLookupInput(BaseModel):
-    """demographics_lookup 도구 입력 스키마."""
+    """demographics_lookup tool input schema."""
 
-    query: str = Field(..., description="인구통계 분석 대상 질의문")
+    query: str = Field(..., description="Query for demographic analysis of complaint filers")
     date_from: Optional[str] = Field(
-        None, description="분석 시작일 (YYYYMMDD 형식). 예: '20260101'"
+        None, description="Start date (YYYYMMDD format). Example: '20260101'"
     )
-    date_to: Optional[str] = Field(None, description="분석 종료일 (YYYYMMDD 형식). 예: '20260408'")
+    date_to: Optional[str] = Field(
+        None, description="End date (YYYYMMDD format). Example: '20260408'"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -112,9 +118,10 @@ def build_analysis_tools(
         coroutine=_issue_detector,
         name="issue_detector",
         description=(
-            "민원 데이터에서 반복되는 이슈 패턴과 트렌드를 탐지합니다. "
-            "민원 급증, 반복 불만, 신규 이슈를 파악할 때 사용하세요. "
-            "반환값: 탐지된 이슈 목록 (이슈명, 건수, 심각도)"
+            "Detect recurring issue patterns and trends in civil complaint data. "
+            "USE THIS TOOL when the user asks about complaint surges, repeated complaints, "
+            "emerging issues, or trend analysis. "
+            "Returns: list of detected issues with name, count, and severity score."
         ),
         args_schema=IssueDetectorInput,
         metadata={"requires_approval": False},
@@ -146,9 +153,10 @@ def build_analysis_tools(
         coroutine=_stats_lookup,
         name="stats_lookup",
         description=(
-            "민원 접수 통계를 기간별/유형별로 조회합니다. "
-            "민원 현황 파악, 추이 분석에 사용하세요. "
-            "반환값: 통계 데이터 (기간, 접수건수, 유형별 분포)"
+            "Query civil complaint filing statistics by period and category. "
+            "USE THIS TOOL when the user asks about complaint volume, filing counts, "
+            "category distribution, or time-series trends. "
+            "Returns: statistical data including period, filing count, and category breakdown."
         ),
         args_schema=StatsLookupInput,
         metadata={"requires_approval": False},
@@ -180,9 +188,10 @@ def build_analysis_tools(
         coroutine=_keyword_analyzer,
         name="keyword_analyzer",
         description=(
-            "민원 텍스트에서 핵심 키워드와 빈도를 분석합니다. "
-            "민원 이슈의 핵심어를 파악할 때 사용하세요. "
-            "반환값: 키워드 목록 (키워드, 빈도, 관련도)"
+            "Analyze top keywords and their frequency in civil complaint texts. "
+            "USE THIS TOOL when the user asks about trending topics, frequently mentioned terms, "
+            "or wants to understand what citizens are complaining about. "
+            "Returns: ranked keyword list with frequency and relevance scores."
         ),
         args_schema=KeywordAnalyzerInput,
         metadata={"requires_approval": False},
@@ -211,9 +220,10 @@ def build_analysis_tools(
         coroutine=_demographics_lookup,
         name="demographics_lookup",
         description=(
-            "민원인의 인구통계 정보(연령대, 지역 등)를 조회합니다. "
-            "민원 대상 분석에 사용하세요. "
-            "반환값: 인구통계 분포 데이터"
+            "Look up demographic distribution (age group, region, gender) of civil complaint filers. "
+            "USE THIS TOOL when the user asks about who is filing complaints, "
+            "regional patterns, or age-based analysis. "
+            "Returns: demographic distribution data."
         ),
         args_schema=DemographicsLookupInput,
         metadata={"requires_approval": False},

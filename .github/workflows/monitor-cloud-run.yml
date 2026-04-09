@@ -22,7 +22,7 @@ jobs:
         run: |
           if [ -z "$GCP_SA_KEY" ]; then
             echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::GCP_SA_KEY 시크릿이 설정되지 않았습니다. 모니터링을 건너뜁니다."
+            echo "::warning::GCP_SA_KEY secret is not set. Skipping monitoring."
           else
             echo "available=true" >> "$GITHUB_OUTPUT"
           fi
@@ -109,18 +109,18 @@ jobs:
               await github.rest.issues.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                title: `Cloud Run 서비스 다운: ${new Date().toISOString()}`,
+                title: `Cloud Run service down: ${new Date().toISOString()}`,
                 body: [
-                  `## 모니터링 알림`,
+                  `## Monitoring Alert`,
                   ``,
-                  `| 항목 | 값 |`,
-                  `|------|-----|`,
+                  `| Item | Value |`,
+                  `|------|-------|`,
                   `| Service | ${{ env.SERVICE_NAME }} |`,
                   `| HTTP Code | ${{ steps.health.outputs.http_code }} |`,
                   `| Revision | ${{ steps.metrics.outputs.revision }} |`,
-                  `| 감지 시각 | ${new Date().toISOString()} |`,
+                  `| Detected At | ${new Date().toISOString()} |`,
                   ``,
-                  `서비스 헬스체크에 실패했습니다. 즉시 확인이 필요합니다.`,
+                  `Service health check failed. Immediate attention required.`,
                 ].join('\n'),
                 labels: ['monitoring', 'alert'],
               });
@@ -150,7 +150,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issue.number,
-                body: `서비스가 복구되었습니다. (${new Date().toISOString()})`,
+                body: `Service has recovered. (${new Date().toISOString()})`,
               });
             }
 
@@ -160,7 +160,7 @@ jobs:
           echo "### Cloud Run Monitoring" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ steps.check-creds.outputs.available }}" != "true" ]; then
-            echo "> **GCP_SA_KEY 시크릿 미설정으로 모니터링을 건너뛰었습니다.**" >> $GITHUB_STEP_SUMMARY
+            echo "> **Monitoring skipped: GCP_SA_KEY secret not configured.**" >> $GITHUB_STEP_SUMMARY
           else
             echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
             echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY

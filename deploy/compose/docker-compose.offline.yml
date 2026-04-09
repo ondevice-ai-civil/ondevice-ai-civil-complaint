@@ -1,6 +1,6 @@
-# 볼륨 마운트 안내:
-# ./models → /app/models (faiss_index, bm25_index 등 모든 모델 데이터 포함)
-# ./data   → /app/data   (학습/테스트 데이터)
+# Volume mount guide:
+# ./models → /app/models (includes all model data: faiss_index, bm25_index, etc.)
+# ./data   → /app/data   (training/test data)
 
 services:
   govon-backend:

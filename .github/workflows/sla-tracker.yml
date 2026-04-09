@@ -80,9 +80,9 @@ jobs:
                 .addRaw(`| Issue | Title | Open | SLA |\n|---|---|---|---|\n${table}`)
                 .write();
 
-              core.warning(`${breached.length}건의 이슈가 SLA를 초과했습니다.`);
+              core.warning(`${breached.length} issues have exceeded SLA.`);
             } else {
               core.summary.addHeading('SLA Status', 2)
-                .addRaw('모든 이슈가 SLA 내에 있습니다.')
+                .addRaw('All issues are within SLA.')
                 .write();
             }

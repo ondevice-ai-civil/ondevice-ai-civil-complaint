@@ -19,10 +19,10 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - name: 코드 체크아웃
+      - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Compose 입력 디렉토리 및 env 준비
+      - name: Prepare Compose input directories and env
         run: |
           mkdir -p \
             models/faiss_index \
@@ -42,7 +42,7 @@ jobs:
             'API_KEY=prod-ci-key' \
             > /tmp/govon-prod.env
 
-      - name: Compose 설정 검증
+      - name: Validate Compose configuration
         run: |
           docker compose -f deploy/compose/docker-compose.ci.yml config > /tmp/govon-compose-ci.yaml
           docker compose -f deploy/compose/docker-compose.yml config > /tmp/govon-compose-online.yaml
@@ -55,10 +55,10 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - name: 코드 체크아웃
+      - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Compose 입력 디렉토리 준비
+      - name: Prepare Compose input directories
         run: |
           mkdir -p \
             models/faiss_index \
@@ -71,10 +71,10 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Compose 런타임 스모크 실행
+      - name: Run Compose runtime smoke test
         env:
           DOCKER_BUILDKIT: 1
-          # COMPOSE_DOCKER_CLI_BUILD는 Compose V2에서 불필요 — 제거됨
+          # COMPOSE_DOCKER_CLI_BUILD is unnecessary in Compose V2 — removed
         run: |
           set -euo pipefail
 
@@ -93,7 +93,7 @@ jobs:
             if curl -fsS http://127.0.0.1:18000/health > /tmp/govon-health.json 2>/dev/null; then
               break
             fi
-            echo "Compose 런타임 시작 대기 중... ($i/30)"
+            echo "Waiting for Compose runtime to start... ($i/30)"
             sleep 2
           done
 
@@ -111,10 +111,10 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - name: 코드 체크아웃
+      - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: GPU Compose 입력 디렉토리 및 env 준비
+      - name: Prepare GPU Compose input directories and env
         run: |
           mkdir -p \
             models/faiss_index \
@@ -136,19 +136,19 @@ jobs:
             'MODEL_PATH=LGAI-EXAONE/EXAONE-4.0-32B-AWQ' \
             > /tmp/govon-gpu.env
 
-      - name: 호스트 GPU 인식 확인
+      - name: Verify host GPU detection
         run: nvidia-smi
 
-      - name: Docker GPU runtime 인식 확인
+      - name: Verify Docker GPU runtime detection
         run: docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu22.04 nvidia-smi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: GPU Compose 런타임 스모크 실행
+      - name: Run GPU Compose runtime smoke test
         env:
           DOCKER_BUILDKIT: 1
-          # COMPOSE_DOCKER_CLI_BUILD는 Compose V2에서 불필요 — 제거됨
+          # COMPOSE_DOCKER_CLI_BUILD is unnecessary in Compose V2 — removed
         run: |
           set -euo pipefail
 
@@ -167,7 +167,7 @@ jobs:
             if curl -fsS http://127.0.0.1:18001/health > /tmp/govon-gpu-health.json 2>/dev/null; then
               break
             fi
-            echo "GPU Compose 런타임 시작 대기 중... ($i/60)"
+            echo "Waiting for GPU Compose runtime to start... ($i/60)"
             sleep 10
           done
 

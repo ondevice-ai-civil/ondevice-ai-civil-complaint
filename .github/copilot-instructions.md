@@ -1,29 +1,29 @@
 # GitHub Copilot PR Review Instructions
 
-## 리뷰 태그 체계
+## Review Tag System
 
-모든 리뷰 코멘트에는 아래 태그 중 하나를 반드시 앞에 붙이세요.
+Every review comment must begin with one of the following tags.
 
-| 태그 | 기준 | 코멘트 작성 여부 |
-|------|------|----------------|
-| `[MUST]` | 버그, 보안 취약점, 데이터 손실 위험, 런타임 오류 | **반드시 작성** |
-| `[SHOULD]` | 코드 품질 저하, 유지보수성 문제, 성능 이슈, 잠재적 회귀 | **반드시 작성** |
-| `[NITS]` | 스타일, 네이밍, 주석 표현, 사소한 포맷 | **작성하지 않음** |
-| `[QUESTION]` | 의도 파악을 위한 질문 | 필요 시 작성 |
+| Tag | Criteria | Comment Required |
+|-----|----------|-----------------|
+| `[MUST]` | Bugs, security vulnerabilities, data loss risk, runtime errors | **Always required** |
+| `[SHOULD]` | Code quality issues, maintainability problems, performance issues, potential regressions | **Always required** |
+| `[NITS]` | Style, naming, comment wording, minor formatting | **Do not write** |
+| `[QUESTION]` | Questions to understand intent | Write when necessary |
 
-## 리뷰 기준
+## Review Criteria
 
-### 보고할 것 (`[MUST]` / `[SHOULD]` 태그 사용)
+### Report (`[MUST]` / `[SHOULD]` tags)
 
-- `[MUST]`: 버그, 보안 취약점, 데이터 손실 위험, 런타임 오류
-- `[SHOULD]`: 코드 품질 저하, 유지보수성 문제, 성능 이슈, 잠재적 회귀
+- `[MUST]`: Bugs, security vulnerabilities, data loss risk, runtime errors
+- `[SHOULD]`: Code quality issues, maintainability problems, performance issues, potential regressions
 
-### 보고하지 말 것
+### Do Not Report
 
-- `[NITS]` 수준: 스타일 선호도, 변수명/메서드명 취향, 주석 표현 방식, 사소한 포맷
-- 이미 동작하는 코드에 대한 선호도 기반 제안
-- 기존 코드베이스 패턴과 일관된 코드에 대한 지적
+- `[NITS]`-level: Style preferences, variable/method naming preferences, comment wording, minor formatting
+- Preference-based suggestions on already-working code
+- Pointing out code that is consistent with existing codebase patterns
 
-## 리뷰 생략 기준
+## When to Skip Review
 
-`[MUST]` 또는 `[SHOULD]` 레벨 이슈가 없으면 **리뷰 코멘트를 작성하지 않습니다**.
+If there are no `[MUST]` or `[SHOULD]` level issues, **do not write any review comments**.

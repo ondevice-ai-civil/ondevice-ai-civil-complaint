@@ -91,7 +91,7 @@ jobs:
           RESULT_FILE=$(ls verify_e2e_tool_calling_*.json 2>/dev/null | head -1)
           if [ -z "$RESULT_FILE" ]; then
             echo "## E2E Test Result" >> $GITHUB_STEP_SUMMARY
-            echo "결과 파일을 찾을 수 없습니다." >> $GITHUB_STEP_SUMMARY
+            echo "Result file not found." >> $GITHUB_STEP_SUMMARY
             exit 0
           fi
 
@@ -109,16 +109,16 @@ jobs:
           cat >> $GITHUB_STEP_SUMMARY << EOF
           ## E2E Test Result — $BADGE
 
-          | 항목 | 수치 |
-          |------|------|
-          | 전체 시나리오 | $TOTAL |
-          | 통과 | $PASSED |
-          | 실패 | $FAILED |
-          | 스킵 | $SKIPPED |
+          | Item | Count |
+          |------|-------|
+          | Total Scenarios | $TOTAL |
+          | Passed | $PASSED |
+          | Failed | $FAILED |
+          | Skipped | $SKIPPED |
 
           **Target:** \`${RUNTIME_URL}\`
 
-          ### Phase별 결과
+          ### Results by Phase
           EOF
 
           python3 - << 'PYEOF'
@@ -150,8 +150,8 @@ jobs:
 
           summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout')
           with open(summary_path, 'a') as out:
-              out.write('\n| Phase | 이름 | 통과 | 실패 | 스킵 |\n')
-              out.write('|-------|------|------|------|------|\n')
+              out.write('\n| Phase | Name | Passed | Failed | Skipped |\n')
+              out.write('|-------|------|--------|--------|--------|\n')
               for phase_num in sorted(phases.keys()):
                   p = phases[phase_num]
                   name = phase_names.get(phase_num, f'Phase {phase_num}')
@@ -159,7 +159,7 @@ jobs:
                   out.write(f"| {icon} Phase {phase_num} | {name} | {p['passed']} | {p['failed']} | {p.get('skipped', 0)} |\n")
 
           if data['summary']['failed'] > 0:
-              out_lines = ['\n### 실패 시나리오\n', '| ID | 이름 | 오류 |\n', '|----|------|------|\n']
+              out_lines = ['\n### Failed Scenarios\n', '| ID | Name | Error |\n', '|----|------|-------|\n']
               for s in data.get('scenarios', []):
                   if s.get('status') == 'failed':
                       sid = s.get('id', '?')

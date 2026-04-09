@@ -1,5 +1,5 @@
-# 파일 경로 기반 자동 라벨 매핑
-# actions/labeler@v5 에서 사용
+# Automatic label mapping based on file paths
+# Used by actions/labeler@v5
 
 ai-model:
   - changed-files:

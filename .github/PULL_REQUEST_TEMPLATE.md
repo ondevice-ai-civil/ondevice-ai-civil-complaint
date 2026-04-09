@@ -1,39 +1,39 @@
-## 관련 이슈
-<!-- 반드시 관련 이슈를 연결해 주세요. 이슈 연결 없는 PR은 리뷰가 진행되지 않습니다. -->
-<!-- 예: Closes #123, Refs #456 -->
+## Related Issue
+<!-- You must link a related issue. PRs without a linked issue will not be reviewed. -->
+<!-- Example: Closes #123, Refs #456 -->
 -
 
-## 작업 배경
-<!-- 이번 작업을 수행한 이유를 간단히 적어주세요. -->
+## Background
+<!-- Briefly describe why this work was done. -->
 
 
-## 주요 변경 사항
-<!-- 새로 추가되거나 수정된 핵심 기능을 요약해 주세요. -->
+## Key Changes
+<!-- Summarize the core features added or modified. -->
 -
 
-## 테스트 결과
-<!-- 기능이 정상 작동하는지 확인한 방법을 적어주세요. -->
-- [ ] 로컬 테스트 완료
-- [ ] 기존 기능 정상 동작 확인
+## Test Results
+<!-- Describe how you verified the feature works correctly. -->
+- [ ] Local test complete
+- [ ] Existing functionality verified
 
-## 기타 사항
-<!-- 리뷰어가 참고해야 할 이슈나 질문을 적어주세요. -->
+## Additional Notes
+<!-- Any issues or questions the reviewer should be aware of. -->
 
 ---
 
-## 머지 조건 체크리스트
-<!-- 아래 조건이 모두 충족되어야 머지할 수 있습니다. -->
-- [ ] 1명 이상의 코드리뷰 승인 완료
-- [ ] CODEOWNERS(팀장) 최종 승인 완료
-- [ ] 모든 리뷰 코멘트 해결(resolved) 완료
+## Merge Checklist
+<!-- All conditions below must be met before merging. -->
+- [ ] At least one code review approval
+- [ ] CODEOWNERS (team lead) final approval
+- [ ] All review comments resolved
 
-## 리뷰어 가이드
-<!-- 리뷰어는 아래 태그를 사용해 구조화된 피드백을 남겨주세요. -->
+## Reviewer Guide
+<!-- Reviewers, please use the tags below for structured feedback. -->
 
-| 태그 | 의미 | 예시 |
-|------|------|------|
-| `[MUST]` | 반드시 수정 (보안·버그·성능 이슈) | `[MUST] API 키가 로그에 노출됩니다.` |
-| `[SHOULD]` | 수정 강권 (코드 품질·유지보수성) | `[SHOULD] 이 로직은 별도 함수로 분리하는 것이 좋습니다.` |
-| `[NITS]` | 사소한 개선 (스타일·네이밍) | `[NITS] 변수명을 \`result\`보다 \`parsed_output\`이 명확합니다.` |
-| `[QUESTION]` | 이해를 위한 질문 | `[QUESTION] 이 조건이 항상 True일 수 있지 않나요?` |
+| Tag | Meaning | Example |
+|-----|---------|---------|
+| `[MUST]` | Must fix (security, bug, performance issue) | `[MUST] API key is exposed in logs.` |
+| `[SHOULD]` | Strongly recommended (code quality, maintainability) | `[SHOULD] This logic should be extracted into a separate function.` |
+| `[NITS]` | Minor improvement (style, naming) | `[NITS] \`parsed_output\` is clearer than \`result\` as a variable name.` |
+| `[QUESTION]` | Question for understanding | `[QUESTION] Can this condition ever be always True?` |
 

@@ -26,7 +26,7 @@ jobs:
         run: |
           gh pr review "${{ github.event.pull_request.number }}" \
             --approve \
-            --body "Dependabot 자동 승인 (CODEOWNER)" \
+            --body "Dependabot auto-approval (CODEOWNER)" \
             --repo "${{ github.repository }}"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

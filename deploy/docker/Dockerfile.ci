@@ -1,5 +1,5 @@
-# Dockerfile.ci — compose-smoke 전용 경량 이미지
-# ML 패키지(torch, vllm, autoawq 등) 제외 — SKIP_MODEL_LOAD=true 환경에서 API 기동만 검증
+# Dockerfile.ci — lightweight image for compose-smoke only
+# Excludes ML packages (torch, vllm, autoawq, etc.) — validates API startup only with SKIP_MODEL_LOAD=true
 
 FROM python:3.14-slim
 
@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 
-# ML 패키지를 제외한 나머지를 자동 설치
+# Auto-install everything except ML packages
 RUN grep -ivE '^(torch|vllm|autoawq|bitsandbytes|peft|trl|optimum|accelerate|datasets|transformers|sentence.transformers|unsloth|xformers|triton|flash.attn|nvidia)' requirements.txt > /tmp/ci-reqs.txt \
     && uv pip install --system --no-cache -r /tmp/ci-reqs.txt \
     && uv pip install --system --no-cache sentence-transformers --no-deps

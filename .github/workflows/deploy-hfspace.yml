@@ -87,14 +87,13 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          # HF Space repo clone (토큰을 URL에 포함하지 않음 — 로그 노출 방지)
-          git clone --depth=1 \
-            "https://huggingface.co/spaces/${{ env.SPACE_ID }}" \
-            /tmp/hfspace
+          # HF_TOKEN is automatically masked by GitHub Actions (secrets are redacted in logs)
+          HF_REPO_URL="https://hf_user:${HF_TOKEN}@huggingface.co/spaces/${{ env.SPACE_ID }}"
+
+          git clone --depth=1 "$HF_REPO_URL" /tmp/hfspace
           cd /tmp/hfspace
           git config user.email "github-actions@github.com"
           git config user.name "github-actions"
-          git config http.extraHeader "Authorization: Bearer $HF_TOKEN"
 
           # deploy/docker/Dockerfile.hfspace → Space의 Dockerfile로 복사
           cp $GITHUB_WORKSPACE/deploy/docker/Dockerfile.hfspace Dockerfile

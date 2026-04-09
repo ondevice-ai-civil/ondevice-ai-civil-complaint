@@ -373,7 +373,7 @@ def _print_server_help() -> None:
         print("─" * 50)
         for cmd, desc in _SUBCOMMANDS.items():
             print(f"  govon server {cmd:<10} {desc}")
-        print(f"  govon server pull [TAG]  특정 태그의 이미지 다운로드")
+        print("  govon server pull [TAG]  특정 태그의 이미지 다운로드")
         print("─" * 50)
 
 

@@ -13,7 +13,7 @@ import json
 import os
 import sys
 import time
-from typing import Any, Dict, Generator, Iterator, Optional
+from typing import Any, Dict, Generator, Optional
 
 import httpx
 from loguru import logger

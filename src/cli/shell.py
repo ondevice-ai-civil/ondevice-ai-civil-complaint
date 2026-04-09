@@ -35,10 +35,10 @@ except ImportError:  # pragma: no cover
 # ---------------------------------------------------------------------------
 # Internal modules
 # ---------------------------------------------------------------------------
-from src.cli.approval_ui import show_approval_prompt
-from src.cli.banner import render_banner
-from src.cli.commands import handle_command, is_command
-from src.cli.renderer import (
+from src.cli.approval_ui import show_approval_prompt  # noqa: E402
+from src.cli.banner import render_banner  # noqa: E402
+from src.cli.commands import handle_command, is_command  # noqa: E402
+from src.cli.renderer import (  # noqa: E402
     StreamingStatusDisplay,
     get_node_message,
     render_error,

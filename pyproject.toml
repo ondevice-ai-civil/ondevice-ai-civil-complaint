@@ -10,7 +10,7 @@ readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
-    {name = "umyunsang", email = "umyunsang@users.noreply.github.com"}
+    {name = "umyunsang", email = "dbstkd5865@gmail.com"}
 ]
 keywords = [
     "agentic-shell",

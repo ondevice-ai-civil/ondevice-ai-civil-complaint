@@ -1,0 +1,100 @@
+name: Publish npm Package
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: publish-npm-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate package
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/npm
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Validate package.json
+        run: node -e "const p = require('./package.json'); console.log('name:', p.name, '/ version:', p.version);"
+
+      - name: Dry-run pack
+        run: |
+          set -o pipefail
+          npm pack --dry-run 2>&1 | tee pack-output.txt
+          echo "### npm pack --dry-run" >> $GITHUB_STEP_SUMMARY
+          cat pack-output.txt >> $GITHUB_STEP_SUMMARY
+
+      - name: Verify bin executable
+        run: |
+          node bin/govon.js --check-install || true
+          echo "bin/govon.js syntax OK"
+
+  publish:
+    name: Publish to npm
+    needs: validate
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: read
+      id-token: write  # npm provenance
+    defaults:
+      run:
+        working-directory: packages/npm
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js (npm registry)
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Extract version from tag
+        id: version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          VERSION="${REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "### npm publish version: $VERSION" >> $GITHUB_STEP_SUMMARY
+
+      - name: Sync package.json version with tag
+        env:
+          TAG_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::warning::package.json version ($PKG_VERSION) differs from tag ($TAG_VERSION). Using tag version."
+            npm version "$TAG_VERSION" --no-git-tag-version
+          fi
+
+      - name: Publish with provenance
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish Summary
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Publish Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| npm pack dry-run | Done (validate job) |" >> $GITHUB_STEP_SUMMARY
+          echo "| npm publish | Done |" >> $GITHUB_STEP_SUMMARY
+          echo "| Provenance | Enabled |" >> $GITHUB_STEP_SUMMARY

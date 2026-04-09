@@ -1,0 +1,154 @@
+name: Homebrew Formula Auto-Update
+
+on:
+  # PyPI 릴리즈 워크플로우 완료 후 자동 트리거
+  workflow_run:
+    workflows: ["Publish Package to PyPI"]
+    types:
+      - completed
+
+  # 수동 트리거 (PyPI 배포 후 sha256 갱신 등에 활용)
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "GovOn 버전 (예: 1.0.2)"
+        required: true
+        type: string
+      pypi_sha256:
+        description: "PyPI sdist sha256 해시값"
+        required: true
+        type: string
+
+jobs:
+  update-formula:
+    name: Update Homebrew Formula
+    runs-on: ubuntu-latest
+    # workflow_run 트리거 시 성공한 경우에만 실행
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve version and sha256
+        id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+            SHA256="${{ inputs.pypi_sha256 }}"
+            PYPI_URL="https://files.pythonhosted.org/packages/source/G/GovOn/GovOn-${VERSION}.tar.gz"
+          else
+            # workflow_run 트리거: PyPI에서 최신 릴리즈 정보 자동 조회
+            pip install requests --quiet
+            eval "$(python - <<'EOF'
+          import requests, sys
+
+          resp = requests.get("https://pypi.org/pypi/GovOn/json", timeout=30)
+          resp.raise_for_status()
+          data = resp.json()
+
+          version = data["info"]["version"]
+          releases = data["releases"][version]
+
+          # sdist(tar.gz) 파일 선택
+          sdist = next((r for r in releases if r["packagetype"] == "sdist"), None)
+          if not sdist:
+              print("echo 'ERROR: sdist not found on PyPI' >&2; exit 1", file=sys.stderr)
+              sys.exit(1)
+
+          url = sdist["url"]
+          sha256 = sdist["digests"]["sha256"]
+
+          print(f"VERSION={version}")
+          print(f"SHA256={sha256}")
+          print(f"PYPI_URL={url}")
+          EOF
+          )"
+          fi
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
+          echo "pypi_url=${PYPI_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Update formula version and sha256
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+          SHA256: ${{ steps.resolve.outputs.sha256 }}
+          PYPI_URL: ${{ steps.resolve.outputs.pypi_url }}
+        run: |
+          FORMULA="homebrew/govon.rb"
+
+          # url 업데이트
+          sed -i "s|url \"https://files.pythonhosted.org/packages/source/G/GovOn/.*\"|url \"${PYPI_URL}\"|" "$FORMULA"
+
+          # sha256 플레이스홀더 또는 기존 값 업데이트
+          sed -i "s|sha256 \".*\"|sha256 \"${SHA256}\"|" "$FORMULA"
+
+          # version 업데이트
+          sed -i "s|version \".*\"|version \"${VERSION}\"|" "$FORMULA"
+
+          # TODO 주석 제거 (실제 값으로 교체된 경우)
+          sed -i '/# TODO: PyPI 배포 후 업데이트$/d' "$FORMULA"
+
+          echo "=== Updated formula ==="
+          cat "$FORMULA"
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: homebrew formula 버전 ${{ steps.resolve.outputs.version }} 업데이트"
+          branch: "chore/homebrew-update-${{ steps.resolve.outputs.version }}"
+          delete-branch: true
+          title: "chore: Homebrew formula v${{ steps.resolve.outputs.version }} 자동 업데이트"
+          body: |
+            ## 관련 이슈
+            - Refs #500
+
+            ## 작업 배경
+            PyPI 릴리즈(`GovOn==${{ steps.resolve.outputs.version }}`) 완료 후 Homebrew formula를 자동 업데이트합니다.
+
+            ## 주요 변경 사항
+            - `homebrew/govon.rb` 버전을 `${{ steps.resolve.outputs.version }}`으로 업데이트
+            - `sha256` 해시를 실제 PyPI sdist 값으로 교체
+            - `url`을 실제 PyPI 다운로드 URL로 교체
+
+            ## 테스트 결과
+            - [ ] `brew install --formula homebrew/govon.rb` 로컬 검증
+            - [ ] `govon --help` 실행 확인
+
+            ## 기타 사항
+            이 PR은 `homebrew-update.yml` 워크플로우에 의해 자동 생성되었습니다.
+
+            ---
+
+            ## 머지 조건 체크리스트
+            - [ ] 1명 이상의 코드리뷰 승인 완료
+            - [ ] CODEOWNERS(팀장) 최종 승인 완료
+            - [ ] 모든 리뷰 코멘트 해결(resolved) 완료
+
+            ## 리뷰어 가이드
+
+            | 태그 | 의미 | 예시 |
+            |------|------|------|
+            | `[MUST]` | 반드시 수정 (보안·버그·성능 이슈) | `[MUST] sha256 불일치` |
+            | `[SHOULD]` | 수정 강권 (코드 품질·유지보수성) | `[SHOULD] resource 블록 추가 필요` |
+            | `[NITS]` | 사소한 개선 (스타일·네이밍) | `[NITS] 주석 정리` |
+            | `[QUESTION]` | 이해를 위한 질문 | `[QUESTION] 이 의존성이 필요한가요?` |
+          labels: |
+            chore
+            homebrew
+            automated

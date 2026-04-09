@@ -7,7 +7,8 @@
 [![Homebrew](https://img.shields.io/badge/brew-govon--org/govon-FBB040?logo=homebrew)](https://github.com/GovOn-Org/homebrew-govon)
 [![Python](https://img.shields.io/pypi/pyversions/govon)](https://pypi.org/project/govon/)
 [![Docs](https://img.shields.io/badge/Docs-Portal-blue?logo=readthedocs)](https://govon-org.github.io/GovOn/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: MIT](https://img.shields.io/badge/Code-MIT-yellow.svg)](LICENSE)
+[![Model: NC](https://img.shields.io/badge/Model-Non--Commercial-red.svg)](https://huggingface.co/LGAI-EXAONE/EXAONE-4.0-32B-AWQ/blob/main/LICENSE)
 
 <!-- DORA-BADGES:START -->
 ![DORA Grade](https://img.shields.io/badge/DORA-Elite-brightgreen)
@@ -235,4 +236,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
-[MIT](LICENSE) -- Copyright (c) 2026 umyunsang
+The GovOn source code is licensed under [MIT](LICENSE).
+
+**Important:** The runtime uses [EXAONE 4.0-32B-AWQ](https://huggingface.co/LGAI-EXAONE/EXAONE-4.0-32B-AWQ), which is distributed under the [EXAONE AI Model License Agreement](https://huggingface.co/LGAI-EXAONE/EXAONE-4.0-32B-AWQ/blob/main/LICENSE) — **non-commercial use only**. Commercial deployment of the model requires a separate license from LG AI Research.

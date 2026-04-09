@@ -1,0 +1,85 @@
+name: Latency Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      runtime_url:
+        description: "HF Space URL (예: https://<space>.hf.space)"
+        required: true
+        type: string
+      runs:
+        description: "시나리오당 반복 횟수"
+        required: false
+        default: "3"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: Run Latency Benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install httpx
+
+      - name: Validate inputs
+        env:
+          RUNTIME_URL: ${{ inputs.runtime_url }}
+          RUNS_INPUT: ${{ inputs.runs }}
+        run: |
+          python3 -c "
+          import os, sys
+          from urllib.parse import urlparse
+          u = os.environ['RUNTIME_URL']
+          p = urlparse(u)
+          if p.scheme not in ('http', 'https') or not p.netloc:
+              print(f'ERROR: Invalid runtime_url: {u}', file=sys.stderr)
+              sys.exit(1)
+          r = os.environ['RUNS_INPUT']
+          if not r.isdigit() or int(r) < 1:
+              print(f'ERROR: Invalid runs: {r} (must be >= 1)', file=sys.stderr)
+              sys.exit(1)
+          print(f'Validated: url={u} runs={r}')
+          "
+
+      - name: Run benchmark
+        env:
+          GOVON_RUNTIME_URL: ${{ inputs.runtime_url }}
+          API_KEY: ${{ secrets.GOVON_API_KEY }}
+          RUNS_INPUT: ${{ inputs.runs }}
+        run: |
+          python3 scripts/benchmark_latency.py \
+            --runs "$RUNS_INPUT" \
+            --output benchmark_results.json \
+            | tee benchmark_output.txt
+
+      - name: Write Step Summary
+        if: always()
+        run: |
+          echo "## GovOn Latency Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat benchmark_output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-results
+          path: |
+            benchmark_results.json
+            benchmark_output.txt
+          retention-days: 30

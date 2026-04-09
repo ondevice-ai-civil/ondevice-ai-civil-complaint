@@ -56,7 +56,7 @@
 - [ ] HF Space 상태: RUNNING
 - [ ] `/health` 엔드포인트 정상 응답
 - [ ] `model_loaded: true` 확인
-- [ ] `ADAPTER_PATHS`에 civil, legal 어댑터 정상 로드
+- [ ] `ADAPTER_PATHS`에 public_admin, legal 어댑터 정상 로드
 - [ ] v3 `/v3/agent/run` 호출 정상 응답
 - [ ] v4 `/v2/agent/stream` + `/v2/agent/approve` 승인 흐름 동작
 - [ ] 멀티턴 대화 `session_id` 유지 확인

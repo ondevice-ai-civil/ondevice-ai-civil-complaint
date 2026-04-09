@@ -41,12 +41,12 @@
 
 | 지표 | 값 |
 |------|-----|
-| 전체 커밋 수 | 825+ |
+| 전체 커밋 수 | 766+ |
 | 기능 커밋 (feat/fix/refactor/test/docs) | 305+ |
 | 도구 수 | 7개 (5 분석 + 2 LoRA 어댑터) |
 | API 엔드포인트 | 7개 (health + v2 4개 + v3 2개) |
 | 아키텍처 버전 | v4 (v1 -> v2 -> v3 -> v4, 5주간 4회 전환) |
-| CI 워크플로우 | 20개 (lint, test, security, deploy, DORA 등) |
+| CI 워크플로우 | 21개 (lint, test, security, deploy, DORA 등) |
 | Deployment Frequency | 30/주 |
 | Lead Time | 0.8h |
 
@@ -93,8 +93,8 @@
 |------|--------|------|------|
 | I-1 | **DORA 메트릭 대시보드** | [Grafana Cloud](https://umyunsang.grafana.net/d/govon-dora/) | Deployment Frequency, Lead Time, CFR, MTTR 실시간 대시보드 |
 | I-2 | **DORA 주간 보고서** | [`metrics/reports/`](../../metrics/reports/) | 주간 DORA 지표 보고서 (자동 생성) |
-| I-3 | **CI/CD 워크플로우** | [`.github/workflows/`](../../.github/workflows/) | 20개 워크플로우 (lint, test, security, deploy, DORA 등) |
-| I-4 | **E2E 테스트 스위트** | `tests/e2e/` | 27개 시나리오 (6-Phase), HF Space 전용 |
+| I-3 | **CI/CD 워크플로우** | [`.github/workflows/`](../../.github/workflows/) | 21개 워크플로우 (lint, test, security, deploy, DORA 등) |
+| I-4 | **E2E 테스트 스위트** | `scripts/verify_e2e_tool_calling.py` | 27개 시나리오 (6-Phase), HF Space 전용 |
 
 ### 5. 공식 문서 산출물
 
@@ -124,7 +124,7 @@
 |------|--------|-----------|
 | 2-1 | `curl https://umyunsang-govon-runtime.hf.space/health` | `{"status": "ok", ...}` 응답 |
 | 2-2 | Health 응답 내 `model_loaded` | `true` |
-| 2-3 | Health 응답 내 `adapters` | `["civil", "legal"]` 포함 |
+| 2-3 | Health 응답 내 `adapters` | `["public_admin", "legal"]` 포함 |
 
 ### Phase 3: v3 ReAct API 검증 (자동 실행 모드)
 
@@ -394,12 +394,14 @@ GovOn/
 │   ├── retrospective.md            # 프로젝트 회고
 │   ├── prd.md                      # PRD
 │   └── wbs.md                      # WBS
+├── scripts/
+│   └── verify_e2e_tool_calling.py # E2E 테스트 (27 시나리오)
 ├── tests/
-│   └── e2e/                        # E2E 테스트 (27 시나리오)
+│   └── test_{cli,data,inference}/  # 단위 테스트
 ├── metrics/
 │   └── reports/                    # DORA 주간 보고서
 ├── .github/
-│   └── workflows/                  # CI/CD 워크플로우 20개
+│   └── workflows/                  # CI/CD 워크플로우 21개
 ├── pyproject.toml                  # 패키지 설정 (v1.0.1)
 ├── Dockerfile                      # 컨테이너 빌드
 ├── docker-compose.yml              # 로컬 개발 환경
@@ -443,10 +445,10 @@ GovOn/
 어댑터 설정 예시:
 ```bash
 # HF Hub에서 직접 로드
-ADAPTER_PATHS=civil=umyunsang/govon-civil-adapter,legal=siwo/govon-legal-adapter
+ADAPTER_PATHS=public_admin=umyunsang/govon-civil-adapter,legal=siwo/govon-legal-adapter
 
 # 로컬 경로
-ADAPTER_PATHS=civil=/app/models/adapters/civil-adapter,legal=/app/models/adapters/legal-adapter
+ADAPTER_PATHS=public_admin=/app/models/adapters/public_admin-adapter,legal=/app/models/adapters/legal-adapter
 ```
 
 #### 데이터 경로
@@ -507,7 +509,7 @@ HuggingFace Spaces 런타임 배포 시 필요한 설정이다.
 
 | Variable 이름 | 값 | 설명 |
 |--------------|-----|------|
-| `ADAPTER_PATHS` | `civil=umyunsang/govon-civil-adapter,legal=siwo/govon-legal-adapter` | LoRA 어댑터 경로 |
+| `ADAPTER_PATHS` | `public_admin=umyunsang/govon-civil-adapter,legal=siwo/govon-legal-adapter` | LoRA 어댑터 경로 |
 | `MODEL_PATH` | `LGAI-EXAONE/EXAONE-4.0-32B-AWQ` | 베이스 모델 |
 | `MAX_MODEL_LEN` | `8192` | 컨텍스트 길이 |
 

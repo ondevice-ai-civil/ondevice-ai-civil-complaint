@@ -24,18 +24,6 @@ class Govon < Formula
     sha256 "# TODO: 업데이트 필요"
   end
 
-  resource "python-dotenv" do
-    # TODO: PyPI 배포 후 업데이트
-    url "https://files.pythonhosted.org/packages/source/p/python-dotenv/python_dotenv-1.0.0.tar.gz"
-    sha256 "# TODO: 업데이트 필요"
-  end
-
-  resource "pyyaml" do
-    # TODO: PyPI 배포 후 업데이트
-    url "https://files.pythonhosted.org/packages/source/P/PyYAML/PyYAML-6.0.tar.gz"
-    sha256 "# TODO: 업데이트 필요"
-  end
-
   resource "loguru" do
     # TODO: PyPI 배포 후 업데이트
     url "https://files.pythonhosted.org/packages/source/l/loguru/loguru-0.7.0.tar.gz"

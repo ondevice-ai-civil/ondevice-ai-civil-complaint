@@ -3,7 +3,7 @@ name: Homebrew Formula Auto-Update
 on:
   # PyPI 릴리즈 워크플로우 완료 후 자동 트리거
   workflow_run:
-    workflows: ["Publish Package to PyPI"]
+    workflows: ["Publish Package"]
     types:
       - completed
 
@@ -43,12 +43,30 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Validate inputs
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if ! echo "$INPUT_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Invalid version format: must match X.Y.Z"
+            exit 1
+          fi
+          if ! echo "$INPUT_SHA256" | grep -qE '^[a-f0-9]{64}$'; then
+            echo "::error::Invalid sha256 format: must be 64 hex characters"
+            exit 1
+          fi
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_SHA256: ${{ inputs.pypi_sha256 }}
+
       - name: Resolve version and sha256
         id: resolve
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_SHA256: ${{ inputs.pypi_sha256 }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ inputs.version }}"
-            SHA256="${{ inputs.pypi_sha256 }}"
+            VERSION="${INPUT_VERSION}"
+            SHA256="${INPUT_SHA256}"
             PYPI_URL="https://files.pythonhosted.org/packages/source/G/GovOn/GovOn-${VERSION}.tar.gz"
           else
             # workflow_run 트리거: PyPI에서 최신 릴리즈 정보 자동 조회

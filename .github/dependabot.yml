@@ -30,6 +30,8 @@ updates:
         update-types: ["version-update:semver-major"]
 
   # Docker base image
+  # CUDA base images are pinned — driver compatibility must be verified manually.
+  # Only allow non-CUDA images (e.g. python-slim) to be updated automatically.
   - package-ecosystem: "docker"
     directory: "/deploy/docker"
     schedule:
@@ -42,6 +44,8 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "nvidia/cuda"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"

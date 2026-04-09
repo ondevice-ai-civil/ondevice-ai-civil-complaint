@@ -384,8 +384,8 @@ class TestStreamingStatusDisplay:
                 d.update("업데이트 메시지")
 
         captured = capsys.readouterr()
-        assert "테스트 시작" in captured.out
-        assert "업데이트 메시지" in captured.out
+        assert "테스트 시작" in captured.err
+        assert "업데이트 메시지" in captured.err
 
     def test_streaming_status_display_update_plain(self, capsys):
         """update() 호출 시 plain mode에서 새 메시지가 출력된다."""
@@ -396,9 +396,9 @@ class TestStreamingStatusDisplay:
                 d.update("planner 처리 중")
                 d.update("synthesis 처리 중")
 
-        out = capsys.readouterr().out
-        assert "planner 처리 중" in out
-        assert "synthesis 처리 중" in out
+        captured = capsys.readouterr()
+        assert "planner 처리 중" in captured.err
+        assert "synthesis 처리 중" in captured.err
 
     def test_streaming_status_display_falls_back_on_narrow_terminal(self, capsys):
         """좁은 터미널에서는 rich가 있어도 plain mode로 전환된다."""
@@ -411,9 +411,9 @@ class TestStreamingStatusDisplay:
                     with renderer.StreamingStatusDisplay("초기") as display:
                         display.update("planner 처리 중")
 
-        out = capsys.readouterr().out
-        assert "plain mode" in out
-        assert "planner 처리 중" in out
+        captured = capsys.readouterr()
+        assert "plain mode" in captured.err
+        assert "planner 처리 중" in captured.err
         mock_console.status.assert_not_called()
 
     def test_narrow_terminal_warning_is_emitted_once_per_narrow_state(self, capsys):
@@ -427,10 +427,10 @@ class TestStreamingStatusDisplay:
                 renderer.render_status("셋째 상태")
                 renderer.render_status("넷째 상태")
 
-        out = capsys.readouterr().out
-        assert out.count("plain mode") == 2
-        assert "첫 상태" in out
-        assert "넷째 상태" in out
+        captured = capsys.readouterr()
+        assert captured.err.count("plain mode") == 2
+        assert "첫 상태" in captured.err
+        assert "넷째 상태" in captured.err
 
 
 # ---------------------------------------------------------------------------

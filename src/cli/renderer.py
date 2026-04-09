@@ -5,6 +5,7 @@ Uses `rich` when available; falls back to plain print() otherwise.
 
 from __future__ import annotations
 
+import sys
 from threading import Lock
 from typing import Any
 
@@ -25,9 +26,11 @@ try:
     from rich.text import Text
 
     _console = Console()
+    _stderr_console = Console(stderr=True)
     _RICH_AVAILABLE = True
 except ImportError:  # pragma: no cover
     _console = None  # type: ignore[assignment]
+    _stderr_console = None  # type: ignore[assignment]
     _RICH_AVAILABLE = False
 
 _HAS_WARNED_NARROW_TERMINAL = False
@@ -131,10 +134,10 @@ class StreamingStatusDisplay:
     def __enter__(self) -> "StreamingStatusDisplay":
         self._use_rich, _ = _resolve_render_mode()
         if self._use_rich:
-            self._status = _console.status(self._initial_message, spinner="dots")
+            self._status = _stderr_console.status(self._initial_message, spinner="dots")
             self._status.__enter__()
         else:
-            print(f"→ {self._initial_message}", flush=True)
+            print(f"→ {self._initial_message}", file=sys.stderr, flush=True)
         return self
 
     def update(self, message: str) -> None:
@@ -142,7 +145,7 @@ class StreamingStatusDisplay:
         if self._use_rich and self._status is not None:
             self._status.update(message)
         else:
-            print(f"→ {message}", flush=True)
+            print(f"→ {message}", file=sys.stderr, flush=True)
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         if self._use_rich and self._status is not None:
@@ -159,7 +162,7 @@ def _warn_narrow_terminal_once(columns: int) -> None:
             return
         _HAS_WARNED_NARROW_TERMINAL = True
 
-    print(get_narrow_terminal_warning(columns), flush=True)
+    print(get_narrow_terminal_warning(columns), file=sys.stderr, flush=True)
 
 
 def _reset_narrow_warning() -> None:
@@ -498,23 +501,27 @@ def render_result(result: dict) -> None:
 
 
 def render_status(message: str) -> None:
-    """Render a transient status / progress message."""
+    """Render a transient status / progress message to stderr."""
+    import sys
+
     use_rich, _ = _resolve_render_mode()
     if use_rich:
         theme = get_theme()
-        _console.print(f"[{theme.text_secondary}]→ {message}[/{theme.text_secondary}]")
+        _stderr_console.print(f"[{theme.text_secondary}]→ {message}[/{theme.text_secondary}]")
     else:
-        print(f"→ {message}")
+        print(f"→ {message}", file=sys.stderr)
 
 
 def render_error(message: str) -> None:
-    """Render an error message in red."""
+    """Render an error message in red to stderr."""
+    import sys
+
     use_rich, _ = _resolve_render_mode()
     if use_rich:
         theme = get_theme()
-        _console.print(f"[{theme.status_error}]오류:[/{theme.status_error}] {message}")
+        _stderr_console.print(f"[{theme.status_error}]오류:[/{theme.status_error}] {message}")
     else:
-        print(f"오류: {message}")
+        print(f"오류: {message}", file=sys.stderr)
 
 
 def render_thinking(content: str) -> None:

@@ -1,16 +1,16 @@
-"""GovOn daemon lifecycle 관리.
+"""GovOn daemon lifecycle management.
 
-Issue #144: CLI-daemon/LangGraph runtime 연동 및 session resume.
+Issue #144: CLI-daemon/LangGraph runtime integration and session resume.
 
-uvicorn으로 백그라운드에서 GovOn API 서버를 기동하고,
-PID 파일로 프로세스 상태를 추적한다.
+Starts the GovOn API server in the background via uvicorn and tracks
+the process state via a PID file.
 
 .. note::
-   이 모듈은 **로컬 daemon 전용**입니다.
-   원격 서버에 연결할 때는 ``GOVON_RUNTIME_URL`` 환경변수를 설정하면
-   ``shell.py``의 ``main()``이 이 모듈을 완전히 건너뛰고 지정된 URL에
-   직접 연결합니다. Docker, 클라우드 배포, CI 환경에서는 해당 방식을
-   사용하는 것을 권장합니다.
+   This module is for **local daemon use only**.
+   When connecting to a remote server, set the ``GOVON_RUNTIME_URL``
+   environment variable and ``shell.py``'s ``main()`` will skip this
+   module entirely and connect directly to the specified URL.
+   This approach is recommended for Docker, cloud deployments, and CI.
 """
 
 from __future__ import annotations
@@ -28,17 +28,19 @@ from loguru import logger
 
 
 class DaemonManager:
-    """GovOn API 서버 daemon lifecycle 관리자.
+    """GovOn API server daemon lifecycle manager.
 
-    PID 파일과 /health 엔드포인트를 결합하여 daemon 상태를 확인하고,
-    필요 시 uvicorn으로 백그라운드 기동한다.
+    Combines PID file tracking with /health endpoint polling to verify
+    daemon state, and starts it via uvicorn as a background process when
+    needed.
 
-    환경변수 ``GOVON_PORT``로 포트를 오버라이드할 수 있다 (기본: 8000).
+    Override the default port (8000) via the ``GOVON_PORT`` environment
+    variable.
     """
 
     GOVON_HOME = Path.home() / ".govon"
-    _HEALTH_CHECK_TIMEOUT = 120  # 최대 대기 초
-    _HEALTH_CHECK_INTERVAL = 1  # 재시도 간격 (초)
+    _HEALTH_CHECK_TIMEOUT = 120  # seconds
+    _HEALTH_CHECK_INTERVAL = 1  # seconds between retries
 
     def __init__(self) -> None:
         self.GOVON_HOME.mkdir(parents=True, exist_ok=True)
@@ -47,44 +49,44 @@ class DaemonManager:
         self.log_path: Path = self.GOVON_HOME / "daemon.log"
 
     def get_base_url(self) -> str:
-        """daemon base URL을 반환한다."""
+        """Return the daemon base URL."""
         return f"http://127.0.0.1:{self.port}"
 
     def is_running(self) -> bool:
-        """daemon이 실행 중인지 확인한다.
+        """Check whether the daemon is running.
 
-        PID 파일이 존재하고 해당 프로세스가 살아 있으며,
-        /health 엔드포인트가 응답할 때 True를 반환한다.
+        Returns True when the PID file exists, the process is alive, and
+        the /health endpoint responds with HTTP 200.
         """
         pid = self._read_pid()
         if pid is None:
             return False
 
-        # PID 프로세스 생존 확인
+        # Verify the process is still alive
         if not self._pid_alive(pid):
-            logger.debug(f"[daemon] PID {pid} 프로세스가 없음. PID 파일 제거.")
+            logger.debug(f"[daemon] PID {pid} not found; removing PID file.")
             self._remove_pid()
             return False
 
-        # /health HTTP 확인
+        # Verify /health HTTP endpoint
         try:
             with httpx.Client(timeout=5.0) as client:
                 resp = client.get(f"{self.get_base_url()}/health")
                 return resp.status_code == 200
-        except (httpx.ConnectError, httpx.TimeoutException, Exception):
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.RequestError, OSError):
             return False
 
     def start(self) -> bool:
-        """uvicorn을 백그라운드로 기동하고 PID를 기록한다.
+        """Start uvicorn in the background and record its PID.
 
         Returns
         -------
         bool
-            기동 성공 여부 (health check 통과 시 True).
+            True if the daemon started successfully (health check passed).
         """
-        # 레이스 컨디션 방지: 기동 전 한 번 더 health check
+        # Guard against race conditions: re-check before starting
         if self.is_running():
-            logger.info("[daemon] 이미 실행 중입니다.")
+            logger.info("[daemon] Already running.")
             return True
 
         cmd = [
@@ -99,10 +101,10 @@ class DaemonManager:
         ]
 
         if self._port_in_use():
-            logger.error(f"[daemon] 포트 {self.port}이 이미 사용 중입니다.")
+            logger.error(f"[daemon] Port {self.port} is already in use.")
             return False
 
-        logger.info(f"[daemon] 기동 명령: {' '.join(cmd)}")
+        logger.info(f"[daemon] Starting: {' '.join(cmd)}")
 
         with open(self.log_path, "a") as log_file:
             proc = subprocess.Popen(
@@ -113,40 +115,40 @@ class DaemonManager:
             )
 
         self._write_pid(proc.pid)
-        logger.info(f"[daemon] 프로세스 기동 완료. PID={proc.pid}")
+        logger.info(f"[daemon] Process started. PID={proc.pid}")
 
-        # health check 대기
+        # Wait for the health check to pass
         healthy = self._wait_until_healthy()
         if not healthy:
-            logger.error("[daemon] health check 실패. 프로세스를 정리합니다.")
+            logger.error("[daemon] Health check failed; cleaning up.")
             self.stop()
             return False
         return True
 
     def stop(self) -> None:
-        """daemon을 정상 종료한다 (SIGTERM → timeout 후 SIGKILL)."""
+        """Gracefully stop the daemon (SIGTERM, then SIGKILL after timeout)."""
         pid = self._read_pid()
         if pid is None:
-            logger.info("[daemon] PID 파일이 없습니다. 실행 중이 아닌 것으로 간주합니다.")
+            logger.info("[daemon] No PID file found; assuming not running.")
             return
 
         if not self._pid_alive(pid):
-            logger.info(f"[daemon] PID {pid} 프로세스가 없습니다.")
+            logger.info(f"[daemon] PID {pid} not found.")
             self._remove_pid()
             return
 
-        logger.info(f"[daemon] SIGTERM 전송: PID={pid}")
+        logger.info(f"[daemon] Sending SIGTERM: PID={pid}")
         os.kill(pid, signal.SIGTERM)
 
-        # 최대 10초 대기
+        # Wait up to 10 seconds for graceful shutdown
         for _ in range(10):
             time.sleep(1)
             if not self._pid_alive(pid):
-                logger.info(f"[daemon] PID {pid} 정상 종료됨.")
+                logger.info(f"[daemon] PID {pid} terminated gracefully.")
                 self._remove_pid()
                 return
 
-        logger.warning(f"[daemon] SIGKILL 전송: PID={pid}")
+        logger.warning(f"[daemon] Sending SIGKILL: PID={pid}")
         try:
             os.kill(pid, signal.SIGKILL)
         except ProcessLookupError:
@@ -154,41 +156,39 @@ class DaemonManager:
         self._remove_pid()
 
     def ensure_running(self) -> str:
-        """daemon이 실행 중임을 보장하고 base URL을 반환한다.
+        """Ensure the daemon is running and return its base URL.
 
-        실행 중이 아니면 start()를 호출한다.
+        Calls start() if the daemon is not already running.
 
         Returns
         -------
         str
-            daemon base URL (예: "http://127.0.0.1:8000").
+            Daemon base URL, e.g. "http://127.0.0.1:8000".
 
         Raises
         ------
         RuntimeError
-            daemon 기동에 실패한 경우.
+            If the daemon fails to start.
         """
         if not self.is_running():
             success = self.start()
             if not success:
-                raise RuntimeError(
-                    "GovOn daemon 기동에 실패했습니다. " f"로그를 확인하세요: {self.log_path}"
-                )
+                raise RuntimeError(f"GovOn daemon failed to start. Check logs: {self.log_path}")
         return self.get_base_url()
 
     def _port_in_use(self) -> bool:
-        """포트가 이미 사용 중인지 확인한다."""
+        """Return True if the target port is already bound."""
         import socket
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             return s.connect_ex(("127.0.0.1", self.port)) == 0
 
     # ------------------------------------------------------------------
-    # 내부 헬퍼
+    # Internal helpers
     # ------------------------------------------------------------------
 
     def _read_pid(self) -> Optional[int]:
-        """PID 파일에서 PID를 읽는다. 파일이 없으면 None."""
+        """Read the PID from the PID file; return None if absent or invalid."""
         if not self.pid_path.exists():
             return None
         try:
@@ -198,11 +198,11 @@ class DaemonManager:
             return None
 
     def _write_pid(self, pid: int) -> None:
-        """PID와 기동 시각(epoch timestamp)을 파일에 기록한다."""
+        """Write PID and start timestamp (epoch) to the PID file."""
         self.pid_path.write_text(f"{pid} {int(time.time())}")
 
     def _remove_pid(self) -> None:
-        """PID 파일을 제거한다."""
+        """Remove the PID file, ignoring missing-file errors."""
         try:
             self.pid_path.unlink()
         except FileNotFoundError:
@@ -210,29 +210,29 @@ class DaemonManager:
 
     @staticmethod
     def _pid_alive(pid: int) -> bool:
-        """프로세스가 살아 있는지 확인한다."""
+        """Return True if the process with *pid* is alive."""
         try:
             os.kill(pid, 0)
             return True
         except ProcessLookupError:
             return False
         except PermissionError:
-            # 프로세스가 존재하지만 권한이 없는 경우 → 살아 있음으로 간주
+            # Process exists but we lack permissions — treat as alive
             return True
 
     def _wait_until_healthy(self) -> bool:
-        """health check가 통과할 때까지 최대 120초 대기한다."""
+        """Poll /health until it returns 200 or the timeout (120 s) expires."""
         deadline = time.monotonic() + self._HEALTH_CHECK_TIMEOUT
         while time.monotonic() < deadline:
             try:
                 with httpx.Client(timeout=3.0) as client:
                     resp = client.get(f"{self.get_base_url()}/health")
                     if resp.status_code == 200:
-                        logger.info("[daemon] health check 통과.")
+                        logger.info("[daemon] Health check passed.")
                         return True
-            except (httpx.ConnectError, httpx.TimeoutException, Exception):
+            except (httpx.ConnectError, httpx.TimeoutException, httpx.RequestError, OSError):
                 pass
             time.sleep(self._HEALTH_CHECK_INTERVAL)
 
-        logger.error("[daemon] health check timeout (120초).")
+        logger.error("[daemon] Health check timed out (120 s).")
         return False

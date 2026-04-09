@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import argparse
 import os
+import signal
 import sys
+from pathlib import Path
 
 import httpx
 
@@ -26,7 +28,7 @@ from src.cli.log_config import setup_logging  # noqa: E402  (import order intent
 _PT_AVAILABLE = False
 try:
     from prompt_toolkit import PromptSession
-    from prompt_toolkit.history import InMemoryHistory
+    from prompt_toolkit.history import FileHistory
 
     _PT_AVAILABLE = True
 except ImportError:  # pragma: no cover
@@ -426,7 +428,9 @@ def _run_repl(
 ) -> None:
     """Run the interactive REPL until EOF or /exit."""
     session_id: str | None = initial_session_id
-    pt_session = PromptSession(history=InMemoryHistory()) if _PT_AVAILABLE else None
+    history_path = Path.home() / ".govon" / "history"
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    pt_session = PromptSession(history=FileHistory(str(history_path))) if _PT_AVAILABLE else None
     server_checked = False
 
     while True:
@@ -492,6 +496,31 @@ def _run_once(client: GovOnClient, query: str, session_id: str | None) -> None:
 
 def main() -> None:
     """CLI entry point for the `govon` command."""
+    # ── resolve package version early (needed for --version flag) ────────
+    from importlib.metadata import PackageNotFoundError
+    from importlib.metadata import version as _pkg_version
+
+    try:
+        ver = _pkg_version("govon")
+    except PackageNotFoundError:
+        ver = "dev"
+
+    # ── SIGPIPE: restore default so that `govon … | head` works cleanly ──
+    try:
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    except AttributeError:
+        pass  # Windows does not have SIGPIPE
+
+    # ── graceful shutdown on SIGTERM / SIGHUP ─────────────────────────────
+    def _graceful_exit(signum, frame):  # noqa: ANN001
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, _graceful_exit)
+    try:
+        signal.signal(signal.SIGHUP, _graceful_exit)
+    except AttributeError:
+        pass  # Windows does not have SIGHUP
+
     # ── early dispatch for server subcommand ──────────────────────────────
     # argparse handles positional + subparser mixing poorly,
     # so intercept 'server' first and delegate to a separate handler.
@@ -515,6 +544,7 @@ def main() -> None:
         formatter_class=argparse.RawTextHelpFormatter,
         epilog="Subcommands:\n  govon server <command>   Docker backend management (pull/start/stop/status/logs)",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {ver}")
     parser.add_argument(
         "query",
         nargs="?",
@@ -605,13 +635,6 @@ def main() -> None:
     else:
         # Interactive REPL mode: show banner first, check server on first query
         if not args.no_banner:
-            from importlib.metadata import PackageNotFoundError
-            from importlib.metadata import version as pkg_version
-
-            try:
-                ver = pkg_version("govon")
-            except PackageNotFoundError:
-                ver = "dev"
             mode = "remote" if runtime_url else "local"
             render_banner(version=ver, mode=mode, runtime_url=runtime_url)
 

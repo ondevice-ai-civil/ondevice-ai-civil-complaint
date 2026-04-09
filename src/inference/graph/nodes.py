@@ -104,6 +104,7 @@ def _clear_old_tool_results(messages: list, iteration: int) -> list:
                 content="[cleared to save context]",
                 tool_call_id=getattr(msg, "tool_call_id", ""),
                 name=getattr(msg, "name", ""),
+                id=getattr(msg, "id", None),
             )
             result.append(cleared)
         else:
@@ -202,6 +203,8 @@ def make_session_load_node(session_store: "SessionStore"):
 
             older_tokens = sum(_estimate_tokens(m) for m in older)
 
+            from langchain_core.messages import RemoveMessage
+
             # 요약 발동: older 토큰이 예산의 60% 초과 시 extractive summary 적용
             if older_tokens > _MAX_MESSAGE_TOKENS * _SUMMARY_THRESHOLD_RATIO:
                 summary_text = _extractive_summarize(older)
@@ -211,15 +214,14 @@ def make_session_load_node(session_store: "SessionStore"):
                     f"{len(older)} older messages → extractive summary "
                     f"({older_tokens} → {_estimate_tokens(summary_msg)} est tokens)"
                 )
-                from langchain_core.messages import RemoveMessage
 
                 removals = []
                 for msg in older:
                     msg_id = getattr(msg, "id", None)
                     if msg_id:
                         removals.append(RemoveMessage(id=msg_id))
-                if removals:
-                    result["messages"] = removals
+                # BLOCKER FIX: summary_msg를 state에 추가 (RemoveMessage와 함께)
+                result["messages"] = [summary_msg] + removals
             else:
                 # 토큰 예산 기반 trim (기존 로직)
                 recent_tokens = sum(_estimate_tokens(m) for m in recent)
@@ -242,16 +244,15 @@ def make_session_load_node(session_store: "SessionStore"):
                         f"[session_load] context window trim: "
                         f"{len(messages)} → {len(trimmed)} messages"
                     )
-                    from langchain_core.messages import RemoveMessage
-
                     trimmed_ids = {getattr(m, "id", None) for m in trimmed} - {None}
                     removals = []
                     for msg in messages:
                         msg_id = getattr(msg, "id", None)
                         if msg_id and msg_id not in trimmed_ids:
                             removals.append(RemoveMessage(id=msg_id))
-                if removals:
-                    result["messages"] = removals
+                    # BLOCKER FIX: if 블록 안으로 이동하여 NameError 방지
+                    if removals:
+                        result["messages"] = removals
 
         latency = round((time.monotonic() - t0) * 1000, 2)
         logger.debug(f"[session_load] session_id={session_id} latency_ms={latency}")
@@ -583,12 +584,10 @@ def make_agent_node_v3(llm, tools: list):
                 f"[agent_v3] Stage 2 trim: {len(messages)} → {len(trimmed_messages)} messages"
             )
 
-        # Stage 3: Hard cap (최후 안전장치)
-        while (
-            sum(_estimate_tokens(m) for m in trimmed_messages) > _AGENT_INPUT_BUDGET
-            and len(trimmed_messages) > 2
-        ):
-            trimmed_messages.pop(0)
+        # Stage 3: Hard cap (최후 안전장치, running total O(n))
+        hard_total = sum(_estimate_tokens(m) for m in trimmed_messages)
+        while hard_total > _AGENT_INPUT_BUDGET and len(trimmed_messages) > 2:
+            hard_total -= _estimate_tokens(trimmed_messages.pop(0))
 
         response = await active_llm.ainvoke([system] + trimmed_messages)
 

@@ -13,13 +13,23 @@ latency를 측정하고 min/avg/max/p95 통계를 리포트한다.
 import argparse
 import asyncio
 import json
+import math
 import os
 import sys
 import time
 from typing import Optional
+from urllib.parse import urlparse
 from uuid import uuid4
 
-BASE_URL = os.environ.get("GOVON_RUNTIME_URL", "http://localhost:7860").rstrip("/")
+
+def _validate_base_url(raw: str) -> str:
+    parsed = urlparse(raw)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError(f"Invalid GOVON_RUNTIME_URL: {raw}")
+    return raw.rstrip("/")
+
+
+BASE_URL = _validate_base_url(os.environ.get("GOVON_RUNTIME_URL", "http://localhost:7860"))
 API_KEY = os.environ.get("API_KEY")
 DEFAULT_RUNS = 3
 REQUEST_TIMEOUT = 300.0  # 단일 요청 최대 대기 (초)
@@ -156,7 +166,7 @@ def _stats(samples: list[float]) -> dict:
         return {"min": 0.0, "avg": 0.0, "max": 0.0, "p95": 0.0, "samples": []}
     s = sorted(samples)
     n = len(s)
-    p95_idx = max(0, int(n * 0.95) - 1)
+    p95_idx = max(0, math.ceil(n * 0.95) - 1)
     return {
         "min": round(s[0], 3),
         "avg": round(sum(s) / n, 3),
@@ -349,6 +359,9 @@ def main() -> None:
         help="JSON 결과 파일 경로 (예: results.json)",
     )
     args = parser.parse_args()
+
+    if args.runs < 1:
+        parser.error("--runs must be >= 1")
 
     if not os.environ.get("GOVON_RUNTIME_URL"):
         print("[WARN] GOVON_RUNTIME_URL 환경변수가 없습니다. localhost:7860 사용합니다.", file=sys.stderr)

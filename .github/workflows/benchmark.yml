@@ -13,6 +13,9 @@ on:
         default: "3"
         type: string
 
+permissions:
+  contents: read
+
 jobs:
   benchmark:
     name: Run Latency Benchmark
@@ -21,23 +24,44 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
       - name: Install dependencies
         run: pip install httpx
 
+      - name: Validate inputs
+        env:
+          RUNTIME_URL: ${{ inputs.runtime_url }}
+          RUNS_INPUT: ${{ inputs.runs }}
+        run: |
+          python3 -c "
+          import os, sys
+          from urllib.parse import urlparse
+          u = os.environ['RUNTIME_URL']
+          p = urlparse(u)
+          if p.scheme not in ('http', 'https') or not p.netloc:
+              print(f'ERROR: Invalid runtime_url: {u}', file=sys.stderr)
+              sys.exit(1)
+          r = os.environ['RUNS_INPUT']
+          if not r.isdigit() or int(r) < 1:
+              print(f'ERROR: Invalid runs: {r} (must be >= 1)', file=sys.stderr)
+              sys.exit(1)
+          print(f'Validated: url={u} runs={r}')
+          "
+
       - name: Run benchmark
         env:
           GOVON_RUNTIME_URL: ${{ inputs.runtime_url }}
           API_KEY: ${{ secrets.GOVON_API_KEY }}
+          RUNS_INPUT: ${{ inputs.runs }}
         run: |
           python3 scripts/benchmark_latency.py \
-            --runs ${{ inputs.runs }} \
+            --runs "$RUNS_INPUT" \
             --output benchmark_results.json \
             | tee benchmark_output.txt
 
@@ -52,7 +76,7 @@ jobs:
 
       - name: Upload benchmark results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: benchmark-results
           path: |

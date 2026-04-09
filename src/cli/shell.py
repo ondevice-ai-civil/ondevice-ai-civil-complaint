@@ -387,10 +387,47 @@ def _process_query_blocking(
 # ---------------------------------------------------------------------------
 
 
-def _run_repl(client: GovOnClient, initial_session_id: str | None = None) -> None:
+def _ensure_server_ready(client: GovOnClient, is_remote: bool) -> bool:
+    """Check server readiness, waiting for cold start if needed.
+
+    Returns True if server is ready, False otherwise.
+    Shows user-friendly status messages during the wait.
+    """
+    try:
+        client.health()
+        return True
+    except (ConnectionError, httpx.ConnectError):
+        if is_remote:
+            render_status("서버에 연결 중… (sleeping 상태에서 깨어나는 중)")
+        else:
+            render_status("로컬 서버에 연결할 수 없습니다. 서버 상태를 확인해 주세요.")
+            return False
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 503:
+            render_status("서버 시작 중… (모델 로딩 대기)")
+        else:
+            render_status(f"서버 응답 대기 중… (HTTP {exc.response.status_code})")
+    except httpx.TimeoutException:
+        render_status("서버 응답 대기 중… (빌드 또는 모델 로딩 중)")
+    except Exception:
+        render_status("서버 연결 시도 중…")
+
+    # Wait for server to become ready (cold start / build)
+    if not client.wait_for_ready():
+        render_error("서버에 연결할 수 없습니다. 나중에 다시 시도해 주세요.")
+        return False
+    return True
+
+
+def _run_repl(
+    client: GovOnClient,
+    initial_session_id: str | None = None,
+    is_remote: bool = False,
+) -> None:
     """Run the interactive REPL until EOF or /exit."""
     session_id: str | None = initial_session_id
     pt_session = PromptSession(history=InMemoryHistory()) if _PT_AVAILABLE else None
+    server_checked = False
 
     while True:
         try:
@@ -414,6 +451,12 @@ def _run_repl(client: GovOnClient, initial_session_id: str | None = None) -> Non
             if result is not None:
                 print(result)
             continue
+
+        # Lazy server readiness check on first query
+        if not server_checked:
+            if not _ensure_server_ready(client, is_remote):
+                continue
+            server_checked = True
 
         # Normal query
         try:
@@ -546,29 +589,21 @@ def main() -> None:
             print("✧ GovOn daemon이 중지되었습니다.")
             sys.exit(0)
 
-        # Ensure daemon is up and get base URL
+        # Local daemon: try to start but don't block the UI
         try:
             base_url = daemon.ensure_running()
-        except Exception as exc:
-            print(f"✘ 오류: daemon을 시작할 수 없습니다 — {exc}", file=sys.stderr)
-            sys.exit(1)
+        except Exception:
+            base_url = daemon.get_base_url()
 
     client = GovOnClient(base_url)
 
-    # Wait for remote server cold start if needed
-    if runtime_url:
-        try:
-            client.health()
-        except (ConnectionError, httpx.ConnectError, httpx.HTTPStatusError, httpx.TimeoutException):
-            if not client.wait_for_ready():
-                print("✘ 서버에 연결할 수 없습니다. 나중에 다시 시도해 주세요.", file=sys.stderr)
-                sys.exit(1)
-
+    # Show UI immediately — server readiness is checked lazily at query time
     if args.query:
-        # Single-shot mode
+        # Single-shot mode: must ensure server is ready before sending
+        _ensure_server_ready(client, is_remote=bool(runtime_url))
         _run_once(client, args.query, args.session)
     else:
-        # Interactive REPL mode
+        # Interactive REPL mode: show banner first, check server on first query
         if not args.no_banner:
             from importlib.metadata import PackageNotFoundError
             from importlib.metadata import version as pkg_version
@@ -588,7 +623,7 @@ def main() -> None:
             except ImportError:  # pragma: no cover
                 print("─── 종료: Ctrl+D 또는 /exit ───")
 
-        _run_repl(client, initial_session_id=args.session)
+        _run_repl(client, initial_session_id=args.session, is_remote=bool(runtime_url))
 
 
 if __name__ == "__main__":

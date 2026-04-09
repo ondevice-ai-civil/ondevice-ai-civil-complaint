@@ -5,6 +5,8 @@
 GovOn은 **동아대학교 컴퓨터공학과** 현장미러형 산학연계 프로젝트로 개발된 에이전틱 CLI 셸입니다.
 지방자치단체 공무원의 민원 답변 업무를 AI 에이전트가 보조합니다.
 
+[![PyPI version](https://img.shields.io/pypi/v/govon?logo=pypi&logoColor=white)](https://pypi.org/project/govon/)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/govon)](https://pypi.org/project/govon/)
 [![Docs Portal](https://img.shields.io/badge/Docs-Portal-blue?logo=readthedocs)](https://govon-org.github.io/GovOn/)
 [![Public Roadmap](https://img.shields.io/badge/Public_Roadmap-Workstreams-7C3AED)](https://github.com/GovOn-Org/GovOn/issues/402)
 [![HF Space](https://img.shields.io/badge/HF_Space-Runtime-yellow?logo=huggingface)](https://huggingface.co/spaces/umyunsang/govon-runtime)
@@ -187,6 +189,16 @@ flowchart LR
 
 ---
 
+## 설치
+
+```bash
+# PyPI에서 CLI 클라이언트 설치
+pip install govon
+
+# 서버 런타임 전체 설치 (GPU 환경)
+pip install govon[server]
+```
+
 ## 빠른 시작
 
 ```bash
@@ -200,6 +212,7 @@ curl -X POST $GOVON_RUNTIME_URL/v3/agent/run \
 
 # 3. v4 승인 흐름 (CLI 권장)
 pip install govon
+export GOVON_RUNTIME_URL=https://umyunsang-govon-runtime.hf.space
 govon
 ```
 

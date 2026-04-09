@@ -3,29 +3,29 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "GovOn"
+name = "govon"
 version = "1.0.1"
-description = "Shell-first local agentic runtime for administrative assistance and civil complaint workflows"
+description = "Agentic CLI shell for Korean public-sector civil complaint workflows"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
-    {name = "On-Device AI Team", email = "umyunsang@users.noreply.github.com"}
+    {name = "umyunsang", email = "umyunsang@users.noreply.github.com"}
 ]
 keywords = [
     "agentic-shell",
-    "local-runtime",
+    "cli",
     "civil-complaint",
     "korean-nlp",
-    "retrieval-augmented-generation",
-    "fastapi"
+    "public-sector",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
+    "Environment :: Console",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
-    "Operating System :: POSIX",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -34,35 +34,16 @@ classifiers = [
     "Topic :: Text Processing :: Linguistic",
 ]
 
+# ---------------------------------------------------------------------------
+# Core dependencies -- CLI thin-client only.
+# Server-side packages (torch, vllm, transformers, etc.) are NOT included;
+# the CLI communicates with a remote GovOn runtime via HTTP/SSE.
+# ---------------------------------------------------------------------------
 dependencies = [
-    # Core ML/DL
-    "torch>=2.8.0",
-    "transformers>=4.53.0",
-    "accelerate>=1.0.0",
-    "datasets>=2.14.0",
-
-    # Quantization & Optimization
-    "bitsandbytes>=0.44.0",
-    "optimum>=1.13.0",
-    "autoawq>=0.2.8",
-
-    # Fine-tuning
-    "peft>=0.16.0",
-    "trl>=0.15.0",
-
-    # Data Processing
-    "pandas>=2.0.0",
-    "numpy>=1.24.0",
-    "scikit-learn>=1.3.0",
-
-    # HTTP client (required by cli/daemon.py and cli/http_client.py)
     "httpx>=0.27.0",
-
-    # Utilities
-    "tqdm>=4.66.0",
-    "python-dotenv>=1.0.0",
-    "pyyaml>=6.0.0",
     "loguru>=0.7.0",
+    "rich>=13.0.0",
+    "prompt-toolkit>=3.0.0",
 ]
 
 [project.optional-dependencies]
@@ -77,22 +58,28 @@ dev = [
     "pre-commit>=3.4.0",
     "bandit>=1.7.5",
     "safety>=2.3.5",
-    "wandb>=0.16.0",
-    "sacrebleu>=2.4.0",
-    "rouge-score>=0.1.2",
-    "bert-score>=0.3.13",
 ]
 
-korean-nlp = [
-    "konlpy>=0.6.0",
-    "mecab-python3>=1.0.6",
+test = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-asyncio>=0.21.0",
 ]
 
-inference = [
+# Full server-side runtime (inference engine, ML models, etc.)
+server = [
+    "torch>=2.8.0",
+    "transformers>=4.53.0",
+    "accelerate>=1.0.0",
+    "datasets>=2.14.0",
+    "bitsandbytes>=0.44.0",
+    "optimum>=1.13.0",
+    "autoawq>=0.2.8",
+    "peft>=0.16.0",
+    "trl>=0.15.0",
     "vllm>=0.14.1",
     "fastapi>=0.100.0",
     "uvicorn>=0.23.0",
-    # Schema validation — FastAPI 전용; core dependencies에서 제거
     "pydantic>=2.0.0",
     "rank-bm25>=0.2.2",
     "sentence-transformers>=3.0.0",
@@ -102,8 +89,17 @@ inference = [
     "langgraph-checkpoint-sqlite==3.0.3",
     "langchain-core>=1.2.0,<2.0.0",
     "langchain-openai>=0.3.0",
-    "rich>=13.0.0",
-    "prompt-toolkit>=3.0.0",
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "scikit-learn>=1.3.0",
+    "tqdm>=4.66.0",
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0.0",
+]
+
+korean-nlp = [
+    "konlpy>=0.6.0",
+    "mecab-python3>=1.0.6",
 ]
 
 database = [
@@ -112,14 +108,8 @@ database = [
     "psycopg2-binary>=2.9.0",
 ]
 
-cli = [
-    # httpx는 core dependencies에 포함되므로 중복 제거
-    "prompt_toolkit>=3.0.0",
-    "rich>=13.0.0",
-]
-
 all = [
-    "GovOn[dev,korean-nlp,inference,database,cli]",
+    "govon[dev,server,korean-nlp,database]",
 ]
 
 [project.scripts]

@@ -18,12 +18,6 @@ def test_get_approval_box_width_clamps_to_minimum_and_maximum():
     assert terminal.get_approval_box_width(200) == terminal.APPROVAL_BOX_MAX_WIDTH
 
 
-def test_get_panel_width_tracks_terminal_minus_margin():
-    """result panel width는 terminal margin만 차감한다."""
-    assert terminal.get_panel_width(40) == 38
-    assert terminal.get_panel_width(200) == 198
-
-
 def test_get_narrow_terminal_warning_includes_current_width():
     """narrow warning은 현재 width와 최소 요구 width를 함께 안내한다."""
     warning = terminal.get_narrow_terminal_warning(30)

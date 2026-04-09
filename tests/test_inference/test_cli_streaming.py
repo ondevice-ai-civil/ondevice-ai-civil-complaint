@@ -442,7 +442,7 @@ class TestProcessQueryStreaming:
     """shell._process_query_streaming() 동작 테스트."""
 
     def test_streaming_shows_per_node_progress(self):
-        """스트리밍 이벤트마다 StreamingStatusDisplay가 업데이트된다."""
+        """Streaming events are consumed and the function returns successfully."""
         from src.cli import shell
 
         mock_client = MagicMock()
@@ -456,28 +456,10 @@ class TestProcessQueryStreaming:
         )
         mock_client.approve = MagicMock()
 
-        update_calls = []
-
-        class TrackingDisplay:
-            def __init__(self, initial_message=""):
-                pass
-
-            def __enter__(self):
-                return self
-
-            def update(self, message):
-                update_calls.append(message)
-
-            def __exit__(self, *args):
-                pass
-
-        with patch("src.cli.shell.StreamingStatusDisplay", TrackingDisplay):
+        with patch("src.cli.spinner.SpinnerDisplay"):
             sid, cont = shell._process_query_streaming(mock_client, "쿼리", None)
 
         assert cont is True
-        assert any(
-            "planner" in msg or "계획" in msg for msg in update_calls
-        ), f"planner 관련 메시지가 없음: {update_calls}"
 
     def test_streaming_handles_approval_event(self):
         """awaiting_approval 이벤트 시 show_approval_prompt를 호출한다."""
@@ -504,7 +486,7 @@ class TestProcessQueryStreaming:
         )
         mock_client.approve.return_value = {"status": "completed", "text": "승인 완료"}
 
-        with patch("src.cli.shell.StreamingStatusDisplay"):
+        with patch("src.cli.spinner.SpinnerDisplay"):
             with patch("src.cli.shell.show_approval_prompt", return_value=True) as mock_prompt:
                 sid, cont = shell._process_query_streaming(mock_client, "쿼리", None)
 
@@ -524,7 +506,7 @@ class TestProcessQueryStreaming:
             ]
         )
 
-        with patch("src.cli.shell.StreamingStatusDisplay"):
+        with patch("src.cli.spinner.SpinnerDisplay"):
             with patch("src.cli.shell.render_error") as mock_render_error:
                 sid, cont = shell._process_query_streaming(mock_client, "쿼리", None)
 

@@ -6,8 +6,8 @@ class Govon < Formula
 
   desc "Agentic CLI shell for Korean public-sector civil complaint workflows"
   homepage "https://github.com/GovOn-Org/GovOn"
-  url "https://files.pythonhosted.org/packages/bf/5b/236f4d14e4e437965d23131acfdc751712bdcecf98b3833a8e2eb629686b/govon-1.1.0.tar.gz"
-  sha256 "87f50617176be571fe4ab4031dec03e39d291bc0244ad87c416edbaca5678cf1"
+  url "https://files.pythonhosted.org/packages/30/b8/62725992650091af305325ee5c5039a09f850b50d7ead29020ef74252734/govon-1.3.0.tar.gz"
+  sha256 "fbcd019c7aa4337007058dca48d55bde0c14cdb8f450818aec72ed8d6ce12356"
   license "MIT"
 
   depends_on "python@3.12"

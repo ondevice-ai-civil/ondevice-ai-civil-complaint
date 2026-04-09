@@ -10,7 +10,7 @@ readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
-    {name = "On-Device AI Team", email = "team@example.com"}
+    {name = "On-Device AI Team", email = "umyunsang@users.noreply.github.com"}
 ]
 keywords = [
     "agentic-shell",

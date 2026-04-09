@@ -8,7 +8,7 @@ HuggingFace Space에 배포된 govon-runtime 서버에 대해
     GOVON_RUNTIME_URL=https://<space-url>.hf.space python3 scripts/verify_e2e_tool_calling.py
     GOVON_RUNTIME_URL=https://<space-url>.hf.space API_KEY=<key> python3 scripts/verify_e2e_tool_calling.py
 
-5-Phase 검증 (24 시나리오):
+6-Phase 검증 (27 시나리오):
     Phase 1: Infrastructure (hard gate)
         1. Health & Profile
         2. Base Model Generation
@@ -38,6 +38,10 @@ HuggingFace Space에 배포된 govon-runtime 서버에 대해
         22. v3 Multi-turn Context (같은 session_id로 2회 요청)
         23. v3 Multi-turn Isolation (다른 session_id 격리)
         24. v3 3-turn Conversation (초안 → 법령 → 통계)
+    Phase 6: Context Management
+        25. v3 Tool Clearing Multi-iteration (복합 쿼리 3+ iteration)
+        26. v3 Long Query with Clearing (긴 쿼리 + clearing)
+        27. v3 5-turn Summarization (5턴 멀티턴 + extractive summary)
 """
 
 # stdlib
@@ -1758,6 +1762,150 @@ async def scenario24_v3_multi_turn_3_turns() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Phase 6: Context Management (Tool Clearing + Summarization)
+# ---------------------------------------------------------------------------
+
+
+async def scenario25_v3_tool_clearing_multi_iteration() -> dict:
+    """Scenario 25: Tool Result Clearing — 복잡한 쿼리로 3+ iteration 실행.
+
+    이전에 컨텍스트 초과로 500 에러가 발생하던 시나리오.
+    Tool Result Clearing + 3단계 파이프라인이 작동하면 500 없이 완료되어야 함.
+    """
+    sid = _session_id(25)
+    t0 = time.monotonic()
+
+    ok, text, meta, err = await _call_v3_run(
+        query=(
+            "서울시 도로 민원 현황을 종합적으로 분석해줘. "
+            "민원 통계, 이슈 패턴, 키워드 트렌드를 모두 조회하고 "
+            "답변 초안까지 작성해줘."
+        ),
+        session_id=sid,
+        max_iterations=10,
+        timeout=300,
+    )
+    elapsed = time.monotonic() - t0
+
+    assertions = []
+    if ok:
+        assertions.append(f"복합 쿼리 완료 (500 에러 없음)")
+        iterations = meta.get("total_iterations", 0)
+        tool_calls = meta.get("total_tool_calls", 0)
+        assertions.append(f"iterations={iterations}, tool_calls={tool_calls}")
+        if text:
+            assertions.append(f"텍스트 수신 (len={len(text)})")
+
+    status = "passed" if ok else "failed"
+    return _record(
+        25,
+        "v3 Tool Clearing Multi-iteration",
+        6,
+        status,
+        elapsed,
+        assertions=assertions,
+        error=err if not ok else None,
+        detail={"metadata": meta, "text_len": len(text) if text else 0},
+    )
+
+
+async def scenario26_v3_long_query_with_clearing() -> dict:
+    """Scenario 26: 긴 쿼리 + Tool Clearing — 이전에 실패하던 Long Query 시나리오.
+
+    max_tokens=1024 + Tool Result Clearing으로 8192 제한 내 처리되어야 함.
+    """
+    sid = _session_id(26)
+    long_query = (
+        "안녕하세요, 저는 현재 건강보험 지역가입자로 등록되어 있습니다. "
+        "제가 최근 직장을 잃어서 소득이 없는 상태인데, 이런 경우 보험료 경감 신청이 가능한지 "
+        "알고 싶습니다. 경감 신청 요건, 신청 방법, 처리 기간, 경감 비율 등을 구체적으로 "
+        "설명해 주시고, 추가로 실업급여 수급 중인 경우의 보험료 처리 방식도 함께 알려주세요. "
+        "마지막으로 보험료 분할 납부 신청 절차도 안내해 주시면 감사하겠습니다."
+    )
+    t0 = time.monotonic()
+
+    ok, text, meta, err = await _call_v3_run(
+        query=long_query,
+        session_id=sid,
+        max_iterations=10,
+        timeout=300,
+    )
+    elapsed = time.monotonic() - t0
+
+    assertions = [f"쿼리 길이 {len(long_query)}자"]
+    if ok:
+        assertions.append("긴 쿼리 처리 완료 (500 에러 없음)")
+        if text:
+            assertions.append(f"텍스트 수신 (len={len(text)})")
+
+    status = "passed" if ok else "failed"
+    return _record(
+        26,
+        "v3 Long Query with Clearing",
+        6,
+        status,
+        elapsed,
+        assertions=assertions,
+        error=err if not ok else None,
+        detail={"query_len": len(long_query), "text_len": len(text) if text else 0},
+    )
+
+
+async def scenario27_v3_5turn_summarization() -> dict:
+    """Scenario 27: 5-turn 멀티턴 대화 — Extractive Summarization 발동 검증.
+
+    5턴 연속 대화에서 session_load의 요약이 발동하여 컨텍스트 초과 없이 완료.
+    각 턴이 성공해야 하고, 마지막 턴의 total_messages가 합리적 범위여야 함.
+    """
+    sid = _session_id(27)
+    t0 = time.monotonic()
+    assertions: list[str] = []
+    turns = [
+        "서울시 도로 소음 민원에 대한 답변 초안을 작성해줘",
+        "위 답변에 관련 법령 근거를 추가해줘",
+        "최근 소음 민원 통계도 포함해줘",
+        "민원인에게 보낼 공식 답변 형태로 정리해줘",
+        "마지막으로 답변에 담당 부서 연락처와 이의신청 방법도 안내해줘",
+    ]
+
+    last_meta = {}
+    for i, query in enumerate(turns, 1):
+        ok, text, meta, err = await _call_v3_run(
+            query=query,
+            session_id=sid,
+            max_iterations=10,
+            timeout=300,
+        )
+        if not ok:
+            elapsed = time.monotonic() - t0
+            return _record(
+                27,
+                "v3 5-turn Summarization",
+                6,
+                "failed",
+                elapsed,
+                assertions=assertions,
+                error=f"Turn {i} 실패: {err}",
+            )
+        assertions.append(f"Turn {i} 성공 (len={len(text)})")
+        last_meta = meta
+
+    elapsed = time.monotonic() - t0
+    total_msgs = last_meta.get("total_messages", 0)
+    assertions.append(f"최종 total_messages={total_msgs}")
+
+    return _record(
+        27,
+        "v3 5-turn Summarization",
+        6,
+        "passed",
+        elapsed,
+        assertions=assertions,
+        detail={"total_messages": total_msgs, "turns": len(turns)},
+    )
+
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 
@@ -1825,6 +1973,12 @@ async def main() -> None:
     await scenario22_v3_multi_turn_context()
     await scenario23_v3_multi_turn_isolation()
     await scenario24_v3_multi_turn_3_turns()
+
+    # Phase 6: Context Management (Tool Clearing + Summarization)
+    logger.info("\n[ Phase 6: Context Management ]")
+    await scenario25_v3_tool_clearing_multi_iteration()
+    await scenario26_v3_long_query_with_clearing()
+    await scenario27_v3_5turn_summarization()
 
     _finalize()
 

@@ -61,7 +61,7 @@
 | S-1 | **GitHub Repository** | [GovOn-Org/GovOn](https://github.com/GovOn-Org/GovOn) | 전체 소스코드, CI/CD, 문서 일체 |
 | S-2 | **HF Space (Runtime)** | [umyunsang/govon-runtime](https://huggingface.co/spaces/umyunsang/govon-runtime) | A100 80GB 위 vLLM + FastAPI 프로덕션 런타임 |
 | S-3 | **Civil Adapter (LoRA)** | [umyunsang/govon-civil-adapter](https://huggingface.co/umyunsang/govon-civil-adapter) | 행정 민원 답변 LoRA (r16, 74K 학습) |
-| S-4 | **Legal Adapter (LoRA)** | [siwo/govon-legal-adapter](https://huggingface.co/siwo/govon-legal-adapter) | 법률 근거 보강 LoRA (r16, 270K 학습) |
+| S-4 | **Legal Adapter (LoRA)** | [siwo/govon-legal-adapter](https://huggingface.co/siwo/govon-legal-adapter) | 법률 해석 및 법령 인용 LoRA (r16, 270K 학습) |
 | S-5 | **PyPI 패키지** | `pip install govon` | CLI 클라이언트 배포 패키지 |
 | S-6 | **Homebrew Formula** | `brew install govon` | macOS용 CLI 설치 경로 |
 | S-7 | **npm 패키지** | `npm install govon` | Node.js 환경용 패키지 |
@@ -301,8 +301,8 @@ graph TD
 | `stats_lookup` | 분석 | 통계 데이터 조회 (기간/카테고리별) | - |
 | `keyword_analyzer` | 분석 | 핵심 키워드 추출 및 분석 | - |
 | `demographics_lookup` | 분석 | 인구통계 조회 | - |
-| `public_admin_adapter` | 어댑터 | 민원 답변 초안 생성 | civil (r16, 74K) |
-| `legal_adapter` | 어댑터 | 법률 근거 보강 답변 | legal (r16, 270K) |
+| `public_admin_adapter` | 어댑터 | 공공행정 민원 답변 생성 | civil (r16, 74K) |
+| `legal_adapter` | 어댑터 | 법률 해석 및 법령 인용 답변 생성 | legal (r16, 270K) |
 
 도구 선택은 LLM 자율 판단이다. 키워드 매칭, fallback 로직 없이 EXAONE 4.0의 function calling 능력으로 도구를 선택한다. 도구 description은 영어로 작성하여 BFCL 벤치마크 최적화를 활용한다.
 

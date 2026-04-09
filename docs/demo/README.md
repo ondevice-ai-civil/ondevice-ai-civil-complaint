@@ -502,5 +502,5 @@ v3 SSE 이벤트 타입:
 | `stats_lookup` | 기간/카테고리별 민원 통계 조회 | 아니오 |
 | `keyword_analyzer` | 민원 텍스트 키워드 빈도 분석 | 아니오 |
 | `demographics_lookup` | 민원인 인구통계 분포 조회 | 아니오 |
-| `public_admin_adapter` | 행정 민원 답변 초안 생성 (LoRA, 74K 학습) | 예 (v2) |
-| `legal_adapter` | 법률 답변 초안 생성 (LoRA, 270K 학습) | 예 (v2) |
+| `public_admin_adapter` | 공공행정 민원 답변 생성 (LoRA, 74K 학습) | 예 (v2) |
+| `legal_adapter` | 법률 해석 및 법령 인용 답변 생성 (LoRA, 270K 학습) | 예 (v2) |

@@ -32,8 +32,8 @@ MODEL_PATH=LGAI-EXAONE/EXAONE-4.0-32B-AWQ
 
 | 어댑터 | 용도 | 상태 |
 |--------|------|------|
-| `civil-adapter` | 민원 초안 생성 | ✅ 운영 중 |
-| [`legal-adapter`](https://huggingface.co/siwo/govon-legal-adapter) | 법률 근거 조회 | ✅ 운영 중 |
+| `civil-adapter` | 공공행정 민원 답변 생성 | ✅ 운영 중 |
+| [`legal-adapter`](https://huggingface.co/siwo/govon-legal-adapter) | 법률 해석 및 법령 인용 답변 생성 | ✅ 운영 중 |
 
 어댑터 경로는 `ADAPTER_PATHS` 환경변수로 설정합니다 (`name=path` 형식):
 

@@ -1,7 +1,7 @@
 adapters:
   public_admin:
     path: "umyunsang/govon-civil-adapter"
-    description: "Public administration complaint draft generation. Trained on 74K complaint-response pairs."
+    description: "Public administration complaint processing. Trained on 74K government agency complaint-response pairs and administrative law QA."
     domain: "public_admin"
     keywords:
       - complaint
@@ -10,15 +10,17 @@ adapters:
       - application
       - objection
     tool_description: >
-      Generate a draft response for public administration complaints using a specialized
-      LoRA model trained on 74K complaint-response pairs. USE THIS TOOL for queries about
-      administrative procedures, permits, applications, objections, or general civil service
-      matters. DO NOT use for legal interpretation queries.
+      Generate responses for public administration complaints using a specialized LoRA model
+      trained on 74K government agency complaint-response pairs (AI Hub 71852: central/local
+      government QA) and administrative law QA (AI Hub 71847). USE THIS TOOL for queries about
+      administrative procedures, permits, applications, objections, civil service complaints,
+      or administrative decisions. DO NOT use for legal interpretation queries requiring
+      specific statute citations from civil, criminal, or IP law.
       Returns: JSON with "text" (draft response) and "success" (boolean).
     requires_approval: true
   legal:
     path: "siwo/govon-legal-adapter"
-    description: "Legal draft generation with statute citations. Trained on 270K legal documents."
+    description: "Legal question processing with statute citations. Trained on 270K legal documents from court precedents, civil law, IP law, and criminal law QA."
     domain: "legal"
     keywords:
       - law
@@ -27,9 +29,10 @@ adapters:
       - ordinance
       - decree
     tool_description: >
-      Generate a draft response with legal citations using a specialized LoRA model trained
-      on 270K legal documents. USE THIS TOOL for queries requiring legal interpretation,
-      statute references, court precedents, ordinances, or enforcement decrees.
+      Generate responses with statute citations for legal questions using a specialized LoRA
+      model trained on 270K legal documents (court precedents, AI Hub 71841 civil law,
+      71843 IP law, 71848 criminal law QA). USE THIS TOOL for queries requiring legal
+      interpretation, statute references, court precedents, ordinances, or enforcement decrees.
       DO NOT use for general administrative complaints.
       Returns: JSON with "text" (draft response) and "success" (boolean).
     requires_approval: true

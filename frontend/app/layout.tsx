@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "GovOn",
-  description: "폐쇄망 로컬 LLM 기반 민원 분석 및 처리 시스템",
+  description: "Air-gapped local LLM-based civil complaint analysis and processing system",
 };
 
 export default function RootLayout({

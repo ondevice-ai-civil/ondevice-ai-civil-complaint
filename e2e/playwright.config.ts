@@ -1,11 +1,11 @@
 import { defineConfig } from '@playwright/test';
 
 /**
- * Playwright E2E 테스트 설정
+ * Playwright E2E test configuration
  *
- * R1 기준 shell-first runtime contract를 우선 검증한다.
- * 현재 스위트는 request fixture 기반으로 runtime smoke/API contract를 검사하고,
- * 향후 /api/v2/* session runtime 및 shell transcript 시나리오를 같은 디렉터리에서 확장한다.
+ * Prioritizes validation of the shell-first runtime contract based on the R1 milestone.
+ * The current suite verifies runtime smoke and API contracts using the request fixture.
+ * Future /api/v2/* session runtime and shell transcript scenarios will be added in the same directory.
  */
 export default defineConfig({
   testDir: '.',

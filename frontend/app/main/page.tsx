@@ -4,7 +4,7 @@ export default function MainPage() {
       <main className="flex flex-col items-center justify-center w-full flex-1 px-20 text-center">
         <h1 className="text-4xl font-bold">Main Page</h1>
         <p className="mt-3 text-2xl">
-          GovOn에 오신 것을 환영합니다.
+          Welcome to GovOn.
         </p>
       </main>
     </div>

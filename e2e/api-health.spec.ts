@@ -45,7 +45,7 @@ test.describe('GovOn Runtime Smoke', () => {
       expect(schema.paths).toHaveProperty(path);
     }
 
-    // v1 레거시 엔드포인트 제거 확인
+    // Verify that v1 legacy endpoints have been removed
     for (const removed of [
       '/v1/generate',
       '/v1/generate-civil-response',
@@ -64,8 +64,8 @@ test.describe('GovOn Runtime Smoke', () => {
         headers: { 'X-API-Key': apiKey },
         failOnStatusCode: false,
     });
-    // SKIP_MODEL_LOAD 모드에서 graph_v3=None → 503
-    // 모델 로드 시 → 200
+    // In SKIP_MODEL_LOAD mode graph_v3=None → 503
+    // With model loaded → 200
     expect([200, 500, 503]).toContain(response.status());
   });
 });
@@ -94,7 +94,7 @@ test.describe('GovOn Runtime Security Contract', () => {
       failOnStatusCode: false,
     });
 
-    // SKIP_MODEL_LOAD에서 graph_v3=None → 503, vLLM 미연결 → 500, 정상 → 200
+    // In SKIP_MODEL_LOAD: graph_v3=None → 503, vLLM not connected → 500, normal → 200
     expect([200, 500, 503]).toContain(response.status());
   });
 

@@ -1,2 +1,2 @@
-# 루트 .gitignore의 lib/ 규칙을 이 패키지에서는 무효화
+# Override the root .gitignore lib/ rule for this package
 !lib/

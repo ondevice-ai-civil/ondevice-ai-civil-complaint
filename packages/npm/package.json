@@ -1,0 +1,37 @@
+{
+  "name": "govon",
+  "version": "0.1.0",
+  "description": "npm wrapper for the GovOn CLI — Shell-first local agentic runtime for administrative assistance and civil complaint workflows",
+  "keywords": [
+    "govon",
+    "agentic-shell",
+    "local-runtime",
+    "civil-complaint",
+    "korean-nlp",
+    "cli"
+  ],
+  "homepage": "https://github.com/umyunsang/GovOn#readme",
+  "bugs": {
+    "url": "https://github.com/umyunsang/GovOn/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/umyunsang/GovOn.git",
+    "directory": "packages/npm"
+  },
+  "license": "MIT",
+  "bin": {
+    "govon": "./bin/govon.js"
+  },
+  "scripts": {
+    "postinstall": "node ./bin/govon.js --check-install"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "README.md"
+  ]
+}

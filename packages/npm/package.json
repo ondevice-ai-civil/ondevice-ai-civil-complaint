@@ -10,13 +10,13 @@
     "korean-nlp",
     "cli"
   ],
-  "homepage": "https://github.com/umyunsang/GovOn#readme",
+  "homepage": "https://github.com/GovOn-Org/GovOn#readme",
   "bugs": {
-    "url": "https://github.com/umyunsang/GovOn/issues"
+    "url": "https://github.com/GovOn-Org/GovOn/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/umyunsang/GovOn.git",
+    "url": "git+https://github.com/GovOn-Org/GovOn.git",
     "directory": "packages/npm"
   },
   "license": "MIT",

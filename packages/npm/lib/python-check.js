@@ -52,13 +52,29 @@ function findPython() {
 
 /**
  * `govon` CLI가 PATH에 설치되어 있는지 확인합니다.
+ * npm의 govon.js wrapper가 아닌 Python의 govon binary를 찾습니다.
  * @returns {boolean}
  */
 function isGovonInstalled() {
   try {
-    const result = spawnSync('govon', ['--version'], { encoding: 'utf8', timeout: 5000 });
-    // error가 없고 status가 0이거나 1이면 실행 가능한 것으로 간주
-    return !result.error;
+    // which/where로 govon 경로를 확인하여 Python binary인지 검증
+    const whichCmd = process.platform === 'win32' ? 'where' : 'which';
+    const which = spawnSync(whichCmd, ['govon'], { encoding: 'utf8', timeout: 5000 });
+    if (which.error || which.status !== 0) return false;
+
+    const govonPath = (which.stdout || '').trim().split('\n')[0];
+    // npm bin 경로(node_modules/.bin)에 있으면 npm wrapper이므로 무시
+    if (govonPath.includes('node_modules')) return false;
+
+    // Python module로 직접 확인
+    const python = findPython();
+    if (!python) return false;
+
+    const result = spawnSync(python.cmd, ['-m', 'govon', '--version'], {
+      encoding: 'utf8',
+      timeout: 5000,
+    });
+    return !result.error && result.status === 0;
   } catch {
     return false;
   }

@@ -1,12 +1,6 @@
 name: Homebrew Formula Auto-Update
 
 on:
-  # PyPI 릴리즈 워크플로우 완료 후 자동 트리거
-  workflow_run:
-    workflows: ["Publish Package"]
-    types:
-      - completed
-
   # 수동 트리거 (PyPI 배포 후 sha256 갱신 등에 활용)
   workflow_dispatch:
     inputs:
@@ -23,10 +17,7 @@ jobs:
   update-formula:
     name: Update Homebrew Formula
     runs-on: ubuntu-latest
-    # workflow_run 트리거 시 성공한 경우에만 실행
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    if: github.event_name == 'workflow_dispatch'
 
     permissions:
       contents: write
@@ -34,12 +25,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -63,49 +54,10 @@ jobs:
         env:
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_SHA256: ${{ inputs.pypi_sha256 }}
-          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            VERSION="${INPUT_VERSION}"
-            SHA256="${INPUT_SHA256}"
-            PYPI_URL="https://files.pythonhosted.org/packages/source/G/GovOn/GovOn-${VERSION}.tar.gz"
-          else
-            # workflow_run 트리거: PyPI에서 최신 릴리즈 정보를 파일로 안전하게 추출
-            pip install requests --quiet
-            python3 - <<'PYEOF' > /tmp/pypi_info.env
-import requests, sys, re
-
-resp = requests.get("https://pypi.org/pypi/govon/json", timeout=30)
-resp.raise_for_status()
-data = resp.json()
-
-version = data["info"]["version"]
-releases = data["releases"][version]
-
-sdist = next((r for r in releases if r["packagetype"] == "sdist"), None)
-if not sdist:
-    print("ERROR: sdist not found on PyPI", file=sys.stderr)
-    sys.exit(1)
-
-url = sdist["url"]
-sha256 = sdist["digests"]["sha256"]
-
-# 값 검증 후 출력
-if not re.match(r'^[0-9]+\.[0-9]+\.[0-9]+', version):
-    print(f"ERROR: invalid version: {version}", file=sys.stderr)
-    sys.exit(1)
-if not re.match(r'^[a-f0-9]{64}$', sha256):
-    print(f"ERROR: invalid sha256: {sha256}", file=sys.stderr)
-    sys.exit(1)
-
-print(f"VERSION={version}")
-print(f"SHA256={sha256}")
-print(f"PYPI_URL={url}")
-PYEOF
-            # eval 대신 source로 안전하게 로드
-            source /tmp/pypi_info.env
-            rm -f /tmp/pypi_info.env
-          fi
+          VERSION="${INPUT_VERSION}"
+          SHA256="${INPUT_SHA256}"
+          PYPI_URL="https://files.pythonhosted.org/packages/source/G/GovOn/GovOn-${VERSION}.tar.gz"
 
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"

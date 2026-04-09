@@ -1,9 +1,9 @@
 name: DORA Metrics Collector
 
 on:
-  # 매주 월요일 09:00 KST (00:00 UTC) 자동 수집
+  # 매일 09:00 KST (00:00 UTC) 자동 수집
   schedule:
-    - cron: '0 0 * * 1'
+    - cron: '0 0 * * *'
   # 수동 실행
   workflow_dispatch:
 

@@ -42,8 +42,10 @@ runs:
     - name: Install Playwright browsers
       if: inputs.install-browsers == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: npx playwright install --with-deps chromium
     - name: Install Playwright system deps only (cache hit)
       if: inputs.install-browsers == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: npx playwright install-deps chromium

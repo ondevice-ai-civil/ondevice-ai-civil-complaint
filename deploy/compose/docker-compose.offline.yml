@@ -12,7 +12,7 @@ services:
       - ../../models:/app/models
       - ../../data:/app/data
       - ../../agents:/app/agents
-      - ../../configs:/app/configs
+      - ../../config:/app/config
       - ../../logs:/var/log/govon
       - ../../.cache:/app/.cache
     environment:

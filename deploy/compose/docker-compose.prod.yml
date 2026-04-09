@@ -22,7 +22,7 @@ services:
       - ../../models:/app/models
       - ../../data:/app/data
       - ../../agents:/app/agents
-      - ../../configs:/app/configs
+      - ../../config:/app/config
     environment:
       - API_KEY=${API_KEY}
       - MODEL_PATH=${MODEL_PATH:-LGAI-EXAONE/EXAONE-4.0-32B-AWQ}
@@ -68,7 +68,7 @@ services:
       - ../../models:/app/models
       - ../../data:/app/data
       - ../../agents:/app/agents
-      - ../../configs:/app/configs
+      - ../../config:/app/config
     environment:
       - API_KEY=${API_KEY}
       - MODEL_PATH=${MODEL_PATH:-LGAI-EXAONE/EXAONE-4.0-32B-AWQ}

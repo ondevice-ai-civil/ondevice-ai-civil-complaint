@@ -206,12 +206,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          mkdir -p test-results playwright-report
+          mkdir -p e2e/test-results e2e/playwright-report
 
           .venv/bin/python -m uvicorn src.inference.api_server:app \
             --host 127.0.0.1 \
             --port 8000 \
-            > test-results/runtime-server.log 2>&1 &
+            > e2e/test-results/runtime-server.log 2>&1 &
           SERVER_PID=$!
 
           cleanup() {
@@ -238,8 +238,8 @@ jobs:
         with:
           name: runtime-contract-report
           path: |
-            test-results/
-            playwright-report/
+            e2e/test-results/
+            e2e/playwright-report/
           retention-days: 7
 
   build:

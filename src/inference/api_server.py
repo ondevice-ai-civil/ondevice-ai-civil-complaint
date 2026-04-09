@@ -181,8 +181,16 @@ class vLLMEngineManager:
         self.graph_v3 = None  # v3 ReAct graph (v3 엔드포인트용)
         self._checkpointer_ctx = None  # AsyncSqliteSaver 컨텍스트 매니저 (lifespan에서 관리)
         self._sync_checkpointer_conn = None  # SqliteSaver용 sqlite3 connection (leak 방지)
+        # session_id 단위 비동기 락: 동시 요청 race condition 방지
+        self._session_locks: dict[str, asyncio.Lock] = {}
         self._init_agent_loop()
         # _init_graph()는 lifespan()에서 호출 — 모듈 로드 시점 실행 방지
+
+    def get_session_lock(self, session_id: str) -> asyncio.Lock:
+        """session_id 단위 비동기 락을 반환한다. 동시 요청 race condition 방지."""
+        if session_id not in self._session_locks:
+            self._session_locks[session_id] = asyncio.Lock()
+        return self._session_locks[session_id]
 
     async def initialize(self):
         if SKIP_MODEL_LOAD:
@@ -827,6 +835,12 @@ class vLLMEngineManager:
 
         tools = self._build_langgraph_tools()
 
+        # max_tokens 동적 계산: max_model_len에서 입력 오버헤드(시스템 프롬프트+도구 스키마+대화이력)를 제외
+        # 시스템 프롬프트 ~500 + 도구 스키마 ~1000 + 안전 마진 ~500 = 2000 오버헤드
+        _max_model_len = runtime_config.model.max_model_len
+        _llm_max_tokens = min(2048, _max_model_len - 2000)
+        logger.info(f"[_init_graph] max_model_len={_max_model_len}, llm_max_tokens={_llm_max_tokens}")
+
         # LLM 인스턴스 구성
         if SKIP_MODEL_LOAD:
             # CI/테스트 환경: LLM이 없으므로 graph 초기화 스킵
@@ -840,7 +854,7 @@ class vLLMEngineManager:
                 api_key=os.getenv("LANGGRAPH_MODEL_API_KEY", "EMPTY"),
                 model=os.getenv("LANGGRAPH_PLANNER_MODEL", runtime_config.model.model_path),
                 temperature=0.0,
-                max_tokens=1024,
+                max_tokens=_llm_max_tokens,
             )
         else:
             # 운영 환경: vLLM OpenAI-compatible endpoint 사용
@@ -852,7 +866,7 @@ class vLLMEngineManager:
                 api_key="EMPTY",
                 model=runtime_config.model.model_path,
                 temperature=0.0,
-                max_tokens=1024,
+                max_tokens=_llm_max_tokens,
             )
 
         # checkpointer가 외부에서 주입되지 않으면 SqliteSaver를 시도한다.
@@ -1389,6 +1403,14 @@ async def v2_agent_stream(
                         "node": node_name,
                         "status": "completed",
                     }
+                    # agent 노드 완료 시 tool_calls 정보를 이벤트에 포함
+                    if node_name == "agent" and isinstance(state_delta, dict):
+                        msgs = state_delta.get("messages", [])
+                        if msgs:
+                            last_msg = msgs[-1] if isinstance(msgs, list) else msgs
+                            tc = getattr(last_msg, "tool_calls", None)
+                            if tc:
+                                event["planned_tools"] = [t["name"] for t in tc]
                     # persist 완료 시 evidence_items를 이벤트에 포함.
                     # 전제: stream_mode="updates"에서 state_delta는 노드의 raw return dict다.
                     # evidence_items 스키마: EvidenceItem.to_dict() 필드를 따른다.
@@ -1713,7 +1735,9 @@ async def v3_agent_stream(
     _http_request: Request,
     _: None = Depends(verify_api_key),
 ) -> StreamingResponse:
-    """v3 ReAct agent — astream_events 기반 세밀한 SSE 스트리밍.
+    """v3 ReAct agent — astream_events 기반 세밀한 SSE 스트리밍 (대화형 멀티턴 지원).
+
+    같은 session_id로 재요청하면 LangGraph checkpointer가 이전 대화를 자동 복원한다.
 
     이벤트 타입:
       - thinking_start: LLM 추론 시작
@@ -1728,28 +1752,50 @@ async def v3_agent_stream(
 
     from langchain_core.messages import HumanMessage
 
-    # v3는 단발 실행이므로 체크포인트 격리를 위해 thread_id는 항상 새 UUID 사용.
-    # session_id는 클라이언트가 전달한 값을 그대로 유지한다.
-    thread_id = str(uuid.uuid4())
-    session_id = request.session_id or thread_id
+    # session_id = thread_id 통일: 같은 session_id면 이전 대화 자동 복원
+    # v3: prefix로 v2 checkpointer와 격리
+    session_id = request.session_id or str(uuid.uuid4())
+    thread_id = f"v3:{session_id}"
     request_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
-    initial_state = {
-        "session_id": session_id,
-        "request_id": request_id,
-        "messages": [HumanMessage(content=request.query)],
-        "max_iterations": request.max_iterations,
-        "iteration_count": 0,
-        "tool_call_history": [],
-        "pending_tool_calls": [],
-    }
+
+    # checkpointer에서 기존 대화 존재 여부 확인 (C2: graceful degradation)
+    try:
+        existing_state = await manager.graph_v3.aget_state(config)
+        has_history = (
+            existing_state
+            and existing_state.values
+            and existing_state.values.get("messages")
+        )
+    except Exception as exc:
+        logger.warning(f"[v3/agent/stream] aget_state 실패, 신규 세션으로 진행: {exc}")
+        has_history = False
+
+    if has_history:
+        invoke_input = {
+            "messages": [HumanMessage(content=request.query)],
+            "request_id": request_id,
+            "max_iterations": request.max_iterations,
+            "iteration_count": 0,
+            "pending_tool_calls": [],
+        }
+    else:
+        invoke_input = {
+            "session_id": session_id,
+            "request_id": request_id,
+            "messages": [HumanMessage(content=request.query)],
+            "max_iterations": request.max_iterations,
+            "iteration_count": 0,
+            "tool_call_history": [],
+            "pending_tool_calls": [],
+        }
 
     async def _generate_v3() -> AsyncGenerator[str, None]:
         run_t0 = time.monotonic()
         iteration = 0
 
         try:
-            async for event in manager.graph_v3.astream_events(initial_state, config, version="v2"):
+            async for event in manager.graph_v3.astream_events(invoke_input, config, version="v2"):
                 if await _http_request.is_disconnected():
                     logger.info("[v3/agent/stream] 클라이언트 연결 끊김 감지 — 스트림 조기 종료")
                     return
@@ -1852,9 +1898,10 @@ async def v3_agent_run(
     _http_request: Request,
     _: None = Depends(verify_api_key),
 ):
-    """v3 ReAct agent 블로킹 실행.
+    """v3 ReAct agent 블로킹 실행 (대화형 멀티턴 지원).
 
-    v2와 동일한 인터페이스를 제공하되, v3 graph를 사용한다.
+    같은 session_id로 재요청하면 LangGraph checkpointer가 이전 대화를 자동 복원한다.
+    add_messages reducer가 새 HumanMessage를 기존 messages에 누적한다.
     모든 도구가 자동 실행되므로 approval_wait가 없다.
     """
     if not manager.graph_v3:
@@ -1862,24 +1909,49 @@ async def v3_agent_run(
 
     from langchain_core.messages import HumanMessage
 
-    # v3는 단발 실행 — checkpoint 격리를 위해 thread_id는 항상 새 UUID
-    thread_id = str(uuid.uuid4())
-    session_id = request.session_id or thread_id
+    # session_id = thread_id 통일: 같은 session_id면 이전 대화 자동 복원
+    # v3: prefix로 v2 checkpointer와 격리
+    session_id = request.session_id or str(uuid.uuid4())
+    thread_id = f"v3:{session_id}"
     request_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
-    initial_state = {
-        "session_id": session_id,
-        "request_id": request_id,
-        "messages": [HumanMessage(content=request.query)],
-        "max_iterations": request.max_iterations,
-        "iteration_count": 0,
-        "tool_call_history": [],
-        "pending_tool_calls": [],
-    }
+
+    # session_id 단위 락: 동시 요청 race condition 방지
+    async with manager.get_session_lock(thread_id):
+        # checkpointer에서 기존 대화 존재 여부 확인 (graceful degradation)
+        try:
+            existing_state = await manager.graph_v3.aget_state(config)
+            has_history = (
+                existing_state
+                and existing_state.values
+                and existing_state.values.get("messages")
+            )
+        except Exception as exc:
+            logger.warning(f"[v3/agent/run] aget_state 실패, 신규 세션으로 진행: {exc}")
+            has_history = False
+
+        if has_history:
+            invoke_input = {
+                "messages": [HumanMessage(content=request.query)],
+                "request_id": request_id,
+                "max_iterations": request.max_iterations,
+                "iteration_count": 0,
+                "pending_tool_calls": [],
+            }
+        else:
+            invoke_input = {
+                "session_id": session_id,
+                "request_id": request_id,
+                "messages": [HumanMessage(content=request.query)],
+                "max_iterations": request.max_iterations,
+                "iteration_count": 0,
+                "tool_call_history": [],
+                "pending_tool_calls": [],
+            }
 
     try:
         t0 = time.monotonic()
-        result = await manager.graph_v3.ainvoke(initial_state, config)
+        result = await manager.graph_v3.ainvoke(invoke_input, config)
         total_latency = round((time.monotonic() - t0) * 1000, 2)
 
         return {
@@ -1892,6 +1964,7 @@ async def v3_agent_run(
             "metadata": {
                 "total_iterations": result.get("iteration_count", 0),
                 "total_tool_calls": len(result.get("tool_call_history", [])),
+                "total_messages": len(result.get("messages", [])),
                 "total_latency_ms": total_latency,
                 "node_latencies": result.get("node_latencies", {}),
             },

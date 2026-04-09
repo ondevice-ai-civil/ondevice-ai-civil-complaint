@@ -22,29 +22,18 @@ except ImportError:
 
 
 from .adapter_registry import AdapterRegistry
-from .agent_loop import AgentLoop, AgentTrace
 from .agent_manager import AgentManager
 from .feature_flags import FeatureFlags
 from .runtime_config import RuntimeConfig
 from .schemas import (
     AgentRunRequest,
-    AgentRunResponse,
-    AgentTraceSchema,
     GenerateCivilResponseRequest,
     GenerateCivilResponseResponse,
-    GenerateRequest,
-    GenerateResponse,
-    ToolResultSchema,
 )
 from .session_context import SessionContext, SessionStore
-from .tool_router import ToolType, tool_name
 
 SKIP_MODEL_LOAD = os.getenv("SKIP_MODEL_LOAD", "false").lower() in ("true", "1", "yes")
 
-
-async def _noop_tool(query: str, context: dict, session: Any) -> dict:
-    """build_all_tools fallback용 no-op tool."""
-    return {"success": False, "error": "tool이 초기화되지 않았습니다"}
 
 
 try:
@@ -115,17 +104,6 @@ class _VLLMOutputItem:
         self.token_ids = token_ids
 
 
-class _StreamChunk:
-    """SSE 스트리밍 청크를 /v1/stream 엔드포인트 인터페이스로 래핑.
-
-    /v1/stream 에서 ``request_output.outputs[0].text``,
-    ``request_output.finished``에 접근하므로 동일한 속성을 제공한다.
-    """
-
-    def __init__(self, text: str, finished: bool) -> None:
-        self.outputs = [type("Output", (), {"text": text})()]
-        self.finished = finished
-
 
 class _VLLMHttpResult:
     """vLLM HTTP 응답을 기존 AsyncLLM 결과 인터페이스로 래핑.
@@ -176,14 +154,15 @@ class vLLMEngineManager:
         self.feature_flags = FeatureFlags.from_env()
         self.session_store = SessionStore()
         self.agent_manager = AgentManager(AGENTS_DIR)
-        self.agent_loop: Optional[AgentLoop] = None
+        self._api_lookup_action = None  # MinwonAnalysisAction (지연 초기화)
+        self._draft_response_fn = None  # 답변 초안 생성 클로저 (지연 초기화)
         self.graph = None  # LangGraph CompiledGraph (v2 엔드포인트용)
         self.graph_v3 = None  # v3 ReAct graph (v3 엔드포인트용)
         self._checkpointer_ctx = None  # AsyncSqliteSaver 컨텍스트 매니저 (lifespan에서 관리)
         self._sync_checkpointer_conn = None  # SqliteSaver용 sqlite3 connection (leak 방지)
         # session_id 단위 비동기 락: 동시 요청 race condition 방지
         self._session_locks: dict[str, asyncio.Lock] = {}
-        self._init_agent_loop()
+        self._init_tools()
         # _init_graph()는 lifespan()에서 호출 — 모듈 로드 시점 실행 방지
 
     def get_session_lock(self, session_id: str) -> asyncio.Lock:
@@ -473,72 +452,6 @@ class vLLMEngineManager:
             sampling_params=sampling_params,
         )
 
-    async def synthesize_final(
-        self,
-        draft_text: str,
-        evidence_items: list,
-        query: str,
-        adapter_name: str = "public_admin",
-    ) -> str:
-        """초안 + 도구 결과를 베이스 모델로 통합하여 최종 답변 생성.
-
-        LoRA 어댑터는 학습 형식(질문→답변)에 특화되어 있어
-        초안+근거 통합 같은 범용 태스크에는 베이스 모델이 적합하다.
-        """
-        safe_query = self._escape_special_tokens(query[:400])
-        safe_draft = self._escape_special_tokens(draft_text[:800])
-
-        # 근거 텍스트 조립
-        evidence_text = ""
-        for item in evidence_items[:5]:
-            source_type = item.get("source_type", "")
-            title = item.get("title", "")
-            excerpt = item.get("excerpt", "")[:200]
-            label = "[외부]" if source_type == "api" else "[생성]"
-            if title or excerpt:
-                evidence_text += f"- {label} {title}: {excerpt}\n"
-
-        if not evidence_text.strip():
-            evidence_text = "(검색 근거 없음)"
-
-        # 베이스 모델 범용 합성 프롬프트
-        synthesis_prompt = (
-            "[|system|]당신은 민원 답변을 보강하는 전문가입니다. "
-            "초안과 참고 근거를 결합하여 정확하고 공감적인 최종 답변을 작성하세요. "
-            "법적 근거가 있으면 인용하고, 절차와 조치사항을 명확히 포함하세요."
-            "[|endofturn|]\n"
-            "[|user|]다음 초안과 근거를 결합하여 최종 민원 답변을 작성하세요.\n\n"
-            f"[민원 질의]\n{safe_query}\n\n"
-            f"[초안]\n{safe_draft}\n\n"
-            f"[참고 근거]\n{evidence_text}"
-            "[|endofturn|]\n[|assistant|]"
-        )
-
-        # 베이스 모델 사용 (LoRA 없음) — 합성은 범용 태스크
-        sampling_params = SamplingParams(
-            max_tokens=768,
-            temperature=0.6,
-            top_p=0.9,
-            stop=["[|endofturn|]"],
-        )
-
-        import uuid as _uuid
-
-        request_id = str(_uuid.uuid4())
-
-        try:
-            output = await self._run_engine(
-                synthesis_prompt, sampling_params, request_id, lora_request=None
-            )
-        except Exception as exc:
-            logger.warning(f"[synthesize_final] 합성 실패: {exc}")
-            return draft_text
-
-        if output is None or not output.outputs:
-            return draft_text
-
-        return self._strip_thought_blocks(output.outputs[0].text)
-
     async def _run_engine(
         self,
         prompt: str,
@@ -612,108 +525,17 @@ class vLLMEngineManager:
             messages = [{"role": "user", "content": prompt}]
         return messages
 
-    async def generate(
-        self,
-        request: GenerateRequest,
-        request_id: str,
-        flags: Optional[FeatureFlags] = None,
-    ) -> Any:
-        return await self.generate_civil_response(request, request_id, flags)
+    def _init_tools(self) -> None:
+        """LangGraph 도구 팩토리에 전달할 action 및 클로저를 초기화한다."""
+        try:
+            from src.inference.actions.data_go_kr import MinwonAnalysisAction
 
-    async def generate_civil_response(
-        self,
-        request: GenerateCivilResponseRequest,
-        request_id: str,
-        flags: Optional[FeatureFlags] = None,
-        external_cases: Optional[List[dict]] = None,
-        lora_request=None,
-    ) -> Any:
-        prepared = await self._prepare_civil_response_generation(request, flags, external_cases)
-        return await self._run_engine(
-            prepared.prompt, prepared.sampling_params, request_id, lora_request=lora_request
-        )
-
-    async def generate_stream(
-        self,
-        request: GenerateRequest,
-        request_id: str,
-        flags: Optional[FeatureFlags] = None,
-    ) -> AsyncGenerator:
-        """SSE 스트리밍 응답을 파싱하여 _StreamChunk를 yield하는 async generator를 반환.
-
-        기존 코드가 ``async for request_output in results_stream:``으로 소비하므로
-        context manager가 아닌 async generator로 반환해야 한다.
-        """
-        prepared = await self._prepare_civil_response_generation(request, flags)
-        if self._http_client is None:
-            raise RuntimeError("vLLM 서버에 연결되지 않았습니다.")
-
-        messages = self._prompt_to_messages(prepared.prompt)
-        body = {
-            "model": MODEL_PATH,
-            "messages": messages,
-            "max_tokens": prepared.sampling_params.max_tokens,
-            "temperature": prepared.sampling_params.temperature,
-            "stream": True,
-        }
-        if prepared.sampling_params.stop:
-            body["stop"] = list(prepared.sampling_params.stop)
-
-        return self._stream_vllm_response(body)
-
-    async def _stream_vllm_response(self, body: dict) -> AsyncGenerator:
-        """vLLM SSE 스트리밍을 파싱하여 _StreamChunk를 yield하는 async generator.
-
-        httpx .stream()은 context manager이므로 직접 ``async for``로 소비할 수 없다.
-        이 메서드가 내부에서 context manager를 관리하고 파싱된 청크를 yield한다.
-        """
-        accumulated_text = ""
-        async with self._http_client.stream("POST", "/v1/chat/completions", json=body) as resp:
-            if resp.status_code != 200:
-                logger.error(f"vLLM 스트리밍 HTTP {resp.status_code}")
-                return
-            async for line in resp.aiter_lines():
-                line = line.strip()
-                if not line.startswith("data:"):
-                    continue
-                data = line[len("data:") :].strip()
-                if data == "[DONE]":
-                    break
-                try:
-                    chunk = json.loads(data)
-                    delta = chunk.get("choices", [{}])[0].get("delta", {})
-                    content = delta.get("content", "")
-                    if content:
-                        accumulated_text += content
-                    finish = chunk.get("choices", [{}])[0].get("finish_reason")
-                    yield _StreamChunk(text=accumulated_text, finished=finish is not None)
-                except json.JSONDecodeError:
-                    continue
-
-    def _init_agent_loop(self) -> None:
-        from src.inference.actions.data_go_kr import MinwonAnalysisAction
+            self._api_lookup_action = MinwonAnalysisAction()
+        except Exception as exc:
+            logger.warning(f"MinwonAnalysisAction 초기화 실패 (도구 없이 진행): {exc}")
+            self._api_lookup_action = None
 
         engine_ref = self
-        minwon_action = MinwonAnalysisAction()
-
-        async def _api_lookup_tool(query: str, context: dict, session: SessionContext) -> dict:
-            working_query = query.strip()
-            payload = await minwon_action.fetch_similar_cases(
-                working_query,
-                {
-                    **context,
-                    "session_context": session.build_context_summary(),
-                },
-            )
-            results = payload["results"] or []
-            return {
-                "query": payload["query"],
-                "count": len(results),
-                "results": results,
-                "context_text": payload["context_text"],
-                "citations": [citation.to_dict() for citation in payload["citations"]],
-                "source": "data.go.kr",
-            }
 
         async def _draft_response_tool(
             query: str,
@@ -762,51 +584,19 @@ class vLLMEngineManager:
                 "completion_tokens": len(final_output.outputs[0].token_ids),
             }
 
-        tool_registry = {
-            ToolType.API_LOOKUP: _api_lookup_tool,
-            "draft_response": _draft_response_tool,
-        }
-        self.agent_loop = AgentLoop(tool_registry=tool_registry)
+        self._draft_response_fn = _draft_response_tool
 
     def _build_langgraph_tools(self) -> list:
         """LangGraph ToolNode용 도구 목록을 생성한다.
 
         build_all_tools()를 사용하여 StructuredTool 목록을 반환한다.
-        AgentLoop의 tool_registry에서 기존 closure를 추출하여 전달한다.
         """
         from src.inference.graph.tools import build_all_tools
 
-        if self.agent_loop is None:
-            return build_all_tools(
-                api_lookup_action=self._get_api_lookup_action(),
-            )
-
-        # AgentLoop의 tool_registry에서 기존 closure를 추출
-        raw_tools = {
-            str(k.value if hasattr(k, "value") else k): v for k, v in self.agent_loop._tools.items()
-        }
-
         return build_all_tools(
-            api_lookup_action=self._get_api_lookup_action(),
-            draft_response_fn=raw_tools.get("draft_response"),
+            api_lookup_action=self._api_lookup_action,
+            draft_response_fn=self._draft_response_fn,
         )
-
-    def _get_api_lookup_action(self) -> Any:
-        """AgentLoop에 등록된 api_lookup의 MinwonAnalysisAction을 추출한다."""
-        if self.agent_loop is None:
-            return None
-        tool_fn = self.agent_loop._tools.get(ToolType.API_LOOKUP)
-        # ApiLookupCapability인 경우 action을 직접 추출
-        if hasattr(tool_fn, "_action"):
-            return tool_fn._action
-        # closure인 경우 action을 추출할 수 없으므로 None 반환
-        # (MinwonAnalysisAction은 _init_agent_loop에서 새로 생성한다)
-        try:
-            from src.inference.actions.data_go_kr import MinwonAnalysisAction
-
-            return MinwonAnalysisAction()
-        except Exception:
-            return None
 
     def _init_graph_with_async_checkpointer(self, checkpointer: object) -> None:
         """lifespan에서 AsyncSqliteSaver가 준비된 후 graph를 재구성한다."""
@@ -816,7 +606,7 @@ class vLLMEngineManager:
         """LangGraph StateGraph를 초기화한다.
 
         v4 아키텍처: ReAct + ToolNode 기반.
-        LLM이 자율적으로 도구 호출을 결정하며, 정적 planner/executor를 사용하지 않는다.
+        LLM이 자율적으로 도구 호출을 결정한다.
 
         Parameters
         ----------
@@ -1074,272 +864,6 @@ def _rate_limit(limit_string: str):
 def get_feature_flags(request: Request) -> FeatureFlags:
     header = request.headers.get("X-Feature-Flag")
     return manager.feature_flags.override_from_header(header)
-
-
-@app.post("/v1/generate-civil-response", response_model=GenerateCivilResponseResponse)
-@_rate_limit("30/minute")
-async def generate_civil_response(
-    request: GenerateCivilResponseRequest,
-    _: None = Depends(verify_api_key),
-    flags: FeatureFlags = Depends(get_feature_flags),
-):
-    if request.stream:
-        raise HTTPException(status_code=400, detail="민원 답변 스트리밍은 /v1/stream을 사용하세요.")
-
-    request_id = str(uuid.uuid4())
-    final_output = await manager.generate_civil_response(
-        request,
-        request_id,
-        flags,
-    )
-    if final_output is None:
-        raise HTTPException(status_code=500, detail="민원 답변 생성에 실패했습니다.")
-
-    return GenerateCivilResponseResponse(
-        request_id=request_id,
-        complaint_id=request.complaint_id,
-        text=manager._strip_thought_blocks(final_output.outputs[0].text),
-        prompt_tokens=len(final_output.prompt_token_ids),
-        completion_tokens=len(final_output.outputs[0].token_ids),
-    )
-
-
-@app.post("/v1/generate", response_model=GenerateResponse)
-@_rate_limit("30/minute")
-async def generate(
-    request: GenerateRequest,
-    _: None = Depends(verify_api_key),
-    flags: FeatureFlags = Depends(get_feature_flags),
-):
-    if request.stream:
-        raise HTTPException(status_code=400, detail="Use /v1/stream for streaming.")
-
-    request_id = str(uuid.uuid4())
-    final_output = await manager.generate(request, request_id, flags)
-    if final_output is None:
-        raise HTTPException(status_code=500, detail="Generation failed.")
-
-    return GenerateResponse(
-        request_id=request_id,
-        complaint_id=request.complaint_id,
-        text=manager._strip_thought_blocks(final_output.outputs[0].text),
-        prompt_tokens=len(final_output.prompt_token_ids),
-        completion_tokens=len(final_output.outputs[0].token_ids),
-    )
-
-
-@app.post("/v1/chat/completions")
-@_rate_limit("30/minute")
-async def chat_completions(
-    request: Request,
-    _: None = Depends(verify_api_key),
-):
-    """OpenAI-compatible /v1/chat/completions.
-
-    vLLM HTTP API를 경유하여 텍스트를 생성한다.
-    v2 ReAct graph는 ChatOpenAI가 vLLM OpenAI 서버에 직접 연결하므로
-    이 엔드포인트는 v1 호환 유지용이다.
-    """
-    try:
-        body = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON body.")
-
-    messages: list[dict] = body.get("messages", [])
-    if not messages:
-        raise HTTPException(status_code=422, detail="messages must not be empty.")
-
-    # 첫 번째 이후의 system role 메시지를 제거 (모델 제약 준수)
-    filtered_messages = []
-    for i, msg in enumerate(messages):
-        if msg.get("role") == "system" and i > 0:
-            logger.warning(f"chat_completions: 첫 번째 이후 system role 무시 (index={i})")
-            continue
-        filtered_messages.append(msg)
-    messages = filtered_messages
-
-    try:
-        max_tokens = int(body.get("max_tokens", 512))
-        temperature = float(body.get("temperature", 0.7))
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail="Invalid max_tokens or temperature value.")
-
-    if not (1 <= max_tokens <= runtime_config.max_model_len):
-        raise HTTPException(
-            status_code=400,
-            detail=f"max_tokens must be between 1 and {runtime_config.max_model_len}.",
-        )
-    if not (0.0 <= temperature <= 2.0):
-        raise HTTPException(status_code=400, detail="temperature must be between 0.0 and 2.0.")
-
-    model: str = body.get("model", runtime_config.model.model_path)
-
-    # 메시지 → 프롬프트 변환 (EXAONE chat template 형식)
-    prompt_parts: list[str] = []
-    for msg in messages:
-        role = msg.get("role", "user")
-        content = msg.get("content", "")
-        if role == "system":
-            prompt_parts.append(f"[|system|]{content}[|endofturn|]")
-        elif role == "user":
-            prompt_parts.append(f"[|user|]{content}[|endofturn|]")
-        elif role == "assistant":
-            prompt_parts.append(f"[|assistant|]{content}[|endofturn|]")
-        else:
-            logger.warning(f"chat_completions: 지원하지 않는 role 무시: {role!r}")
-    prompt_parts.append("[|assistant|]")
-    prompt = "\n".join(prompt_parts)
-
-    if manager._http_client is None:
-        raise HTTPException(status_code=503, detail="vLLM server not connected.")
-
-    request_id = str(uuid.uuid4())
-    logger.info(
-        f"chat_completions request_id={request_id} messages={len(messages)} max_tokens={max_tokens}"
-    )
-    sampling_params = SamplingParams(
-        max_tokens=max_tokens,
-        temperature=temperature,
-        stop=["[|endofturn|]"],
-    )
-
-    try:
-        final_output = await manager._run_engine(prompt, sampling_params, request_id)
-    except Exception as exc:
-        logger.error(f"chat_completions generation failed: {exc}")
-        raise HTTPException(status_code=500, detail="Generation failed due to internal error.")
-
-    if final_output is None or not final_output.outputs:
-        raise HTTPException(status_code=500, detail="Generation failed.")
-
-    output = final_output.outputs[0]
-    text = manager._strip_thought_blocks(output.text)
-    prompt_tokens = len(final_output.prompt_token_ids)
-    completion_tokens = len(output.token_ids)
-    vllm_reason = getattr(output, "finish_reason", None)
-    finish_reason = "length" if vllm_reason == "length" else "stop"
-
-    return {
-        "id": f"chatcmpl-{request_id}",
-        "object": "chat.completion",
-        "created": int(time.time()),
-        "model": model,
-        "choices": [
-            {
-                "index": 0,
-                "message": {"role": "assistant", "content": text},
-                "finish_reason": finish_reason,
-            }
-        ],
-        "usage": {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": prompt_tokens + completion_tokens,
-        },
-    }
-
-
-@app.post("/v1/stream")
-@_rate_limit("30/minute")
-async def stream_generate(
-    request: GenerateRequest,
-    _: None = Depends(verify_api_key),
-    flags: FeatureFlags = Depends(get_feature_flags),
-):
-    if not request.stream:
-        request.stream = True
-
-    request_id = str(uuid.uuid4())
-    results_stream = await manager.generate_stream(
-        request,
-        request_id,
-        flags,
-    )
-
-    async def stream_results() -> AsyncGenerator[str, None]:
-        async for request_output in results_stream:
-            text = request_output.outputs[0].text
-            finished = request_output.finished
-            if finished:
-                text = manager._strip_thought_blocks(text)
-
-            response_obj = {"request_id": request_id, "text": text, "finished": finished}
-            yield f"data: {json.dumps(response_obj, ensure_ascii=False)}\n\n"
-
-    return StreamingResponse(stream_results(), media_type="text/event-stream")
-
-
-def _trace_to_schema(trace: AgentTrace) -> AgentTraceSchema:
-    return AgentTraceSchema(
-        request_id=trace.request_id,
-        session_id=trace.session_id,
-        plan=trace.plan_tools,
-        plan_reason=trace.plan_reason,
-        tool_results=[
-            ToolResultSchema(
-                tool=tool_name(result.tool),
-                success=result.success,
-                latency_ms=round(result.latency_ms, 2),
-                data=result.data,
-                error=result.error,
-            )
-            for result in trace.tool_results
-        ],
-        total_latency_ms=round(trace.total_latency_ms, 2),
-        error=trace.error,
-    )
-
-
-@app.post("/v1/agent/run", response_model=AgentRunResponse)
-@_rate_limit("30/minute")
-async def agent_run(
-    request: AgentRunRequest,
-    _: None = Depends(verify_api_key),
-):
-    if not manager.agent_loop:
-        raise HTTPException(status_code=503, detail="에이전트 루프가 초기화되지 않았습니다.")
-    if request.stream:
-        raise HTTPException(status_code=400, detail="스트리밍은 /v1/agent/stream을 사용하세요.")
-
-    session = manager.session_store.get_or_create(session_id=request.session_id)
-    request_id = str(uuid.uuid4())
-    trace = await manager.agent_loop.run(
-        query=request.query,
-        session=session,
-        request_id=request_id,
-        force_tools=request.force_tools,
-    )
-
-    return AgentRunResponse(
-        request_id=request_id,
-        session_id=session.session_id,
-        text=trace.final_text,
-        trace=_trace_to_schema(trace),
-    )
-
-
-@app.post("/v1/agent/stream")
-@_rate_limit("30/minute")
-async def agent_stream(
-    request: AgentRunRequest,
-    _: None = Depends(verify_api_key),
-):
-    if not manager.agent_loop:
-        raise HTTPException(status_code=503, detail="에이전트 루프가 초기화되지 않았습니다.")
-
-    session = manager.session_store.get_or_create(session_id=request.session_id)
-    request_id = str(uuid.uuid4())
-
-    async def stream_events() -> AsyncGenerator[str, None]:
-        async for event in manager.agent_loop.run_stream(
-            query=request.query,
-            session=session,
-            request_id=request_id,
-            force_tools=request.force_tools,
-        ):
-            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-
-    return StreamingResponse(stream_events(), media_type="text/event-stream")
 
 
 # ---------------------------------------------------------------------------

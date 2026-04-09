@@ -65,11 +65,10 @@ except ImportError:
     sys.modules["langgraph.checkpoint.sqlite"] = _lg_mock
     sys.modules["langgraph.types"] = _lg_mock
 
-with patch("src.inference.vllm_stabilizer.apply_transformers_patch"):
-    import src.inference.api_server as api_server
+import src.inference.api_server as api_server
 
-    app = api_server.app
-    manager = api_server.manager
+app = api_server.app
+manager = api_server.manager
 
 from unittest.mock import patch as _patch
 

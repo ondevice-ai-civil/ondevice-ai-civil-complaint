@@ -167,7 +167,6 @@ class TestLoraEngineConfig:
         manager.feature_flags = MagicMock()
         manager.session_store = MagicMock()
         manager.agent_manager = MagicMock()
-        manager.agent_loop = None
         manager.graph = None
         manager._checkpointer_ctx = None
         manager._sync_checkpointer_conn = None
@@ -205,7 +204,6 @@ class TestLoraEngineConfig:
         manager.feature_flags = MagicMock()
         manager.session_store = MagicMock()
         manager.agent_manager = MagicMock()
-        manager.agent_loop = None
         manager.graph = None
         manager._checkpointer_ctx = None
         manager._sync_checkpointer_conn = None
@@ -252,7 +250,6 @@ class TestSkipModelLoadLora:
         manager.feature_flags = MagicMock()
         manager.session_store = MagicMock()
         manager.agent_manager = MagicMock()
-        manager.agent_loop = None
         manager.graph = None
         manager._checkpointer_ctx = None
         manager._sync_checkpointer_conn = None

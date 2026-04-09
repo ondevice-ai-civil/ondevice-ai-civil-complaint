@@ -1,7 +1,7 @@
 """GovOn LangGraph StateGraph 빌더.
 
 v4 아키텍처: ReAct + ToolNode 기반.
-LLM이 자율적으로 도구 호출을 결정하며, 정적 planner/executor를 제거한다.
+LLM이 자율적으로 도구 호출을 결정한다.
 
 Graph topology:
   START → session_load → agent → [route_agent]

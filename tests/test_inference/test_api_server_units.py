@@ -41,14 +41,13 @@ if "torch" not in sys.modules:
 # api_server import
 # ---------------------------------------------------------------------------
 
-with patch("src.inference.vllm_stabilizer.apply_transformers_patch"):
-    from src.inference.api_server import (
-        _rate_limit,
-        get_feature_flags,
-        manager,
-        verify_api_key,
-        vLLMEngineManager,
-    )
+from src.inference.api_server import (
+    _rate_limit,
+    get_feature_flags,
+    manager,
+    verify_api_key,
+    vLLMEngineManager,
+)
 
 
 # ---------------------------------------------------------------------------

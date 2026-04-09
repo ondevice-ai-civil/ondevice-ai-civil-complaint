@@ -54,10 +54,10 @@ class EvidenceEnvelope:
 
 @dataclass
 class CapabilityMetadata:
-    """planner·executor·session trace에서 공통으로 사용하는 capability 메타데이터."""
+    """LLM agent·executor·session trace에서 공통으로 사용하는 capability 메타데이터."""
 
     name: str  # tool registry key (예: "api_lookup")
-    description: str  # LLM planner가 읽는 한국어 설명 (1-2문장)
+    description: str  # LLM agent가 읽는 한국어 설명 (1-2문장)
     approval_summary: str  # approval_wait 프롬프트에 표시되는 요약
     provider: str  # 데이터 제공자 식별자 (예: "data.go.kr")
     timeout_sec: float = 10.0  # 기본 타임아웃

@@ -54,6 +54,11 @@ def mock_manager():
             "generator_civil_response",
         ]
         mock.index_manager = MagicMock()
+        mock.index_manager.get_index_stats.return_value = {"indexes": {}}
+        mock.bm25_indexers = {}
+        mock.feature_flags.use_rag_pipeline = True
+        mock.feature_flags.model_version = "test"
+        mock.session_store.db_path = ":memory:"
         mock.local_document_sync_status = {
             "status": "ok",
             "root_dir": "/tmp/local-docs",
@@ -86,8 +91,9 @@ def mock_manager():
 
 def test_health_check(mock_manager):
     """health 엔드포인트가 민감 정보를 노출하지 않고 인덱스 상태를 반환한다."""
+    _SENSITIVE_PATH = "/home/user/models/secret-model"
     mock_model = MagicMock()
-    mock_model.model_path = "LGAI-EXAONE/EXAONE-4.0-32B-AWQ"
+    mock_model.model_path = _SENSITIVE_PATH
     with (
         patch("src.inference.api_server.runtime_config.paths.local_docs_root", "/tmp/local-docs"),
         patch("src.inference.api_server.runtime_config.model", mock_model),
@@ -99,8 +105,9 @@ def test_health_check(mock_manager):
     assert "status" in data
     assert "agents_loaded" in data
     assert "indexes" in data
+    # 민감 경로가 응답에 노출되지 않음을 검증
+    assert _SENSITIVE_PATH not in str(data)
     assert "MODEL_PATH" not in str(data)
-    assert "models/" not in str(data)
 
 
 # ---------------------------------------------------------------------------

@@ -675,7 +675,12 @@ def main() -> None:
         # Textual TUI mode — full terminal UI
         from src.cli.tui.app import GovOnApp
 
-        app = GovOnApp(client=client, session_id=args.session)
+        app = GovOnApp(
+            client=client,
+            session_id=args.session,
+            version=ver,
+            runtime_url=runtime_url,
+        )
         app.run(inline=True)
     else:
         # Legacy REPL mode — rich + prompt_toolkit fallback

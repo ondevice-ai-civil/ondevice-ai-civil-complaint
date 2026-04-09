@@ -31,6 +31,7 @@ from src.cli.tui.widgets.metadata_bar import MetadataBar
 from src.cli.tui.widgets.spinner import SpinnerWidget
 from src.cli.tui.widgets.thinking_block import ThinkingBlock
 from src.cli.tui.widgets.tool_panel import ToolCallPanel
+from src.cli.tui.widgets.welcome_screen import WelcomeScreen
 
 if TYPE_CHECKING:
     from src.cli.http_client import GovOnClient
@@ -51,11 +52,15 @@ class GovOnApp(App):
         client: GovOnClient,
         session_id: str | None = None,
         query: str | None = None,
+        version: str = "dev",
+        runtime_url: str | None = None,
     ) -> None:
         super().__init__()
         self.client = client
         self.session_id = session_id
         self._initial_query = query
+        self._version = version
+        self._runtime_url = runtime_url
         self._current_bubble: MessageBubble | None = None
         self._current_spinner: SpinnerWidget | None = None
         self._current_thinking: ThinkingBlock | None = None
@@ -63,7 +68,11 @@ class GovOnApp(App):
 
     def compose(self) -> ComposeResult:
         """Build the widget tree."""
-        yield VerticalScroll(id="message-history")
+        with VerticalScroll(id="message-history"):
+            yield WelcomeScreen(
+                version=self._version,
+                runtime_url=self._runtime_url,
+            )
         yield Rule(id="separator")
         yield InputBar(id="input-bar")
         yield Footer(id="status-footer")

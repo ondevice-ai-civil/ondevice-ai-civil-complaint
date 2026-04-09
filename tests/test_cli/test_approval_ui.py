@@ -61,22 +61,26 @@ def test_display_width_empty_string():
 
 def test_display_width_ascii_only():
     """순수 ASCII 문자열은 글자 수와 폭이 같다."""
-    assert _display_width("hello") == 5
+    assert _display_width("hello") == 5, f"'hello' 폭 기대 5, 실제 {_display_width('hello')}"
 
 
 def test_display_width_cjk_only():
     """한글 각 글자는 폭 2로 계산한다."""
-    assert _display_width("안녕하세요") == 10
+    assert (
+        _display_width("안녕하세요") == 10
+    ), f"'안녕하세요' 폭 기대 10, 실제 {_display_width('안녕하세요')}"
 
 
 def test_display_width_mixed_ascii_and_cjk():
     """ASCII와 한글 혼합 — 'a한b글c' = 1+2+1+2+1 = 7."""
-    assert _display_width("a한b글c") == 7
+    assert _display_width("a한b글c") == 7, f"'a한b글c' 폭 기대 7, 실제 {_display_width('a한b글c')}"
 
 
 def test_display_width_fullwidth_latin():
     """전각 라틴 문자(east_asian_width=F)는 폭 2로 계산한다."""
-    assert _display_width("Ａ") == 2  # U+FF21, eaw='F'
+    assert (
+        _display_width("Ａ") == 2
+    ), f"'Ａ'(U+FF21) 폭 기대 2, 실제 {_display_width('Ａ')}"  # eaw='F'
 
 
 # ---------------------------------------------------------------------------
@@ -86,18 +90,20 @@ def test_display_width_fullwidth_latin():
 
 def test_get_task_type_style_known_type():
     """알려진 task_type은 지정된 색상을 반환한다."""
-    assert _get_task_type_style("draft_response") == "cyan"
-    assert _get_task_type_style("revise_response") == "blue"
+    assert _get_task_type_style("draft_response") == "cyan", "draft_response 색상 기대 'cyan'"
+    assert _get_task_type_style("revise_response") == "blue", "revise_response 색상 기대 'blue'"
 
 
 def test_get_task_type_style_unknown_type():
     """알 수 없는 task_type은 기본 색상(cyan)을 반환한다."""
-    assert _get_task_type_style("unknown_type") == "cyan"
+    result = _get_task_type_style("unknown_type")
+    assert result == "cyan", f"unknown type 기본 색상 기대 'cyan', 실제 {result!r}"
 
 
 def test_get_task_type_style_none():
     """None 입력 시 기본 색상을 반환한다."""
-    assert _get_task_type_style(None) == "cyan"
+    result = _get_task_type_style(None)
+    assert result == "cyan", f"None 입력 기본 색상 기대 'cyan', 실제 {result!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -107,18 +113,24 @@ def test_get_task_type_style_none():
 
 def test_get_task_type_label_known_type():
     """알려진 task_type은 한국어 레이블을 반환한다."""
-    assert _get_task_type_label("draft_response") == "답변 초안 작성"
-    assert _get_task_type_label("lookup_stats") == "통계 조회"
+    assert (
+        _get_task_type_label("draft_response") == "답변 초안 작성"
+    ), "draft_response 레이블 기대 '답변 초안 작성'"
+    assert (
+        _get_task_type_label("lookup_stats") == "통계 조회"
+    ), "lookup_stats 레이블 기대 '통계 조회'"
 
 
 def test_get_task_type_label_unknown_type():
     """알 수 없는 task_type은 기본 레이블을 반환한다."""
-    assert _get_task_type_label("unknown") == "일반 작업"
+    result = _get_task_type_label("unknown")
+    assert result == "일반 작업", f"unknown type 기본 레이블 기대 '일반 작업', 실제 {result!r}"
 
 
 def test_get_task_type_label_none():
     """None 입력 시 기본 레이블을 반환한다."""
-    assert _get_task_type_label(None) == "일반 작업"
+    result = _get_task_type_label(None)
+    assert result == "일반 작업", f"None 입력 기본 레이블 기대 '일반 작업', 실제 {result!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -153,35 +165,35 @@ def test_normalize_approval_request_v4_tools_to_tool_summaries():
     """v4 'tools' 키가 'tool_summaries'로 정규화된다."""
     req = {"tools": ["도구1", "도구2"]}
     result = _normalize_approval_request(req)
-    assert result["tool_summaries"] == ["도구1", "도구2"]
+    assert result["tool_summaries"] == ["도구1", "도구2"], f"tool_summaries 정규화 실패: {result}"
 
 
 def test_normalize_approval_request_v4_message_to_goal():
     """v4 'message' 키가 'goal'로 정규화된다."""
     req = {"message": "목표 내용"}
     result = _normalize_approval_request(req)
-    assert result["goal"] == "목표 내용"
+    assert result["goal"] == "목표 내용", f"goal 정규화 실패: {result}"
 
 
 def test_normalize_approval_request_v4_approval_required_to_reason():
     """v4 'approval_required' 키가 'reason'으로 정규화된다."""
     req = {"approval_required": ["file_write", "shell_exec"]}
     result = _normalize_approval_request(req)
-    assert "file_write" in result["reason"]
-    assert "shell_exec" in result["reason"]
+    assert "file_write" in result["reason"], f"reason에 'file_write' 없음: {result['reason']!r}"
+    assert "shell_exec" in result["reason"], f"reason에 'shell_exec' 없음: {result['reason']!r}"
 
 
 def test_normalize_approval_request_existing_keys_not_overwritten():
     """기존 키가 있으면 v4 정규화 키로 덮어쓰지 않는다."""
     req = {"goal": "기존 목표", "message": "v4 메시지"}
     result = _normalize_approval_request(req)
-    assert result["goal"] == "기존 목표"
+    assert result["goal"] == "기존 목표", f"기존 goal이 덮어씌워짐: {result['goal']!r}"
 
 
 def test_normalize_approval_request_empty_dict():
     """빈 dict도 크래시 없이 처리된다."""
     result = _normalize_approval_request({})
-    assert isinstance(result, dict)
+    assert isinstance(result, dict), f"빈 dict 정규화 결과가 dict가 아님: {type(result)}"
 
 
 # ---------------------------------------------------------------------------
@@ -193,18 +205,18 @@ def test_normalize_approval_request_empty_dict():
 def test_build_choice_text_selected():
     """selected=True이면 ● bullet과 bold 스타일이 적용된다."""
     text = approval_ui._build_choice_text("승인", selected=True, style="green")
-    assert "●" in text.plain
-    assert "승인" in text.plain
-    assert "bold" in text.style
+    assert "●" in text.plain, f"selected=True bullet 기대 '●', 실제 {text.plain!r}"
+    assert "승인" in text.plain, f"text에 '승인' 없음: {text.plain!r}"
+    assert "bold" in text.style, f"selected 스타일에 'bold' 없음: {text.style!r}"
 
 
 @pytest.mark.skipif(not approval_ui._RICH_AVAILABLE, reason="rich 미설치")
 def test_build_choice_text_not_selected():
     """selected=False이면 ○ bullet과 dim 스타일이 적용된다."""
     text = approval_ui._build_choice_text("거절", selected=False, style="red")
-    assert "○" in text.plain
-    assert "거절" in text.plain
-    assert text.style == "dim white"
+    assert "○" in text.plain, f"selected=False bullet 기대 '○', 실제 {text.plain!r}"
+    assert "거절" in text.plain, f"text에 '거절' 없음: {text.plain!r}"
+    assert text.style == "dim white", f"미선택 스타일 기대 'dim white', 실제 {text.style!r}"
 
 
 # ---------------------------------------------------------------------------

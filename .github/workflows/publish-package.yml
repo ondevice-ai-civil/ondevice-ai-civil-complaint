@@ -70,26 +70,13 @@ jobs:
             --token ${{ secrets.GITHUB_TOKEN }} \
             dist/* || echo "::warning::GitHub Packages PyPI publish failed, continuing..."
 
-      - name: Create GitHub Release
+      - name: Attach artifacts to GitHub Release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
-          generate_release_notes: true
-          body: |
-            ## GovOn v${{ steps.version.outputs.version }}
-
-            ### Python artifact
-            ```bash
-            pip install GovOn==${{ steps.version.outputs.version }}
-            ```
-
-            This publishes the Python runtime artifact. The interactive `govon` installer/bootstrap flow is tracked separately.
-
-            ### Docker
-            ```bash
-            docker pull ghcr.io/govon-org/govon:v${{ steps.version.outputs.version }}
-            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish Summary
         run: |
@@ -100,9 +87,10 @@ jobs:
           echo "| Package Build | Done |" >> $GITHUB_STEP_SUMMARY
           echo "| Artifact Upload | Done |" >> $GITHUB_STEP_SUMMARY
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            echo "| GitHub Release | Done |" >> $GITHUB_STEP_SUMMARY
+            echo "| Release Artifacts | Attached |" >> $GITHUB_STEP_SUMMARY
             echo "| GitHub Packages | Done |" >> $GITHUB_STEP_SUMMARY
+            echo "| Release Notes | Handled by release.yml workflow |" >> $GITHUB_STEP_SUMMARY
           else
-            echo "| GitHub Release | Skipped (manual trigger) |" >> $GITHUB_STEP_SUMMARY
+            echo "| Release Artifacts | Skipped (manual trigger) |" >> $GITHUB_STEP_SUMMARY
             echo "| GitHub Packages | Skipped (manual trigger) |" >> $GITHUB_STEP_SUMMARY
           fi

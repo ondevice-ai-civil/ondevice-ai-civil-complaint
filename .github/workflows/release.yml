@@ -1,0 +1,126 @@
+name: GitHub Release
+
+on:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Parse tag metadata
+        id: meta
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          # Detect pre-release suffixes: -rc, -beta, -alpha
+          if [[ "$TAG" =~ -(rc|beta|alpha) ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "### Pre-release: ${TAG}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "### Release: ${TAG}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Determine previous tag
+        id: prev
+        run: |
+          # Get the tag just before the current one
+          PREV_TAG=$(git tag --sort=-creatordate | grep -E '^v' | sed -n '2p' || true)
+          echo "tag=${PREV_TAG}" >> "$GITHUB_OUTPUT"
+          if [[ -n "$PREV_TAG" ]]; then
+            echo "Previous tag: ${PREV_TAG}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No previous tag found — full history changelog" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          chmod +x scripts/generate-changelog.sh
+          CHANGELOG=$(bash scripts/generate-changelog.sh \
+            "${{ steps.prev.outputs.tag }}" \
+            "${{ steps.meta.outputs.tag }}")
+
+          # Write to file (multiline safe)
+          echo "$CHANGELOG" > /tmp/changelog.md
+
+          echo "### Changelog Preview" >> "$GITHUB_STEP_SUMMARY"
+          echo "$CHANGELOG" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build release notes
+        id: notes
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          VERSION="${{ steps.meta.outputs.version }}"
+          PRERELEASE="${{ steps.meta.outputs.prerelease }}"
+          CHANGELOG=$(cat /tmp/changelog.md)
+
+          cat > /tmp/release-notes.md << NOTES_EOF
+          ## Highlights
+
+          <!-- Manually add key highlights for this release -->
+
+          ## Installation
+
+          \`\`\`bash
+          pip install govon==${VERSION}
+          \`\`\`
+
+          \`\`\`bash
+          docker pull ghcr.io/govon-org/govon:${TAG}
+          \`\`\`
+
+          ## What's Changed
+
+          ${CHANGELOG}
+
+          ## Known Issues
+
+          <!-- Add known issues if any -->
+
+          ---
+          **Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${{ steps.prev.outputs.tag }}...${TAG}
+          NOTES_EOF
+
+          # Remove leading whitespace from heredoc indentation
+          sed -i 's/^          //' /tmp/release-notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: GovOn ${{ steps.meta.outputs.tag }}
+          body_path: /tmp/release-notes.md
+          prerelease: ${{ steps.meta.outputs.prerelease }}
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release summary
+        run: |
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Release Created" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Tag | \`${{ steps.meta.outputs.tag }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Version | \`${{ steps.meta.outputs.version }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Pre-release | ${{ steps.meta.outputs.prerelease }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Previous Tag | \`${{ steps.prev.outputs.tag }}\` |" >> "$GITHUB_STEP_SUMMARY"

@@ -208,7 +208,8 @@ def make_session_load_node(session_store: "SessionStore"):
             # 요약 발동: older 토큰이 예산의 60% 초과 시 extractive summary 적용
             if older_tokens > _MAX_MESSAGE_TOKENS * _SUMMARY_THRESHOLD_RATIO:
                 summary_text = _extractive_summarize(older)
-                summary_msg = SystemMessage(content=summary_text)
+                # HumanMessage로 요약 삽입 (SystemMessage 사용 시 agent의 system prompt와 중복)
+                summary_msg = HumanMessage(content=summary_text)
                 logger.info(
                     f"[session_load] conversation summary: "
                     f"{len(older)} older messages → extractive summary "
@@ -568,13 +569,26 @@ def make_agent_node_v3(llm, tools: list):
         # Stage 1: Tool Result Clearing (Claude API clear_tool_uses 패턴)
         trimmed_messages = _clear_old_tool_results(messages, iteration)
 
-        # Stage 2: 역순 토큰 예산 trim
+        # Stage 2: 역순 토큰 예산 trim (마지막 HumanMessage 항상 보존)
         total_est = sum(_estimate_tokens(m) for m in trimmed_messages)
         if total_est > _AGENT_INPUT_BUDGET:
+            # 마지막 HumanMessage를 찾아 반드시 보존
+            last_human_idx = -1
+            for idx in range(len(trimmed_messages) - 1, -1, -1):
+                if getattr(trimmed_messages[idx], "type", "") == "human":
+                    last_human_idx = idx
+                    break
+
             kept: List = []
             budget = _AGENT_INPUT_BUDGET
-            for msg in reversed(trimmed_messages):
+            for msg_idx in range(len(trimmed_messages) - 1, -1, -1):
+                msg = trimmed_messages[msg_idx]
                 cost = _estimate_tokens(msg)
+                # 마지막 HumanMessage는 예산 초과해도 보존
+                if msg_idx == last_human_idx:
+                    kept.insert(0, msg)
+                    budget -= cost
+                    continue
                 if budget - cost < 0:
                     break
                 kept.insert(0, msg)

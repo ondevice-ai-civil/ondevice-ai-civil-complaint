@@ -1,28 +1,9 @@
 name: Security Scan
 
 on:
-  push:
-    branches: [ main ]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'assets/**'
-      - 'LICENSE'
-      - 'CODE_OF_CONDUCT.md'
-      - 'CONTRIBUTING.md'
-      - 'SECURITY.md'
-  pull_request:
-    branches: [ main ]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'assets/**'
-      - 'LICENSE'
-      - 'CODE_OF_CONDUCT.md'
-      - 'CONTRIBUTING.md'
-      - 'SECURITY.md'
   schedule:
     - cron: '0 0 * * 1'
+  workflow_dispatch:
 
 concurrency:
   group: security-${{ github.ref }}

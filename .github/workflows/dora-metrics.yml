@@ -6,9 +6,6 @@ on:
     - cron: '0 0 * * 1'
   # 수동 실행
   workflow_dispatch:
-  # main 머지 시에도 실행 (배포 빈도 실시간 반영)
-  push:
-    branches: [main]
 
 permissions:
   contents: write
@@ -258,7 +255,7 @@ jobs:
           EOF
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 

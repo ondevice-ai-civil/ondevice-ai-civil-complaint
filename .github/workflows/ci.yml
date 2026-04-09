@@ -7,6 +7,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: pr-gate-${{ github.ref }}
   cancel-in-progress: true
@@ -129,17 +132,13 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.runtime == 'true' ||
       needs.detect-changes.outputs.packaging == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup Python with uv
-        uses: ./.github/actions/setup-python-uv
-        with:
-          extras: '--extra dev'
-
-      - name: Run Bandit on runtime code
-        run: uv run bandit -r src/inference -lll -x tests
+    uses: ./.github/workflows/reusable-security-scan.yml
+    with:
+      bandit-target: src/inference
+      bandit-severity: '-lll'
+      pip-audit-enabled: false
+      upload-sarif: false
+      create-issue-on-vuln: false
 
   runtime-contract:
     needs: [detect-changes, test]

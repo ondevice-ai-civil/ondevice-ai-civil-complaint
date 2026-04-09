@@ -36,6 +36,9 @@ on:
       - 'src/**'
       - 'requirements.txt'
 
+permissions:
+  contents: read
+
 concurrency:
   group: deploy-hfspace
   cancel-in-progress: true

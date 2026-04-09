@@ -28,7 +28,6 @@ from .runtime_config import RuntimeConfig
 from .schemas import (
     AgentRunRequest,
     GenerateCivilResponseRequest,
-    GenerateCivilResponseResponse,
 )
 from .session_context import SessionContext, SessionStore
 
@@ -1270,10 +1269,11 @@ async def v3_agent_stream(
 
     이벤트 타입:
       - thinking_start: LLM 추론 시작
-      - thinking_delta: LLM 토큰 스트리밍
+      - thinking_delta: intermediate LLM 토큰 스트리밍 (tool_calls 생성 중)
       - thinking_end: LLM 추론 완료 (tool_calls 포함)
       - tool_start: 도구 실행 시작
       - tool_end: 도구 실행 완료
+      - response_delta: final answer 토큰 스트리밍 (tool_calls 없는 최종 응답)
       - run_complete: 전체 실행 완료 (메타데이터 포함)
     """
     if not manager.graph_v3:
@@ -1322,6 +1322,9 @@ async def v3_agent_stream(
     async def _generate_v3() -> AsyncGenerator[str, None]:
         run_t0 = time.monotonic()
         iteration = 0
+        # Buffer tokens for the current LLM call; flushed on on_chat_model_end
+        # as either thinking_delta (intermediate) or response_delta (final answer).
+        _token_buffer: List[str] = []
 
         try:
             async for event in manager.graph_v3.astream_events(invoke_input, config, version="v2"):
@@ -1332,6 +1335,7 @@ async def v3_agent_stream(
                 kind = event["event"]
 
                 if kind == "on_chat_model_start":
+                    _token_buffer.clear()
                     sse_event = {"type": "thinking_start", "iteration": iteration}
                     yield f"data: {json.dumps(sse_event, ensure_ascii=False)}\n\n"
 
@@ -1340,11 +1344,7 @@ async def v3_agent_stream(
                     if chunk:
                         content = getattr(chunk, "content", "")
                         if content:
-                            sse_event = {
-                                "type": "thinking_delta",
-                                "content": content,
-                            }
-                            yield f"data: {json.dumps(sse_event, ensure_ascii=False)}\n\n"
+                            _token_buffer.append(content)
 
                 elif kind == "on_chat_model_end":
                     output = event.get("data", {}).get("output")
@@ -1358,6 +1358,16 @@ async def v3_agent_stream(
                             }
                             for tc in raw_calls
                         ]
+
+                    # Flush buffered tokens as the appropriate event type:
+                    # - tool_calls present → intermediate reasoning → thinking_delta
+                    # - no tool_calls → final answer → response_delta
+                    delta_type = "thinking_delta" if tool_calls else "response_delta"
+                    for token in _token_buffer:
+                        token_event = {"type": delta_type, "content": token}
+                        yield f"data: {json.dumps(token_event, ensure_ascii=False)}\n\n"
+                    _token_buffer.clear()
+
                     sse_event = {
                         "type": "thinking_end",
                         "tool_calls": tool_calls,

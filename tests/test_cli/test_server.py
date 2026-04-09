@@ -135,6 +135,7 @@ class TestShellServerDispatch(unittest.TestCase):
             sys.argv = ["govon", "server", "start"]
             with self.assertRaises(SystemExit) as cm:
                 from src.cli.shell import main
+
                 main()
             self.assertEqual(cm.exception.code, 0)
             mock_handle.assert_called_once_with(["start"])
@@ -149,6 +150,7 @@ class TestShellServerDispatch(unittest.TestCase):
             sys.argv = ["govon", "server", "pull", "v1.0.6"]
             with self.assertRaises(SystemExit) as cm:
                 from src.cli.shell import main
+
                 main()
             self.assertEqual(cm.exception.code, 0)
             mock_handle.assert_called_once_with(["pull", "v1.0.6"])

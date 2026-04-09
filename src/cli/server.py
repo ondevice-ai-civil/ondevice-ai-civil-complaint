@@ -111,12 +111,25 @@ def _find_compose_file() -> Path | None:
 
 def _get_host_port() -> int:
     """환경변수 또는 기본값에서 호스트 포트를 결정한다."""
-    return int(os.environ.get("HOST_PORT", str(DEFAULT_PORT)))
+    raw = os.environ.get("HOST_PORT")
+    if raw is None:
+        return DEFAULT_PORT
+    try:
+        return int(raw)
+    except ValueError:
+        _print_warn(f"HOST_PORT 값이 잘못되었습니다: {raw!r} — 기본 포트 {DEFAULT_PORT} 사용")
+        return DEFAULT_PORT
 
 
-def _run_cmd(cmd: list[str], *, stream: bool = False) -> subprocess.CompletedProcess | None:
-    """subprocess로 명령을 실행한다. stream=True이면 실시간 출력."""
+def _run_cmd(cmd: list[str], *, stream: bool = False) -> subprocess.CompletedProcess:
+    """subprocess로 명령을 실행한다. stream=True이면 실시간 출력.
+
+    Returns:
+        CompletedProcess (stream 시 returncode만 유효).
+        실패 시 returncode=-1인 CompletedProcess 반환.
+    """
     _print_info(f"실행: {' '.join(cmd)}")
+    _fail = subprocess.CompletedProcess(cmd, returncode=-1)
     try:
         if stream:
             proc = subprocess.Popen(cmd, stdout=sys.stdout, stderr=sys.stderr)
@@ -125,13 +138,13 @@ def _run_cmd(cmd: list[str], *, stream: bool = False) -> subprocess.CompletedPro
             except KeyboardInterrupt:
                 proc.terminate()
                 proc.wait()
-            return None
+            return subprocess.CompletedProcess(cmd, returncode=proc.returncode)
         return subprocess.run(cmd, capture_output=True, text=True)
     except FileNotFoundError:
         _print_error(f"명령을 찾을 수 없습니다: {cmd[0]}")
-        return None
+        return _fail
     except KeyboardInterrupt:
-        return None
+        return _fail
 
 
 # ---------------------------------------------------------------------------
@@ -143,22 +156,28 @@ def _cmd_pull(tag: str = DEFAULT_TAG) -> int:
     """Docker 이미지를 pull한다."""
     docker = _detect_docker()
     if not docker:
-        _print_error("Docker가 설치되어 있지 않습니다. https://docs.docker.com/get-docker/ 에서 설치하세요.")
+        _print_error(
+            "Docker가 설치되어 있지 않습니다. https://docs.docker.com/get-docker/ 에서 설치하세요."
+        )
         return 1
 
     image = f"{DEFAULT_IMAGE}:{tag}"
     _print_info(f"이미지 다운로드 중: {image}")
     result = _run_cmd([docker, "pull", image], stream=True)
-    if result is None:
+    if result.returncode == 0:
         _print_success(f"이미지 pull 완료: {image}")
-    return 0
+        return 0
+    _print_error(f"이미지 pull 실패 (exit {result.returncode})")
+    return 1
 
 
 def _cmd_start() -> int:
     """docker compose up -d로 백엔드를 시작한다."""
     docker = _detect_docker()
     if not docker:
-        _print_error("Docker가 설치되어 있지 않습니다. https://docs.docker.com/get-docker/ 에서 설치하세요.")
+        _print_error(
+            "Docker가 설치되어 있지 않습니다. https://docs.docker.com/get-docker/ 에서 설치하세요."
+        )
         return 1
 
     compose_cmd = _detect_compose_command()
@@ -180,6 +199,9 @@ def _cmd_start() -> int:
         _print_info(f".env 파일 감지: {env_file}")
 
     result = _run_cmd(cmd, stream=True)
+    if result.returncode != 0:
+        _print_error(f"백엔드 시작 실패 (exit {result.returncode})")
+        return 1
     port = _get_host_port()
     _print_success(f"백엔드 시작됨 — http://localhost:{port}")
     return 0
@@ -203,7 +225,10 @@ def _cmd_stop() -> int:
         return 1
 
     cmd = [*compose_cmd, "-f", str(compose_file), "down"]
-    _run_cmd(cmd, stream=True)
+    result = _run_cmd(cmd, stream=True)
+    if result.returncode != 0:
+        _print_error(f"백엔드 중지 실패 (exit {result.returncode})")
+        return 1
     _print_success("백엔드가 중지되었습니다.")
     return 0
 
@@ -215,14 +240,26 @@ def _cmd_status() -> int:
         _print_error("Docker가 설치되어 있지 않습니다.")
         return 1
 
+    exit_code = 0
+
     # 컨테이너 상태 표시
     container_name = os.environ.get("GOVON_CONTAINER_NAME", "govon-backend")
     result = subprocess.run(
-        [docker, "ps", "--filter", f"name={container_name}", "--format",
-         "{{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"],
+        [
+            docker,
+            "ps",
+            "--filter",
+            f"name={container_name}",
+            "--format",
+            "{{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}",
+        ],
         capture_output=True,
         text=True,
     )
+
+    if result.returncode != 0:
+        _print_error(result.stderr.strip() or "docker ps 실패")
+        return 1
 
     if _RICH:
         table = Table(title="GovOn 컨테이너 상태")
@@ -241,11 +278,13 @@ def _cmd_status() -> int:
             _console.print(table)
         else:
             _print_warn(f"실행 중인 '{container_name}' 컨테이너가 없습니다.")
+            exit_code = 1
     else:
         if result.stdout.strip():
             print(f"컨테이너 상태:\n{result.stdout}")
         else:
             _print_warn(f"실행 중인 '{container_name}' 컨테이너가 없습니다.")
+            exit_code = 1
 
     # /health 엔드포인트 체크
     port = _get_host_port()
@@ -261,16 +300,21 @@ def _cmd_status() -> int:
                 _print_success(f"백엔드 정상 (status={status_val})")
             else:
                 _print_warn(f"백엔드 응답: status={status_val}")
+                exit_code = 1
         else:
             _print_warn(f"헬스체크 응답: HTTP {resp.status_code}")
+            exit_code = 1
     except httpx.ConnectError:
         _print_error(f"백엔드에 연결할 수 없습니다 ({health_url})")
+        exit_code = 1
     except httpx.TimeoutException:
         _print_error(f"헬스체크 타임아웃 ({health_url})")
-    except Exception as exc:
+        exit_code = 1
+    except Exception as exc:  # noqa: BLE001
         _print_error(f"헬스체크 실패: {exc}")
+        exit_code = 1
 
-    return 0
+    return exit_code
 
 
 def _cmd_logs() -> int:

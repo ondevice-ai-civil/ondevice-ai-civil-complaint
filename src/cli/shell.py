@@ -106,6 +106,20 @@ except ImportError:  # pragma: no cover
 _PROMPT_TEXT = "\u276f "  # ❯ (Claude Code-style prompt)
 
 
+def _should_use_tui() -> bool:
+    """Return True if the Textual TUI should be used instead of the legacy REPL."""
+    if os.environ.get("GOVON_PLAIN") == "1":
+        return False
+    if not sys.stdin.isatty():
+        return False
+    try:
+        from src.cli.tui import HAS_TEXTUAL
+
+        return HAS_TEXTUAL
+    except ImportError:
+        return False
+
+
 def _get_input(session: "PromptSession | None") -> str:  # type: ignore[name-defined]
     """Read one line of user input (prompt_toolkit or plain input())."""
     if _PT_AVAILABLE and session is not None:
@@ -657,8 +671,14 @@ def main() -> None:
         # Single-shot mode: must ensure server is ready before sending
         _ensure_server_ready(client, is_remote=bool(runtime_url))
         _run_once(client, args.query, args.session)
+    elif _should_use_tui():
+        # Textual TUI mode — full terminal UI
+        from src.cli.tui.app import GovOnApp
+
+        app = GovOnApp(client=client, session_id=args.session)
+        app.run(inline=True)
     else:
-        # Interactive REPL mode: show banner first, check server on first query
+        # Legacy REPL mode — rich + prompt_toolkit fallback
         if not args.no_banner:
             mode = "remote" if runtime_url else "local"
             render_banner(version=ver, mode=mode, runtime_url=runtime_url)

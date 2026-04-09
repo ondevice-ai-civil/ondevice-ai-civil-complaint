@@ -21,7 +21,6 @@ import json
 import logging
 import os
 import re
-import sys
 from typing import Dict, List
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -52,16 +51,20 @@ def has_citation(text: str) -> bool:
 
 
 def generate_response(client, model: str, question: str) -> str:
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": question},
-        ],
-        max_tokens=512,
-        temperature=0.1,
-    )
-    return response.choices[0].message.content or ""
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": question},
+            ],
+            max_tokens=512,
+            temperature=0.1,
+        )
+        return response.choices[0].message.content or ""
+    except Exception as exc:
+        logger.warning("Generation failed for model %s: %s", model, exc)
+        return ""
 
 
 def evaluate(
@@ -124,7 +127,7 @@ def evaluate(
     scorer = rouge_scorer.RougeScorer(["rougeL"], use_stemmer=False)
 
     base_rouge, adapter_rouge = [], []
-    for b, a, r in zip(base_outputs, adapter_outputs, references):
+    for b, a, r in zip(base_outputs, adapter_outputs, references, strict=True):
         base_rouge.append(scorer.score(r, b)["rougeL"].fmeasure)
         adapter_rouge.append(scorer.score(r, a)["rougeL"].fmeasure)
 

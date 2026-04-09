@@ -166,4 +166,9 @@ def test_search_metadata_mapping(mock_manager):
         )
     assert response.status_code == 200
     data = response.json()
-    assert data["results"][0]["doc_id"] == "test-1"
+    result = data["results"][0]
+    # id → doc_id 필드 리매핑 확인
+    assert result["doc_id"] == "test-1"
+    assert "id" not in result
+    # source_type 및 메타데이터 키 존재 확인
+    assert "source_type" in result or "doc_type" in result

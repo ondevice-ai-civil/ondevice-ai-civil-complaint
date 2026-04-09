@@ -39,7 +39,12 @@ OUTPUT_DIR = "./outputs"
 
 MAX_SEQ_LENGTH = 1024
 _sample_env = os.getenv("TRAIN_SAMPLE_SIZE", "100000")
-TRAIN_SAMPLE_SIZE = None if _sample_env.lower() == "none" else int(_sample_env)
+try:
+    TRAIN_SAMPLE_SIZE = None if _sample_env.lower() == "none" else int(_sample_env)
+except ValueError:
+    raise ValueError(
+        f"TRAIN_SAMPLE_SIZE must be a positive integer or 'none', got: {_sample_env!r}"
+    )
 
 LORA_RANK = 16
 LORA_ALPHA = 32
@@ -139,7 +144,8 @@ def main():
                 tokenize=False,
                 add_generation_prompt=False,
             )
-        except Exception:
+        except (ValueError, TypeError, AttributeError) as exc:
+            logger.debug("apply_chat_template failed: %s", exc)
             text = (
                 f"[|system|]{SYSTEM_PROMPT}[|endofturn|]\n"
                 f"[|user|]{user_content}[|endofturn|]\n"
@@ -177,7 +183,9 @@ def main():
         save_strategy="steps",
         save_steps=500,
         save_total_limit=2,
-        load_best_model_at_end=False,
+        load_best_model_at_end=True,
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,
         seed=42,
         dataloader_num_workers=0,
         remove_unused_columns=True,

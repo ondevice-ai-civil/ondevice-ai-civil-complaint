@@ -1,0 +1,81 @@
+/* GovOn TUI layout — Claude Code-style inline terminal UI */
+
+GovOnApp {
+    layout: vertical;
+}
+
+#message-history {
+    height: 1fr;
+    overflow-y: auto;
+    padding: 0 1;
+}
+
+MessageBubble {
+    margin: 1 0 0 0;
+    width: 100%;
+}
+
+MessageBubble.user {
+    color: $text;
+}
+
+MessageBubble.assistant {
+    margin: 0 0 0 0;
+}
+
+SpinnerWidget {
+    height: 1;
+    color: $text-muted;
+}
+
+ThinkingBlock {
+    color: $text-muted;
+    text-style: italic;
+    margin: 0 2;
+}
+
+MarkdownView {
+    margin: 0 0;
+}
+
+ToolCallPanel {
+    margin: 0 2;
+    height: auto;
+}
+
+MetadataBar {
+    color: $text-muted;
+    height: 1;
+    margin: 0 0;
+}
+
+#separator {
+    height: 1;
+    color: $text-muted;
+}
+
+#input-bar {
+    height: 3;
+    dock: bottom;
+    padding: 0 1;
+}
+
+#input-bar Input {
+    width: 100%;
+}
+
+#status-footer {
+    height: 1;
+    dock: bottom;
+    color: $text-muted;
+    text-align: center;
+    padding: 0 1;
+}
+
+ApprovalModal {
+    width: 60;
+    height: auto;
+    margin: 1 4;
+    border: thick $warning;
+    padding: 1 2;
+}

@@ -66,6 +66,10 @@ test = [
     "pytest-asyncio>=0.21.0",
 ]
 
+tui = [
+    "textual>=0.89.0",
+]
+
 # Full server-side runtime (inference engine, ML models, etc.)
 server = [
     "torch>=2.8.0",

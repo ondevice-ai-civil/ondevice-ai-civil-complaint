@@ -25,7 +25,9 @@ class ToolCallPanel(Static):
         self.tool_name = tool_name
         self._completed = False
         self._latency_ms: float = 0
-        self.update(f"[cyan]\u250c\u2500 \u2699 {tool_name} \uc2e4\ud589 \uc911\u2026[/cyan]")
+        self.update(
+            f"[cyan]\u250c\u2500 \u2699 [bold]{tool_name}[/bold] \uc2e4\ud589 \uc911\u2026[/cyan]"
+        )
 
     def complete(self, latency_ms: float = 0) -> None:
         """Mark the tool call as completed with timing info."""
@@ -33,5 +35,6 @@ class ToolCallPanel(Static):
         self._latency_ms = latency_ms
         latency_str = f" ({latency_ms:.0f}ms)" if latency_ms else ""
         self.update(
-            f"[green]\u2514\u2500 \u2726 {self.tool_name} " f"\uc644\ub8cc{latency_str}[/green]"
+            f"[green]\u2514\u2500 \u2726 [bold]{self.tool_name}[/bold] "
+            f"\uc644\ub8cc{latency_str}[/green]"
         )

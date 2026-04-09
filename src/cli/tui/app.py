@@ -224,7 +224,7 @@ class GovOnApp(App):
             latency = f" ({message.latency_ms:.0f}ms)" if message.latency_ms else ""
             self._current_bubble.mount(
                 Static(
-                    f"[green]\u2514\u2500 \u2726 {message.tool_name} \uc644\ub8cc{latency}[/green]"
+                    f"[green]\u2514\u2500 \u2726 [bold]{message.tool_name}[/bold] \uc644\ub8cc{latency}[/green]"
                 )
             )
 

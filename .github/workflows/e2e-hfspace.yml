@@ -1,0 +1,175 @@
+name: E2E Test (HF Space)
+
+on:
+  workflow_dispatch:
+    inputs:
+      runtime_url:
+        description: 'HF Space Runtime URL'
+        required: false
+        default: 'https://umyunsang-govon-runtime.hf.space'
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install httpx aiohttp
+
+      - name: Validate runtime URL
+        env:
+          RUNTIME_URL: ${{ github.event.inputs.runtime_url }}
+        run: |
+          python3 -c "
+          import os, sys
+          from urllib.parse import urlparse
+          u = os.environ['RUNTIME_URL']
+          p = urlparse(u)
+          if p.scheme != 'https' or not p.netloc.endswith('.hf.space'):
+              print(f'ERROR: Invalid runtime_url: {u}', file=sys.stderr)
+              print('URL must be https://*.hf.space', file=sys.stderr)
+              sys.exit(1)
+          print(f'Validated: {u}')
+          "
+
+      - name: Health check
+        env:
+          RUNTIME_URL: ${{ github.event.inputs.runtime_url }}
+        run: |
+          echo "Target: $RUNTIME_URL"
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 --fail-with-body "$RUNTIME_URL/health" || echo "000")
+            echo "Attempt $i: HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              echo "Space is RUNNING"
+              exit 0
+            fi
+            if [ $i -lt 5 ]; then
+              echo "Waiting 30s before retry..."
+              sleep 30
+            fi
+          done
+          echo "Health check failed after 5 attempts"
+          exit 1
+
+      - name: Run E2E tests
+        id: e2e
+        env:
+          GOVON_RUNTIME_URL: ${{ github.event.inputs.runtime_url }}
+          API_KEY: ${{ secrets.API_KEY }}
+        run: |
+          python3 scripts/verify_e2e_tool_calling.py
+        continue-on-error: true
+
+      - name: Upload result artifacts
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: e2e-results
+          path: |
+            verify_e2e_tool_calling_*.json
+            verify_e2e_tool_calling_*.log
+          retention-days: 14
+
+      - name: Generate step summary
+        if: always()
+        env:
+          RUNTIME_URL: ${{ github.event.inputs.runtime_url }}
+        run: |
+          RESULT_FILE=$(ls verify_e2e_tool_calling_*.json 2>/dev/null | head -1)
+          if [ -z "$RESULT_FILE" ]; then
+            echo "## E2E Test Result" >> $GITHUB_STEP_SUMMARY
+            echo "결과 파일을 찾을 수 없습니다." >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+
+          TOTAL=$(python3 -c "import json,sys; d=json.load(open('$RESULT_FILE')); print(d['summary']['total'])")
+          PASSED=$(python3 -c "import json,sys; d=json.load(open('$RESULT_FILE')); print(d['summary']['passed'])")
+          FAILED=$(python3 -c "import json,sys; d=json.load(open('$RESULT_FILE')); print(d['summary']['failed'])")
+          SKIPPED=$(python3 -c "import json,sys; d=json.load(open('$RESULT_FILE')); print(d['summary']['skipped'])")
+
+          if [ "$FAILED" = "0" ]; then
+            BADGE="✅ ALL PASSED"
+          else
+            BADGE="❌ FAILED"
+          fi
+
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## E2E Test Result — $BADGE
+
+          | 항목 | 수치 |
+          |------|------|
+          | 전체 시나리오 | $TOTAL |
+          | 통과 | $PASSED |
+          | 실패 | $FAILED |
+          | 스킵 | $SKIPPED |
+
+          **Target:** \`${RUNTIME_URL}\`
+
+          ### Phase별 결과
+          EOF
+
+          python3 - << 'PYEOF'
+          import json, os, sys
+
+          result_file = next((f for f in os.listdir('.') if f.startswith('verify_e2e_tool_calling_') and f.endswith('.json')), None)
+          if not result_file:
+              sys.exit(0)
+
+          with open(result_file) as f:
+              data = json.load(f)
+
+          phases = {}
+          for s in data.get('scenarios', []):
+              phase = s.get('phase', 0)
+              if phase not in phases:
+                  phases[phase] = {'passed': 0, 'failed': 0, 'skipped': 0}
+              status = s.get('status', 'skipped')
+              phases[phase][status] = phases[phase].get(status, 0) + 1
+
+          phase_names = {
+              1: 'Infrastructure',
+              2: 'v2 Agent Pipeline',
+              3: 'v3 ReAct Loop',
+              4: 'Cross-version',
+              5: 'Multi-turn Conversation',
+              6: 'Context Management',
+          }
+
+          summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout')
+          with open(summary_path, 'a') as out:
+              out.write('\n| Phase | 이름 | 통과 | 실패 | 스킵 |\n')
+              out.write('|-------|------|------|------|------|\n')
+              for phase_num in sorted(phases.keys()):
+                  p = phases[phase_num]
+                  name = phase_names.get(phase_num, f'Phase {phase_num}')
+                  icon = '✅' if p['failed'] == 0 else '❌'
+                  out.write(f"| {icon} Phase {phase_num} | {name} | {p['passed']} | {p['failed']} | {p.get('skipped', 0)} |\n")
+
+          if data['summary']['failed'] > 0:
+              out_lines = ['\n### 실패 시나리오\n', '| ID | 이름 | 오류 |\n', '|----|------|------|\n']
+              for s in data.get('scenarios', []):
+                  if s.get('status') == 'failed':
+                      sid = s.get('id', '?')
+                      sname = s.get('name', '')
+                      serr = str(s.get('error', ''))[:120]
+                      out_lines.append(f"| {sid} | {sname} | {serr} |\n")
+              with open(summary_path, 'a') as out:
+                  out.writelines(out_lines)
+          PYEOF
+
+      - name: Fail job if E2E failed
+        if: steps.e2e.outcome == 'failure'
+        run: exit 1

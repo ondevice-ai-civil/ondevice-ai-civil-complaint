@@ -24,7 +24,7 @@
     "govon": "./bin/govon.js"
   },
   "scripts": {
-    "postinstall": "node ./bin/govon.js --check-install"
+    "postinstall": "node ./bin/govon.js --check-install || true"
   },
   "engines": {
     "node": ">=18"

@@ -102,7 +102,43 @@ function checkEnvironment() {
 }
 
 /**
+ * Python govon 패키지를 pip로 자동 설치합니다.
+ * @param {string} pythonCmd - python 실행 파일 경로
+ * @returns {boolean} - 설치 성공 여부
+ */
+function autoInstallGovon(pythonCmd) {
+  console.log('\n  [govon] Python govon 패키지를 자동으로 설치합니다…');
+  console.log(`  → ${pythonCmd} -m pip install govon\n`);
+
+  const result = spawnSync(pythonCmd, ['-m', 'pip', 'install', 'govon'], {
+    stdio: 'inherit',
+    timeout: 120000,
+  });
+
+  if (result.error || result.status !== 0) {
+    console.error(
+      [
+        '',
+        '  [govon] 자동 설치에 실패했습니다.',
+        '',
+        '  아래 명령어로 직접 설치해 주세요:',
+        `    ${pythonCmd} -m pip install govon`,
+        '',
+        '  권한 문제 시:',
+        `    ${pythonCmd} -m pip install --user govon`,
+        '',
+      ].join('\n')
+    );
+    return false;
+  }
+
+  console.log('\n  [govon] ✓ Python govon 패키지 설치 완료.\n');
+  return true;
+}
+
+/**
  * 환경 검사 결과를 stdout에 출력하고 문제가 있으면 안내 메시지를 표시합니다.
+ * Python govon이 없으면 자동 설치를 시도합니다.
  * @returns {boolean} - 모든 조건이 충족되면 true
  */
 function printEnvironmentStatus() {
@@ -128,21 +164,24 @@ function printEnvironmentStatus() {
   }
 
   if (!govonInstalled) {
-    console.error(
-      [
-        '',
-        `  [govon] govon CLI가 설치되어 있지 않습니다. (Python ${pythonVersion} 감지됨)`,
-        '',
-        '  아래 명령어로 설치해 주세요:',
-        `    ${pythonCmd} -m pip install govon`,
-        '',
-        '  가상환경을 사용하는 경우:',
-        '    python -m venv .venv && source .venv/bin/activate',
-        `    pip install govon`,
-        '',
-      ].join('\n')
-    );
-    return false;
+    // 자동 설치 시도
+    if (!autoInstallGovon(pythonCmd)) {
+      return false;
+    }
+    // 설치 후 재검증
+    if (!isGovonInstalled()) {
+      console.error(
+        [
+          '',
+          '  [govon] 설치 후에도 govon CLI를 찾을 수 없습니다.',
+          '',
+          '  PATH에 pip 설치 경로가 포함되어 있는지 확인하세요.',
+          `  또는 직접 실행: ${pythonCmd} -m govon`,
+          '',
+        ].join('\n')
+      );
+      return false;
+    }
   }
 
   return true;
@@ -151,6 +190,7 @@ function printEnvironmentStatus() {
 module.exports = {
   findPython,
   isGovonInstalled,
+  autoInstallGovon,
   checkEnvironment,
   printEnvironmentStatus,
 };

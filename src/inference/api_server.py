@@ -529,7 +529,7 @@ class vLLMEngineManager:
             from src.inference.actions.data_go_kr import MinwonAnalysisAction
 
             self._api_lookup_action = MinwonAnalysisAction()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - 의존성 로드 실패 시 graceful degradation
             logger.warning(f"MinwonAnalysisAction 초기화 실패 (도구 없이 진행): {exc}")
             self._api_lookup_action = None
 

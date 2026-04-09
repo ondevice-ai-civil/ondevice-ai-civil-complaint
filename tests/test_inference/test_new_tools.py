@@ -18,8 +18,8 @@ from src.inference.graph.capabilities.demographics_lookup import (
 )
 from src.inference.graph.capabilities.issue_detector import IssueDetectorCapability
 from src.inference.graph.capabilities.keyword_analyzer import KeywordAnalyzerCapability
-from src.inference.graph.capabilities.stats_lookup import StatsLookupCapability
 from src.inference.graph.capabilities.registry import ToolType
+from src.inference.graph.capabilities.stats_lookup import StatsLookupCapability
 
 # ---------------------------------------------------------------------------
 # 공용 fixture

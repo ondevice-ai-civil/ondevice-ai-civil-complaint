@@ -2,7 +2,7 @@
 # Single Dockerfile for unified local/HuggingFace Spaces/production management
 # Per-environment configuration is overridden via docker-compose.yml or HF Space environment variables
 
-FROM nvidia/cuda:12.6.3-runtime-ubuntu22.04
+FROM nvidia/cuda:13.2.0-runtime-ubuntu22.04
 
 LABEL org.opencontainers.image.source="https://github.com/GovOn-Org/GovOn"
 LABEL org.opencontainers.image.description="GovOn AI Civil Complaint Analysis System"

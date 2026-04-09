@@ -84,8 +84,8 @@ jobs:
             npm version "$TAG_VERSION" --no-git-tag-version
           fi
 
-      - name: Publish with provenance
-        run: npm publish --provenance --access public
+      - name: Publish to npm
+        run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 

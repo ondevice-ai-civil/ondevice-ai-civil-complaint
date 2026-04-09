@@ -1,15 +1,18 @@
-"""GovOn 로컬 daemon API HTTP 클라이언트.
+"""GovOn local daemon API HTTP client.
 
-Issue #144: CLI-daemon/LangGraph runtime 연동 및 session resume.
-Issue #140: CLI 승인 UI 및 최소 명령 체계 (백엔드 부분).
+Issue #144: CLI-daemon/LangGraph runtime integration and session resume.
+Issue #140: CLI approval UI and minimal command structure (backend part).
 
-로컬 daemon(uvicorn)의 REST API를 래핑하는 클라이언트.
-run / approve / cancel 등 핵심 엔드포인트에 접근한다.
+Client wrapping the REST API of the local daemon (uvicorn).
+Accesses core endpoints: run / approve / cancel.
 """
 
 from __future__ import annotations
 
 import json
+import os
+import sys
+import time
 from typing import Any, Dict, Generator, Iterator, Optional
 
 import httpx
@@ -17,57 +20,115 @@ from loguru import logger
 
 
 class GovOnClient:
-    """GovOn 로컬 daemon HTTP 클라이언트.
+    """GovOn local daemon HTTP client.
 
     Parameters
     ----------
     base_url : str
-        daemon base URL (예: "http://127.0.0.1:8000").
+        daemon base URL (e.g. "http://127.0.0.1:8000").
     """
 
     _RUN_TIMEOUT = 120.0
     _DEFAULT_TIMEOUT = 30.0
+    _COLD_START_TIMEOUT = int(os.getenv("GOVON_COLD_START_TIMEOUT", "600"))
+    _COLD_START_INTERVAL = int(os.getenv("GOVON_COLD_START_INTERVAL", "5"))
 
     def __init__(self, base_url: str) -> None:
         self._base_url = base_url.rstrip("/")
 
     # ------------------------------------------------------------------
-    # 공개 API
+    # Public API
     # ------------------------------------------------------------------
 
     def health(self) -> Dict[str, Any]:
-        """GET /health — daemon 상태를 확인한다.
+        """GET /health — check daemon status.
 
         Returns
         -------
         dict
-            서버가 반환하는 health 응답.
+            Health response returned by the server.
 
         Raises
         ------
         ConnectionError
-            daemon에 연결할 수 없을 때.
+            When daemon is unreachable.
         """
         return self._get("/health", timeout=self._DEFAULT_TIMEOUT)
+
+    def wait_for_ready(self) -> bool:
+        """Wait until the server is ready (cold start / sleeping handling).
+
+        When a remote server such as HF Space is in sleeping/building/starting
+        state, displays status messages instead of errors and waits until ready.
+
+        Returns
+        -------
+        bool
+            True if the server becomes ready, False on timeout.
+        """
+        url = f"{self._base_url}/health"
+        deadline = time.monotonic() + self._COLD_START_TIMEOUT
+        last_status = ""
+        attempt = 0
+
+        while time.monotonic() < deadline:
+            try:
+                with httpx.Client(timeout=10.0) as client:
+                    resp = client.get(url)
+                    if resp.status_code == 200:
+                        if attempt > 0:
+                            self._cold_start_print(
+                                "\r✦ 서버 준비 완료.                              "
+                            )
+                            print()
+                        return True
+                    if resp.status_code == 503:
+                        new_status = "⊛ 서버 시작 중… (503 응답 대기)"
+                    else:
+                        new_status = f"⊛ 서버 응답 대기 중… (HTTP {resp.status_code})"
+            except httpx.ConnectError:
+                new_status = "⊛ 서버에 연결 중… (sleeping 상태에서 깨어나는 중)"
+            except httpx.TimeoutException:
+                new_status = "⊛ 서버 응답 대기 중… (빌드 또는 모델 로딩 중)"
+            except httpx.RequestError:
+                new_status = "⊛ 서버 연결 시도 중…"
+
+            elapsed = attempt * self._COLD_START_INTERVAL
+            if new_status != last_status or attempt % 6 == 0:
+                self._cold_start_print(f"\r\u23f3 {new_status} ({elapsed}s)")
+                last_status = new_status
+
+            attempt += 1
+            time.sleep(self._COLD_START_INTERVAL)
+
+        self._cold_start_print("\r✘ 서버 연결 시간 초과.                            ")
+        print()
+        return False
+
+    @staticmethod
+    def _cold_start_print(msg: str) -> None:
+        """Overwrite cold start status message on the same line."""
+        sys.stdout.write(msg)
+        sys.stdout.flush()
 
     def run(
         self,
         query: str,
         session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """POST /v2/agent/run — 에이전트 실행 요청.
+        """POST /v2/agent/run — agent execution request.
 
         Parameters
         ----------
         query : str
-            사용자 입력 쿼리.
+            User input query.
         session_id : str | None
-            기존 세션을 이어받을 경우 session ID.
+            Session ID to resume an existing session.
 
         Returns
         -------
         dict
-            서버 응답 (thread_id, status 등 포함).
+            Server response (includes thread_id, status, etc.).
         """
         body: Dict[str, Any] = {"query": query}
         if session_id is not None:
@@ -77,19 +138,19 @@ class GovOnClient:
         return self._post("/v2/agent/run", body=body, timeout=self._RUN_TIMEOUT)
 
     def approve(self, thread_id: str, approved: bool) -> Dict[str, Any]:
-        """POST /v2/agent/approve — 승인 또는 거절.
+        """POST /v2/agent/approve — approve or reject.
 
         Parameters
         ----------
         thread_id : str
-            승인/거절할 graph thread ID.
+            Graph thread ID to approve or reject.
         approved : bool
-            True이면 승인, False이면 거절.
+            True to approve, False to reject.
 
         Returns
         -------
         dict
-            서버 응답.
+            Server response.
         """
         logger.debug(f"[http_client] approve: thread_id={thread_id} approved={approved}")
         return self._post_params(
@@ -103,26 +164,26 @@ class GovOnClient:
         query: str,
         session_id: Optional[str] = None,
     ) -> Generator[Dict[str, Any], None, None]:
-        """POST /v2/agent/stream — SSE 스트리밍으로 노드별 이벤트를 수신한다.
+        """POST /v2/agent/stream — receive per-node events via SSE streaming.
 
         Parameters
         ----------
         query : str
-            사용자 입력 쿼리.
+            User input query.
         session_id : str | None
-            기존 세션을 이어받을 경우 session ID.
+            Session ID to resume an existing session.
 
         Yields
         ------
         dict
-            파싱된 SSE 이벤트 dict. 최소 ``node``와 ``status`` 키를 포함한다.
+            Parsed SSE event dict. Contains at least ``node`` and ``status`` keys.
 
         Raises
         ------
         ConnectionError
-            daemon에 연결할 수 없을 때.
+            When daemon is unreachable.
         httpx.HTTPStatusError
-            HTTP 오류 응답 시.
+            On HTTP error response.
         """
         body: Dict[str, Any] = {"query": query}
         if session_id is not None:
@@ -148,10 +209,10 @@ class GovOnClient:
                                 event = json.loads(data_str)
                                 yield event
                             except json.JSONDecodeError:
-                                logger.warning(f"[http_client] SSE JSON 파싱 실패: {data_str!r}")
+                                logger.warning(f"[http_client] SSE JSON parse failed: {data_str!r}")
                                 continue
         except httpx.ConnectError as exc:
-            raise ConnectionError(f"daemon이 실행 중이 아닙니다. ({self._base_url})") from exc
+            raise ConnectionError(f"daemon is not running. ({self._base_url})") from exc
         except httpx.HTTPStatusError as exc:
             logger.error(f"[http_client] HTTP {exc.response.status_code}: {url}")
             raise
@@ -162,21 +223,21 @@ class GovOnClient:
         session_id: Optional[str] = None,
         max_iterations: int = 10,
     ) -> Generator[Dict[str, Any], None, None]:
-        """POST /v3/agent/stream — v3 ReAct 세밀한 SSE 스트리밍.
+        """POST /v3/agent/stream — v3 ReAct fine-grained SSE streaming.
 
         Parameters
         ----------
         query : str
-            사용자 입력 쿼리.
+            User input query.
         session_id : str | None
-            기존 세션을 이어받을 경우 session ID.
+            Session ID to resume an existing session.
         max_iterations : int
-            최대 ReAct 루프 반복 횟수.
+            Maximum ReAct loop iterations.
 
         Yields
         ------
         dict
-            파싱된 SSE 이벤트 dict. ``type`` 키로 이벤트 종류를 구분한다.
+            Parsed SSE event dict. Use the ``type`` key to distinguish event types.
         """
         body: Dict[str, Any] = {"query": query, "max_iterations": max_iterations}
         if session_id is not None:
@@ -203,11 +264,11 @@ class GovOnClient:
                                 yield event
                             except json.JSONDecodeError:
                                 logger.warning(
-                                    f"[http_client] v3 SSE JSON 파싱 실패: len={len(data_str)}"
+                                    f"[http_client] v3 SSE JSON parse failed: len={len(data_str)}"
                                 )
                                 continue
         except httpx.ConnectError as exc:
-            raise ConnectionError(f"daemon이 실행 중이 아닙니다. ({self._base_url})") from exc
+            raise ConnectionError(f"daemon is not running. ({self._base_url})") from exc
         except httpx.HTTPStatusError as exc:
             logger.error(f"[http_client] HTTP {exc.response.status_code}: {url}")
             raise
@@ -218,21 +279,21 @@ class GovOnClient:
         session_id: Optional[str] = None,
         max_iterations: int = 10,
     ) -> Dict[str, Any]:
-        """POST /v3/agent/run — v3 ReAct 블로킹 실행.
+        """POST /v3/agent/run — v3 ReAct blocking execution.
 
         Parameters
         ----------
         query : str
-            사용자 입력 쿼리.
+            User input query.
         session_id : str | None
-            기존 세션을 이어받을 경우 session ID.
+            Session ID to resume an existing session.
         max_iterations : int
-            최대 ReAct 루프 반복 횟수.
+            Maximum ReAct loop iterations.
 
         Returns
         -------
         dict
-            서버 응답 (metadata 포함).
+            Server response (includes metadata).
         """
         body: Dict[str, Any] = {"query": query, "max_iterations": max_iterations}
         if session_id is not None:
@@ -242,17 +303,17 @@ class GovOnClient:
         return self._post("/v3/agent/run", body=body, timeout=self._RUN_TIMEOUT)
 
     def cancel(self, thread_id: str) -> Dict[str, Any]:
-        """POST /v2/agent/cancel — 실행 중인 세션 취소.
+        """POST /v2/agent/cancel — cancel a running session.
 
         Parameters
         ----------
         thread_id : str
-            취소할 graph thread ID.
+            Graph thread ID to cancel.
 
         Returns
         -------
         dict
-            서버 응답.
+            Server response.
         """
         logger.debug(f"[http_client] cancel: thread_id={thread_id}")
         return self._post_params(
@@ -262,7 +323,7 @@ class GovOnClient:
         )
 
     # ------------------------------------------------------------------
-    # 내부 헬퍼
+    # Internal helpers
     # ------------------------------------------------------------------
 
     def _get(self, path: str, *, timeout: float) -> Dict[str, Any]:
@@ -273,7 +334,7 @@ class GovOnClient:
                 resp.raise_for_status()
                 return resp.json()
         except httpx.ConnectError as exc:
-            raise ConnectionError(f"daemon이 실행 중이 아닙니다. ({self._base_url})") from exc
+            raise ConnectionError(f"daemon is not running. ({self._base_url})") from exc
         except httpx.HTTPStatusError as exc:
             logger.error(f"[http_client] HTTP {exc.response.status_code}: {url}")
             raise
@@ -292,7 +353,7 @@ class GovOnClient:
                 resp.raise_for_status()
                 return resp.json()
         except httpx.ConnectError as exc:
-            raise ConnectionError(f"daemon이 실행 중이 아닙니다. ({self._base_url})") from exc
+            raise ConnectionError(f"daemon is not running. ({self._base_url})") from exc
         except httpx.HTTPStatusError as exc:
             logger.error(f"[http_client] HTTP {exc.response.status_code}: {url}")
             raise
@@ -304,10 +365,10 @@ class GovOnClient:
         params: Dict[str, Any],
         timeout: float,
     ) -> Dict[str, Any]:
-        """쿼리 파라미터를 사용하는 POST 요청 헬퍼.
+        """POST request helper using query parameters.
 
-        `/v2/agent/approve`, `/v2/agent/cancel` 등 FastAPI 엔드포인트가
-        쿼리 파라미터를 기대할 때 사용한다.
+        Used when FastAPI endpoints like ``/v2/agent/approve`` and
+        ``/v2/agent/cancel`` expect query parameters.
         """
         url = f"{self._base_url}{path}"
         try:
@@ -316,7 +377,7 @@ class GovOnClient:
                 resp.raise_for_status()
                 return resp.json()
         except httpx.ConnectError as exc:
-            raise ConnectionError(f"daemon이 실행 중이 아닙니다. ({self._base_url})") from exc
+            raise ConnectionError(f"daemon is not running. ({self._base_url})") from exc
         except httpx.HTTPStatusError as exc:
             logger.error(f"[http_client] HTTP {exc.response.status_code}: {url}")
             raise

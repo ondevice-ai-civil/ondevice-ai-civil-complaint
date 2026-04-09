@@ -106,7 +106,7 @@ def _get_input(session: "PromptSession | None") -> str:  # type: ignore[name-def
 
 
 def _process_query(
-    client: "GovOnClient",
+    client: GovOnClient,
     query: str,
     session_id: str | None,
 ) -> tuple[str | None, bool]:
@@ -120,9 +120,34 @@ def _process_query(
     `should_continue` is False only when an unrecoverable error is returned
     that suggests the daemon is down.
     """
+    result = _try_process_query(client, query, session_id)
+    if result is not None:
+        return result
+
+    # All paths hit ConnectionError — wait for cold start then retry
+    # NOTE: use __dict__ MRO traversal instead of hasattr() because
+    # MagicMock returns True for any hasattr() check.
+    _has_wait = any("wait_for_ready" in cls.__dict__ for cls in type(client).__mro__)
+    if _has_wait:
+        render_status("⊛ 서버 연결 재시도 중…")
+        if client.wait_for_ready():
+            result = _try_process_query(client, query, session_id)
+            if result is not None:
+                return result
+
+    render_error("✘ 서버에 연결할 수 없습니다. govon --status로 상태를 확인하세요.")
+    return session_id, False
+
+
+def _try_process_query(
+    client: GovOnClient,
+    query: str,
+    session_id: str | None,
+) -> tuple[str | None, bool] | None:
+    """Attempt to execute a query. Returns result on success, None if all paths fail."""
     # --- Try v3 streaming path first ---
-    # MagicMock 자동 속성을 배제: 클래스에 실제 정의된 경우만 시도.
-    # 서브클래스 상속도 지원하기 위해 MRO 전체를 탐색한다.
+    # Exclude MagicMock auto-attributes: only attempt if defined in the actual class.
+    # Traverse the full MRO to support subclass inheritance.
     _has_v3 = any("stream_v3" in cls.__dict__ for cls in type(client).__mro__)
     if _has_v3:
         try:
@@ -141,22 +166,21 @@ def _process_query(
     try:
         return _process_query_streaming(client, query, session_id)
     except (AttributeError, NotImplementedError):
-        # client.stream() is not available (stub or older server)
         pass
     except (httpx.HTTPStatusError, httpx.StreamError, OSError):
-        # Streaming endpoint unavailable — fall back silently
         pass
     except ConnectionError:
-        # Streaming failed due to connection error — fall back to blocking
-        # which will also detect ConnectionError and trigger REPL exit
         pass
 
-    # --- Fallback: blocking run() with simple spinner ---
-    return _process_query_blocking(client, query, session_id)
+    # --- Fallback: blocking run() ---
+    try:
+        return _process_query_blocking(client, query, session_id)
+    except ConnectionError:
+        return None
 
 
 def _process_query_streaming_v3(
-    client: "GovOnClient",
+    client: GovOnClient,
     query: str,
     session_id: str | None,
 ) -> tuple[str | None, bool]:
@@ -164,19 +188,19 @@ def _process_query_streaming_v3(
     new_session_id: str | None = None
     final_response: dict = {}
 
-    render_status("에이전트 추론 중…")
+    render_status("✦ 에이전트 추론 중…")
 
     for event in client.stream_v3(query, session_id):
         event_type = event.get("type", "")
 
         if event_type == "error":
-            render_error(event.get("error", "알 수 없는 오류가 발생했습니다."))
+            render_error(event.get("error", "✘ 알 수 없는 오류가 발생했습니다."))
             return session_id, True
 
         if event_type == "thinking_start":
             iteration = event.get("iteration", 0)
             if iteration > 0:
-                render_status(f"재추론 중… (iteration {iteration + 1})")
+                render_status(f"↺ 재추론 중… (반복 {iteration + 1})")
 
         elif event_type == "thinking_delta":
             content = event.get("content", "")
@@ -186,19 +210,19 @@ def _process_query_streaming_v3(
         elif event_type == "thinking_end":
             tool_calls = event.get("tool_calls", [])
             if tool_calls:
-                print()  # thinking_delta 줄바꿈
+                print()  # newline after thinking_delta
                 for tc in tool_calls:
                     render_tool_progress(tc.get("name", "unknown"), "start")
 
         elif event_type == "tool_start":
-            pass  # thinking_end에서 이미 표시
+            pass  # already displayed in thinking_end
 
         elif event_type == "tool_end":
             tool_name = event.get("tool", "")
             render_tool_progress(tool_name, "end")
 
         elif event_type == "run_complete":
-            print()  # 줄바꿈
+            print()  # newline
             new_session_id = event.get("session_id") or event.get("thread_id")
             final_response = event
             metadata = event.get("metadata", {})
@@ -215,7 +239,7 @@ def _process_query_streaming_v3(
 
 
 def _process_query_streaming(
-    client: "GovOnClient",
+    client: GovOnClient,
     query: str,
     session_id: str | None,
 ) -> tuple[str | None, bool]:
@@ -224,13 +248,13 @@ def _process_query_streaming(
     approval_event: dict | None = None
     new_session_id: str | None = None
 
-    with StreamingStatusDisplay("처리 중…") as status_display:
+    with StreamingStatusDisplay("⊹ 처리 중…") as status_display:
         for event in client.stream(query, session_id):
             node: str = event.get("node", "")
             event_status: str = event.get("status", "")
 
             if node == "error" or event_status == "error":
-                render_error(event.get("error", "알 수 없는 오류가 발생했습니다."))
+                render_error(event.get("error", "✘ 알 수 없는 오류가 발생했습니다."))
                 return session_id, True
 
             if event_status == "awaiting_approval":
@@ -265,11 +289,11 @@ def _process_query_streaming(
                 pass
             return new_session_id or session_id, True
 
-        render_status("승인됨 — 계속 진행 중…")
+        render_status("✤ 승인됨 — 계속 진행 중…")
         try:
             approved_response = client.approve(thread_id, approved=True)
         except Exception as exc:  # pragma: no cover
-            render_error(f"승인 요청 실패: {exc}")
+            render_error(f"✘ 승인 요청 실패: {exc}")
             return new_session_id or session_id, True
 
         render_result(approved_response)
@@ -293,20 +317,19 @@ def _process_query_streaming(
 
 
 def _process_query_blocking(
-    client: "GovOnClient",
+    client: GovOnClient,
     query: str,
     session_id: str | None,
 ) -> tuple[str | None, bool]:
     """Blocking fallback path: calls client.run() with a simple spinner."""
-    render_status("처리 중…")
+    render_status("⊹ 처리 중…")
 
     try:
         response = client.run(query, session_id)
-    except ConnectionError as exc:
-        render_error(f"daemon 연결 실패: {exc}\ngovon --status로 상태를 확인하세요.")
-        return session_id, False  # REPL 탈출
+    except ConnectionError:
+        raise  # propagate to caller for cold start retry
     except Exception as exc:  # pragma: no cover
-        render_error(f"요청 실패: {exc}")
+        render_error(f"✘ 요청 실패: {exc}")
         return session_id, True
 
     new_session_id: str | None = response.get("session_id") or response.get("thread_id")
@@ -317,7 +340,7 @@ def _process_query_blocking(
         approved = show_approval_prompt(approval_request)
 
         if not approved:
-            # 거절: 서버에 통보 후 프롬프트 복귀
+            # Rejected: notify server and return to prompt
             _thread_id: str = response.get("thread_id") or ""
             try:
                 client.approve(_thread_id, approved=False)
@@ -326,11 +349,11 @@ def _process_query_blocking(
             return new_session_id or session_id, True
 
         thread_id: str = response.get("thread_id") or ""
-        render_status("승인됨 — 계속 진행 중…")
+        render_status("✤ 승인됨 — 계속 진행 중…")
         try:
             approved_response = client.approve(thread_id, approved=True)
         except Exception as exc:  # pragma: no cover
-            render_error(f"승인 요청 실패: {exc}")
+            render_error(f"✘ 승인 요청 실패: {exc}")
             return new_session_id or session_id, True
 
         render_result(approved_response)
@@ -356,7 +379,7 @@ def _process_query_blocking(
 # ---------------------------------------------------------------------------
 
 
-def _run_repl(client: "GovOnClient", initial_session_id: str | None = None) -> None:
+def _run_repl(client: GovOnClient, initial_session_id: str | None = None) -> None:
     """Run the interactive REPL until EOF or /exit."""
     session_id: str | None = initial_session_id
     pt_session = PromptSession(history=InMemoryHistory()) if _PT_AVAILABLE else None
@@ -389,7 +412,7 @@ def _run_repl(client: "GovOnClient", initial_session_id: str | None = None) -> N
             session_id, should_continue = _process_query(client, text, session_id)
         except KeyboardInterrupt:
             # Ctrl+C while processing → cancel and return to prompt
-            print("\n요청이 취소되었습니다.")
+            print("\n✧ 요청이 취소되었습니다.")
             continue
 
         if not should_continue:
@@ -404,7 +427,7 @@ def _run_repl(client: "GovOnClient", initial_session_id: str | None = None) -> N
 # ---------------------------------------------------------------------------
 
 
-def _run_once(client: "GovOnClient", query: str, session_id: str | None) -> None:
+def _run_once(client: GovOnClient, query: str, session_id: str | None) -> None:
     """Run a single query and exit."""
     new_session_id, _ = _process_query(client, query, session_id)
     if new_session_id:
@@ -418,9 +441,9 @@ def _run_once(client: "GovOnClient", query: str, session_id: str | None) -> None
 
 def main() -> None:
     """CLI entry point for the `govon` command."""
-    # ── server 서브커맨드 조기 분기 ──────────────────────────────
-    # argparse는 positional + subparser 혼용이 까다로우므로
-    # 'server' 인자를 먼저 가로채서 별도 핸들러로 보낸다.
+    # ── early dispatch for server subcommand ──────────────────────────────
+    # argparse handles positional + subparser mixing poorly,
+    # so intercept 'server' first and delegate to a separate handler.
     raw_args = sys.argv[1:]
     if raw_args and raw_args[0] == "server":
         from src.cli.server import handle_server
@@ -431,84 +454,94 @@ def main() -> None:
         prog="govon",
         description="GovOn — shell-first local agentic runtime",
         formatter_class=argparse.RawTextHelpFormatter,
-        epilog="서브커맨드:\n  govon server <command>   Docker 백엔드 관리 (pull/start/stop/status/logs)",
+        epilog="Subcommands:\n  govon server <command>   Docker backend management (pull/start/stop/status/logs)",
     )
     parser.add_argument(
         "query",
         nargs="?",
         default=None,
-        help="단발 실행할 질문 (생략 시 인터랙티브 REPL 모드)",
+        help="Single-shot query (omit for interactive REPL mode)",
     )
     parser.add_argument(
         "--session",
         metavar="SESSION_ID",
         default=None,
-        help="재개할 기존 세션 ID",
+        help="Existing session ID to resume",
     )
     parser.add_argument(
         "--status",
         action="store_true",
-        help="daemon 상태 확인 후 종료",
+        help="Check daemon status and exit",
     )
     parser.add_argument(
         "--stop",
         action="store_true",
-        help="daemon 중지 후 종료",
+        help="Stop daemon and exit",
     )
 
     args = parser.parse_args()
 
-    # GOVON_RUNTIME_URL이 설정된 경우 원격 서버에 직접 연결하고 daemon을 관리하지 않는다.
+    # If GOVON_RUNTIME_URL is set, connect directly to the remote server
+    # without managing the daemon.
     runtime_url = os.environ.get("GOVON_RUNTIME_URL")
 
     if runtime_url:
         if not runtime_url.startswith(("http://", "https://")):
             print(
-                f"오류: GOVON_RUNTIME_URL은 http:// 또는 https://로 시작해야 합니다: {runtime_url}",
+                f"✘ 오류: GOVON_RUNTIME_URL은 http:// 또는 https://로 시작해야 합니다: {runtime_url}",
                 file=sys.stderr,
             )
             sys.exit(1)
-        # 원격 런타임 모드: daemon 관리 없이 지정된 URL에 직접 연결
+        # Remote runtime mode: connect directly to the specified URL without daemon management
         if args.status:
-            print(f"GovOn daemon: 원격 모드 (GOVON_RUNTIME_URL={runtime_url})")
+            print(f"✦ GovOn daemon: 원격 모드 (GOVON_RUNTIME_URL={runtime_url})")
             sys.exit(0)
         if args.stop:
-            print("오류: 원격 런타임 모드에서는 --stop을 사용할 수 없습니다.", file=sys.stderr)
+            print("✘ 오류: 원격 런타임 모드에서는 --stop을 사용할 수 없습니다.", file=sys.stderr)
             sys.exit(1)
         base_url = runtime_url.rstrip("/")
     else:
-        # 로컬 daemon 모드
+        # Local daemon mode
         daemon = DaemonManager()
 
         # --status
         if args.status:
             if daemon.is_running():
-                print("GovOn daemon: 실행 중")
+                print("✦ GovOn daemon: 실행 중")
             else:
-                print("GovOn daemon: 중지됨")
+                print("✧ GovOn daemon: 중지됨")
             sys.exit(0)
 
         # --stop
         if args.stop:
             daemon.stop()
-            print("GovOn daemon이 중지되었습니다.")
+            print("✧ GovOn daemon이 중지되었습니다.")
             sys.exit(0)
 
         # Ensure daemon is up and get base URL
         try:
             base_url = daemon.ensure_running()
         except Exception as exc:
-            print(f"오류: daemon을 시작할 수 없습니다 — {exc}", file=sys.stderr)
+            print(f"✘ 오류: daemon을 시작할 수 없습니다 — {exc}", file=sys.stderr)
             sys.exit(1)
 
     client = GovOnClient(base_url)
+
+    # Wait for remote server cold start if needed
+    if runtime_url:
+        try:
+            client.health()
+        except (ConnectionError, httpx.ConnectError, httpx.HTTPStatusError, httpx.TimeoutException):
+            if not client.wait_for_ready():
+                print("✘ 서버에 연결할 수 없습니다. 나중에 다시 시도해 주세요.", file=sys.stderr)
+                sys.exit(1)
 
     if args.query:
         # Single-shot mode
         _run_once(client, args.query, args.session)
     else:
         # Interactive REPL mode
-        print("GovOn CLI  (종료: Ctrl+D 또는 /exit)")
+        print("✦ GovOn CLI  (종료: Ctrl+D 또는 /exit)")
         _run_repl(client, initial_session_id=args.session)
 
 

@@ -128,17 +128,20 @@ def test_get_task_type_label_none():
 
 def test_get_approval_panel_width_narrow_terminal():
     """40열 터미널에서 패널 폭은 38(=40-2)이다."""
-    assert _get_approval_panel_width(40) == 38
+    result = _get_approval_panel_width(40)
+    assert result == 38, f"40열 터미널 패널 폭 기대 38, 실제 {result}"
 
 
 def test_get_approval_panel_width_normal_terminal():
     """80열 터미널에서 패널 폭은 59(=max_box 55 + 4)이다."""
-    assert _get_approval_panel_width(80) == 59
+    result = _get_approval_panel_width(80)
+    assert result == 59, f"80열 터미널 패널 폭 기대 59, 실제 {result}"
 
 
 def test_get_approval_panel_width_wide_terminal():
     """120열 이상에서도 최대 폭 59를 유지한다."""
-    assert _get_approval_panel_width(120) == 59
+    result = _get_approval_panel_width(120)
+    assert result == 59, f"120열 터미널 패널 폭 기대 59, 실제 {result}"
 
 
 # ---------------------------------------------------------------------------
@@ -280,8 +283,8 @@ def test_show_approval_prompt_warns_and_falls_back_on_narrow_terminal(capsys):
         assert approval_ui.show_approval_prompt(_sample_request()) is True
 
     captured = capsys.readouterr()
-    assert "plain mode" in captured.out
-    assert "최소 40열" in captured.out
+    assert "plain mode" in captured.out, f"경고 메시지에 'plain mode' 없음: {captured.out!r}"
+    assert "최소 40열" in captured.out, f"경고 메시지에 '최소 40열' 없음: {captured.out!r}"
     mock_fallback.assert_called_once()
     mock_pt_prompt.assert_not_called()
 
@@ -295,7 +298,8 @@ def test_show_approval_prompt_falls_back_when_rich_is_unavailable():
         patch("src.cli.approval_ui._fallback_prompt", return_value=True) as mock_fallback,
         patch("src.cli.approval_ui._pt_prompt") as mock_pt_prompt,
     ):
-        assert approval_ui.show_approval_prompt(_sample_request()) is True
+        result = approval_ui.show_approval_prompt(_sample_request())
+        assert result is True, f"Rich 없을 때 show_approval_prompt 기대 True, 실제 {result}"
 
     mock_fallback.assert_called_once_with(_sample_request(), columns=80)
     mock_pt_prompt.assert_not_called()
@@ -323,10 +327,10 @@ def test_fallback_prompt_uses_terminal_width_for_separator(capsys):
     title_line = lines[0]
     separator_lines = [line for line in lines if set(line) == {"─"}]
 
-    assert "작업 승인 요청" in title_line
-    assert separator_lines
+    assert "작업 승인 요청" in title_line, f"title_line에 '작업 승인 요청' 없음: {title_line!r}"
+    assert separator_lines, "separator 라인이 출력되지 않음"
     max_width = max(_display_width(line) for line in [title_line, *separator_lines])
-    assert max_width <= 32
+    assert max_width <= 32, f"separator/title 폭 기대 ≤32, 실제 {max_width}"
 
 
 # ---------------------------------------------------------------------------
@@ -386,12 +390,30 @@ def test_build_approval_panel_uses_task_type_style_and_selection():
 
     summary = panel.renderable.renderables[0]
     choices = panel.renderable.renderables[2]
-    assert panel.width == 59
-    assert panel.border_style == approval_ui._get_task_type_style("draft_response")
-    assert panel.title.plain == "작업 승인 요청"
-    assert summary.rows[0][0] == "유형"
-    assert summary.rows[0][1].plain == approval_ui._get_task_type_label("draft_response")
-    assert choices.rows[0][0].plain == "● 승인"
-    assert choices.rows[0][0].style == "bold green"
-    assert choices.rows[1][0].plain == "○ 거절"
-    assert choices.rows[1][0].style == "dim white"
+    assert panel.width == 59, f"패널 폭 기대 59, 실제 {panel.width}"
+    expected_style = approval_ui._get_task_type_style("draft_response")
+    assert (
+        panel.border_style == expected_style
+    ), f"border_style 기대 {expected_style!r}, 실제 {panel.border_style!r}"
+    assert (
+        panel.title.plain == "작업 승인 요청"
+    ), f"panel title 기대 '작업 승인 요청', 실제 {panel.title.plain!r}"
+    assert (
+        summary.rows[0][0] == "유형"
+    ), f"summary 첫 행 레이블 기대 '유형', 실제 {summary.rows[0][0]!r}"
+    expected_label = approval_ui._get_task_type_label("draft_response")
+    assert (
+        summary.rows[0][1].plain == expected_label
+    ), f"task_type 레이블 기대 {expected_label!r}, 실제 {summary.rows[0][1].plain!r}"
+    assert (
+        choices.rows[0][0].plain == "● 승인"
+    ), f"승인 bullet 기대 '● 승인', 실제 {choices.rows[0][0].plain!r}"
+    assert (
+        choices.rows[0][0].style == "bold green"
+    ), f"승인 스타일 기대 'bold green', 실제 {choices.rows[0][0].style!r}"
+    assert (
+        choices.rows[1][0].plain == "○ 거절"
+    ), f"거절 bullet 기대 '○ 거절', 실제 {choices.rows[1][0].plain!r}"
+    assert (
+        choices.rows[1][0].style == "dim white"
+    ), f"거절 스타일 기대 'dim white', 실제 {choices.rows[1][0].style!r}"

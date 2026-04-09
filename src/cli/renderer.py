@@ -11,16 +11,14 @@ from typing import Any
 
 from src.cli.terminal import (
     get_narrow_terminal_warning,
-    get_panel_width,
     get_terminal_columns,
     is_layout_supported,
 )
 from src.cli.theme import get_theme
 
 try:
-    from rich.console import Console, Group
+    from rich.console import Console
     from rich.markdown import Markdown
-    from rich.panel import Panel
     from rich.status import Status
     from rich.table import Table
     from rich.text import Text
@@ -399,55 +397,14 @@ def _build_citations_text(citations: list[str]) -> Text:
     return content
 
 
-def _build_rich_result_content(
-    text_body: str,
-    evidence_items: list,
-    citations: list,
-    tool_results: dict[str, Any],
-    columns: int,
-) -> Text | Markdown | Group:
-    """Build the rich renderable used inside the result panel."""
-    renderables = []
-
-    if text_body:
-        renderables.append(Markdown(text_body, code_theme=MARKDOWN_CODE_THEME))
-
-    theme = get_theme()
-    for title, rows in _iter_structured_result_sections(tool_results):
-        table = _build_rich_table(rows, columns)
-        if table is None:
-            continue
-        renderables.append(Text(""))
-        renderables.append(Text(title, style=theme.brand_accent))
-        renderables.append(table)
-
-    if evidence_items:
-        evidence_rows = _build_evidence_table_rows(evidence_items)
-        evidence_table = _build_rich_table(
-            evidence_rows,
-            columns,
-            column_keys=_select_evidence_columns(columns),
-        )
-        if evidence_table is not None:
-            renderables.append(Text(""))
-            renderables.append(Text("참조 근거", style="bold"))
-            renderables.append(evidence_table)
-    elif citations:
-        renderables.append(_build_citations_text(citations))
-
-    if not renderables:
-        return Text("")
-    if len(renderables) == 1:
-        return renderables[0]
-    return Group(*renderables)
-
-
 def render_result(result: dict) -> None:
-    """Render the final agent response to the terminal.
+    """Render the final agent response inline (no Panel box).
+
+    Claude Code style: full-width separator, free-flowing markdown, separator.
 
     Expected keys (at least one required):
       - result["text"] or result["response"]: main answer text
-      - result["evidence_items"]: EvidenceItem dict 리스트 (structured, 우선)
+      - result["evidence_items"]: EvidenceItem dict list (structured, preferred)
       - result["citations"] or result["sources"]: list of source strings (fallback)
       - result["tool_results"]: stats/keyword/demographics structured result dict
     """
@@ -459,26 +416,41 @@ def render_result(result: dict) -> None:
     use_rich, columns = _resolve_render_mode()
 
     if use_rich:
-        content = _build_rich_result_content(
-            text_body,
-            evidence_items,
-            citations,
-            tool_results,
-            columns,
-        )
         theme = get_theme()
-        _console.print(
-            Panel(
-                content,
-                title=f"[{theme.panel_title}]GovOn[/{theme.panel_title}]",
-                border_style=theme.panel_border,
-                width=get_panel_width(columns),
+        _console.print()
+
+        # Inline markdown — no Panel box
+        if text_body:
+            _console.print(Markdown(text_body, code_theme=MARKDOWN_CODE_THEME))
+
+        # Structured tool result tables
+        for title, rows in _iter_structured_result_sections(tool_results):
+            table = _build_rich_table(rows, columns)
+            if table is None:
+                continue
+            _console.print()
+            _console.print(Text(title, style=theme.brand_accent))
+            _console.print(table)
+
+        # Evidence / citations
+        if evidence_items:
+            evidence_rows = _build_evidence_table_rows(evidence_items)
+            evidence_table = _build_rich_table(
+                evidence_rows,
+                columns,
+                column_keys=_select_evidence_columns(columns),
             )
-        )
+            if evidence_table is not None:
+                _console.print()
+                _console.print(Text("참조 근거", style="bold"))
+                _console.print(evidence_table)
+        elif citations:
+            _console.print(_build_citations_text(citations))
+
+        _console.print()
     else:
         rule = _plain_rule(columns)
         print(f"\n{rule}")
-        print("GovOn")
         print(text_body)
         for title, rows in _iter_structured_result_sections(tool_results):
             table_text = _render_plain_table(title, rows, columns)
@@ -502,8 +474,6 @@ def render_result(result: dict) -> None:
 
 def render_status(message: str) -> None:
     """Render a transient status / progress message to stderr."""
-    import sys
-
     use_rich, _ = _resolve_render_mode()
     if use_rich:
         theme = get_theme()
@@ -514,8 +484,6 @@ def render_status(message: str) -> None:
 
 def render_error(message: str) -> None:
     """Render an error message in red to stderr."""
-    import sys
-
     use_rich, _ = _resolve_render_mode()
     if use_rich:
         theme = get_theme()

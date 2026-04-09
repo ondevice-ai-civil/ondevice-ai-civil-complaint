@@ -49,11 +49,11 @@ def setup_logging(debug: bool = False) -> None:
         str(_LOG_DIR / "cli-{time:YYYY-MM-DD}.log"),
         level="DEBUG",
         format=_LOG_FORMAT_FILE,
-        rotation="00:00",       # rotate at midnight
+        rotation="00:00",  # rotate at midnight
         retention=f"{_LOG_RETENTION_DAYS} days",
         encoding="utf-8",
-        enqueue=True,           # non-blocking writes
-        catch=True,             # suppress handler exceptions
+        enqueue=True,  # non-blocking writes
+        catch=True,  # suppress handler exceptions
     )
 
     if debug:

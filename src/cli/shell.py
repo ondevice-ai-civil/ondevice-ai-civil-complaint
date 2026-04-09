@@ -453,6 +453,14 @@ def main() -> None:
     # argparse handles positional + subparser mixing poorly,
     # so intercept 'server' first and delegate to a separate handler.
     raw_args = sys.argv[1:]
+
+    # Bootstrap parse: extract --debug before any subcommand dispatch so
+    # setup_logging() runs even for `govon server ...` (which exits early).
+    _bootstrap = argparse.ArgumentParser(add_help=False)
+    _bootstrap.add_argument("--debug", action="store_true", default=False)
+    _bootstrap_args, _ = _bootstrap.parse_known_args(raw_args)
+    setup_logging(debug=_bootstrap_args.debug)
+
     if raw_args and raw_args[0] == "server":
         from src.cli.server import handle_server
 
@@ -500,10 +508,6 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-
-    # Configure logging before any other logic so that all subsequent
-    # loguru calls in daemon.py / http_client.py go to the file only.
-    setup_logging(debug=args.debug)
 
     # If GOVON_RUNTIME_URL is set, connect directly to the remote server
     # without managing the daemon.

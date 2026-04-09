@@ -14,6 +14,8 @@ from textual.containers import VerticalScroll
 from textual.widgets import Footer, Rule, Static
 
 from src.cli.tui.messages import (
+    ApprovalResult,
+    SSEApproval,
     SSEComplete,
     SSEError,
     SSEResponseDelta,
@@ -21,6 +23,7 @@ from src.cli.tui.messages import (
     SSEToolEnd,
     SSEToolStart,
 )
+from src.cli.tui.widgets.approval_modal import ApprovalModal
 from src.cli.tui.widgets.input_bar import InputBar
 from src.cli.tui.widgets.markdown_view import MarkdownView
 from src.cli.tui.widgets.message_bubble import MessageBubble
@@ -155,6 +158,12 @@ class GovOnApp(App):
                     latency = event.get("latency_ms", 0)
                     self.call_from_thread(self.post_message, SSEToolEnd(tool_name, latency))
 
+                elif event_type == "awaiting_approval":
+                    request = event.get("approval_request") or {}
+                    thread_id = event.get("thread_id", "")
+                    self.call_from_thread(self.post_message, SSEApproval(request, thread_id))
+                    return  # pause SSE consumption until approval resolves
+
                 elif event_type == "run_complete":
                     sid = event.get("session_id") or event.get("thread_id")
                     if sid:
@@ -246,6 +255,59 @@ class GovOnApp(App):
         self._current_spinner = None
         self._current_thinking = None
         self._current_markdown = None
+
+    def on_sse_approval(self, message: SSEApproval) -> None:
+        """Mount an approval modal for human-in-the-loop tool approval."""
+        self._stop_spinner()
+        if self._current_bubble is None:
+            return
+        modal = ApprovalModal(
+            approval_request=message.request,
+            thread_id=message.thread_id,
+        )
+        self._current_bubble.mount(modal)
+
+    def on_approval_result(self, message: ApprovalResult) -> None:
+        """Handle user approval/rejection and resume SSE if approved."""
+        try:
+            self.client.approve(message.thread_id, approved=message.approved)
+        except Exception:
+            pass
+
+        if message.approved:
+            # Resume SSE streaming after approval
+            self.run_worker(
+                self._consume_sse_resume(message.thread_id),
+                thread=True,
+                exclusive=True,
+                group="sse",
+            )
+
+    async def _consume_sse_resume(self, thread_id: str) -> None:
+        """Resume SSE streaming after approval by re-streaming from the server."""
+        # The server continues the agent execution after approve().
+        # We need to stream the remaining events.
+        # Use stream() (v2) which handles post-approval continuation.
+        try:
+            for event in self.client.stream(None, self.session_id):
+                event_type = event.get("type", event.get("status", ""))
+
+                if event_type == "error" or event.get("node") == "error":
+                    self.call_from_thread(
+                        self.post_message,
+                        SSEError(event.get("error", "unknown error")),
+                    )
+                    return
+
+                if event_type in ("completed", "done", "success") or event.get("text"):
+                    self.call_from_thread(
+                        self.post_message,
+                        SSEComplete(event),
+                    )
+                    return
+
+        except Exception as exc:
+            self.call_from_thread(self.post_message, SSEError(str(exc)))
 
     def action_cancel_query(self) -> None:
         """Cancel the active SSE worker on Esc."""

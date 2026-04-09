@@ -8,6 +8,9 @@ on:
         required: false
         default: 'https://umyunsang-govon-runtime.hf.space'
 
+permissions:
+  contents: read
+
 jobs:
   e2e:
     runs-on: ubuntu-latest
@@ -15,22 +18,39 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
       - name: Install dependencies
         run: pip install httpx aiohttp
 
-      - name: Health check
+      - name: Validate runtime URL
+        env:
+          RUNTIME_URL: ${{ github.event.inputs.runtime_url }}
         run: |
-          RUNTIME_URL="${{ github.event.inputs.runtime_url }}"
+          python3 -c "
+          import os, sys
+          from urllib.parse import urlparse
+          u = os.environ['RUNTIME_URL']
+          p = urlparse(u)
+          if p.scheme != 'https' or not p.netloc.endswith('.hf.space'):
+              print(f'ERROR: Invalid runtime_url: {u}', file=sys.stderr)
+              print('URL must be https://*.hf.space', file=sys.stderr)
+              sys.exit(1)
+          print(f'Validated: {u}')
+          "
+
+      - name: Health check
+        env:
+          RUNTIME_URL: ${{ github.event.inputs.runtime_url }}
+        run: |
           echo "Target: $RUNTIME_URL"
           for i in 1 2 3 4 5; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$RUNTIME_URL/health" || echo "000")
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 --fail-with-body "$RUNTIME_URL/health" || echo "000")
             echo "Attempt $i: HTTP $STATUS"
             if [ "$STATUS" = "200" ]; then
               echo "Space is RUNNING"
@@ -48,13 +68,13 @@ jobs:
         id: e2e
         env:
           GOVON_RUNTIME_URL: ${{ github.event.inputs.runtime_url }}
-          API_KEY: ${{ secrets.API_KEY || secrets.HF_API_KEY }}
+          API_KEY: ${{ secrets.API_KEY }}
         run: |
           python3 scripts/verify_e2e_tool_calling.py
         continue-on-error: true
 
       - name: Upload result artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: e2e-results
@@ -65,6 +85,8 @@ jobs:
 
       - name: Generate step summary
         if: always()
+        env:
+          RUNTIME_URL: ${{ github.event.inputs.runtime_url }}
         run: |
           RESULT_FILE=$(ls verify_e2e_tool_calling_*.json 2>/dev/null | head -1)
           if [ -z "$RESULT_FILE" ]; then
@@ -94,7 +116,7 @@ jobs:
           | 실패 | $FAILED |
           | 스킵 | $SKIPPED |
 
-          **Target:** ${{ github.event.inputs.runtime_url }}
+          **Target:** \`${RUNTIME_URL}\`
 
           ### Phase별 결과
           EOF

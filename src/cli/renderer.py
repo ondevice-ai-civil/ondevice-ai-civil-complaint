@@ -25,9 +25,11 @@ try:
     from rich.text import Text
 
     _console = Console()
+    _stderr_console = Console(stderr=True)
     _RICH_AVAILABLE = True
 except ImportError:  # pragma: no cover
     _console = None  # type: ignore[assignment]
+    _stderr_console = None  # type: ignore[assignment]
     _RICH_AVAILABLE = False
 
 _HAS_WARNED_NARROW_TERMINAL = False
@@ -498,23 +500,27 @@ def render_result(result: dict) -> None:
 
 
 def render_status(message: str) -> None:
-    """Render a transient status / progress message."""
+    """Render a transient status / progress message to stderr."""
+    import sys
+
     use_rich, _ = _resolve_render_mode()
     if use_rich:
         theme = get_theme()
-        _console.print(f"[{theme.text_secondary}]→ {message}[/{theme.text_secondary}]")
+        _stderr_console.print(f"[{theme.text_secondary}]→ {message}[/{theme.text_secondary}]")
     else:
-        print(f"→ {message}")
+        print(f"→ {message}", file=sys.stderr)
 
 
 def render_error(message: str) -> None:
-    """Render an error message in red."""
+    """Render an error message in red to stderr."""
+    import sys
+
     use_rich, _ = _resolve_render_mode()
     if use_rich:
         theme = get_theme()
-        _console.print(f"[{theme.status_error}]오류:[/{theme.status_error}] {message}")
+        _stderr_console.print(f"[{theme.status_error}]오류:[/{theme.status_error}] {message}")
     else:
-        print(f"오류: {message}")
+        print(f"오류: {message}", file=sys.stderr)
 
 
 def render_thinking(content: str) -> None:

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "govon"
-version = "1.0.3"
+version = "1.0.4"
 description = "Agentic CLI shell for Korean public-sector civil complaint workflows"
 readme = "README.md"
 license = {text = "MIT"}

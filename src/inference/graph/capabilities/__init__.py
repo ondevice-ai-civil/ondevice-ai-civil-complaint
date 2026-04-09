@@ -7,6 +7,7 @@ from .demographics_lookup import DemographicsLookupCapability
 from .issue_detector import IssueDetectorCapability
 from .keyword_analyzer import KeywordAnalyzerCapability
 from .registry import (
+    ToolType,
     get_all_metadata,
     is_mvp_capability,
 )
@@ -22,6 +23,7 @@ __all__ = [
     "StatsLookupCapability",
     "KeywordAnalyzerCapability",
     "DemographicsLookupCapability",
+    "ToolType",
     "get_all_metadata",
     "is_mvp_capability",
     "get_timeout",

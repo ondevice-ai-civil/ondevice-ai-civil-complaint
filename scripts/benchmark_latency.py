@@ -160,6 +160,7 @@ except ImportError:
 # 통계 계산
 # ---------------------------------------------------------------------------
 
+
 def _stats(samples: list[float]) -> dict:
     """min/avg/max/p95 (초 단위) 계산."""
     if not samples:
@@ -189,6 +190,7 @@ def _fmt_stats(st: dict) -> tuple[str, str, str, str]:
 # ---------------------------------------------------------------------------
 # 각 시나리오 측정 함수
 # ---------------------------------------------------------------------------
+
 
 async def measure_health(runs: int) -> dict:
     samples: list[float] = []
@@ -270,6 +272,7 @@ async def measure_v2_run(runs: int) -> dict:
 # 테이블 출력
 # ---------------------------------------------------------------------------
 
+
 def _print_table(rows: list[dict]) -> None:
     col_w = [23, 8, 8, 8, 8]
     header = ["Scenario", "Min", "Avg", "Max", "P95"]
@@ -281,7 +284,7 @@ def _print_table(rows: list[dict]) -> None:
     for r in rows:
         st = r["stats"]
         err_note = f" (err:{r['errors']})" if r["errors"] else ""
-        label = r["label"][:col_w[0]] + err_note
+        label = r["label"][: col_w[0]] + err_note
         mn, avg, mx, p95 = _fmt_stats(st)
         print(row_fmt.format(label, mn, avg, mx, p95))
 
@@ -289,6 +292,7 @@ def _print_table(rows: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 # 메인
 # ---------------------------------------------------------------------------
+
 
 async def run_benchmark(runs: int, output: Optional[str]) -> None:
     print(f"\n=== GovOn Latency Benchmark ===")
@@ -364,7 +368,10 @@ def main() -> None:
         parser.error("--runs must be >= 1")
 
     if not os.environ.get("GOVON_RUNTIME_URL"):
-        print("[WARN] GOVON_RUNTIME_URL 환경변수가 없습니다. localhost:7860 사용합니다.", file=sys.stderr)
+        print(
+            "[WARN] GOVON_RUNTIME_URL 환경변수가 없습니다. localhost:7860 사용합니다.",
+            file=sys.stderr,
+        )
 
     asyncio.run(run_benchmark(runs=args.runs, output=args.output))
 

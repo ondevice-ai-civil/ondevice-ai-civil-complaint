@@ -35,18 +35,27 @@ test.describe('GovOn Runtime Smoke', () => {
 
     for (const path of [
       '/health',
-      '/v1/generate',
-      '/v1/generate-civil-response',
-      '/v1/stream',
-      '/v1/agent/run',
-      '/v1/agent/stream',
+      '/v2/agent/stream',
+      '/v2/agent/run',
+      '/v2/agent/approve',
+      '/v2/agent/cancel',
       '/v3/agent/stream',
       '/v3/agent/run',
     ]) {
       expect(schema.paths).toHaveProperty(path);
     }
 
-    expect(schema.paths).not.toHaveProperty('/v1/classify');
+    // v1 레거시 엔드포인트 제거 확인
+    for (const removed of [
+      '/v1/generate',
+      '/v1/generate-civil-response',
+      '/v1/stream',
+      '/v1/agent/run',
+      '/v1/agent/stream',
+      '/v1/classify',
+    ]) {
+      expect(schema.paths).not.toHaveProperty(removed);
+    }
   });
 
   test('v3 agent endpoints return 503 or 200 based on graph availability', async ({ request }) => {
@@ -63,8 +72,8 @@ test.describe('GovOn Runtime Smoke', () => {
 
 test.describe('GovOn Runtime Security Contract', () => {
   test('protected runtime endpoints reject missing API keys', async ({ request }) => {
-    const response = await request.post('/v1/generate', {
-      data: generatePayload,
+    const response = await request.post('/v3/agent/run', {
+      data: { query: '테스트', max_iterations: 1 },
       failOnStatusCode: false,
     });
 
@@ -77,16 +86,16 @@ test.describe('GovOn Runtime Security Contract', () => {
   test('protected runtime endpoints accept API key and return response in SKIP_MODEL_LOAD mode', async ({
     request,
   }) => {
-    const response = await request.post('/v1/generate', {
-      data: generatePayload,
+    const response = await request.post('/v3/agent/run', {
+      data: { query: '테스트', max_iterations: 1 },
       headers: {
         'X-API-Key': apiKey,
       },
       failOnStatusCode: false,
     });
 
-    // SKIP_MODEL_LOAD에서 vLLM 미연결 — 500 또는 정상 응답
-    expect([200, 500]).toContain(response.status());
+    // SKIP_MODEL_LOAD에서 graph_v3=None → 503, vLLM 미연결 → 500, 정상 → 200
+    expect([200, 500, 503]).toContain(response.status());
   });
 
   test('unknown paths still return 404', async ({ request }) => {

@@ -3,16 +3,15 @@
 Issue #416: tool metadata registry 및 LangGraph executor binding 정리.
 
 이 모듈은 다음을 보장한다:
-- planner가 읽는 metadata와 executor binding이 같은 소스에서 나온다
+- ReAct agent가 읽는 metadata와 executor binding이 같은 소스에서 나온다
 - approval prompt와 session log가 동일한 capability identifier를 사용한다
 - 비MVP capability가 registry 수준에서 차단된다
 """
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Any, Callable, Dict, List
-
-from src.inference.tool_router import ToolType
 
 from .api_lookup import ApiLookupCapability
 from .base import CapabilityBase, CapabilityMetadata
@@ -22,12 +21,22 @@ from .keyword_analyzer import KeywordAnalyzerCapability
 from .stats_lookup import StatsLookupCapability
 
 
+class ToolType(str, Enum):
+    """MVP 내부 capability 카탈로그."""
+
+    API_LOOKUP = "api_lookup"
+    ISSUE_DETECTOR = "issue_detector"
+    STATS_LOOKUP = "stats_lookup"
+    KEYWORD_ANALYZER = "keyword_analyzer"
+    DEMOGRAPHICS_LOOKUP = "demographics_lookup"
+
+
 def get_all_metadata(
     registry: Dict[str, CapabilityBase],
 ) -> List[Dict[str, Any]]:
     """registry에 등록된 모든 capability의 metadata를 dict 목록으로 반환한다.
 
-    planner가 tool 목록을 구성할 때 사용한다.
+    ReAct agent가 tool 목록을 구성할 때 사용한다.
 
     Parameters
     ----------

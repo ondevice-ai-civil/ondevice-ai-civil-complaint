@@ -36,21 +36,6 @@ class GenerateCivilResponseResponse(BaseGenerateResponse):
     retrieved_cases: Optional[List[RetrievedCase]] = None
 
 
-class GenerateRequest(GenerateCivilResponseRequest):
-    """레거시 /v1/generate 호환 요청 모델."""
-
-
-class GenerateResponse(GenerateCivilResponseResponse):
-    """레거시 /v1/generate 호환 응답 모델."""
-
-
-class StreamResponse(BaseModel):
-    request_id: str
-    text: str
-    finished: bool = False
-    retrieved_cases: Optional[List[RetrievedCase]] = None
-
-
 class AgentRunRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=10000)
     session_id: Optional[str] = None

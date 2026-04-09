@@ -1,9 +1,14 @@
-# GovOn
+# GovOn — Agentic CLI Shell for Korean Public Sector
 
-GovOn은 행정 업무를 보조하는 **에이전틱 CLI 셸**이다. 사용자는 `govon`을 실행한 뒤 자연어로 요청하고, 셸은 로컬 daemon runtime과 연결되어 검색·조회·작성 도구를 승인 기반으로 사용한다.
+> **"도로 파손 민원에 대한 답변 초안을 작성해줘"** — 한마디면 AI가 법령을 찾고, 유사 사례를 조회하고, 공문서 형식의 초안을 생성합니다.
+
+GovOn은 **동아대학교 컴퓨터공학과** 현장미러형 산학연계 프로젝트로 개발된 에이전틱 CLI 셸입니다.
+지방자치단체 공무원의 민원 답변 업무를 AI 에이전트가 보조합니다.
 
 [![Docs Portal](https://img.shields.io/badge/Docs-Portal-blue?logo=readthedocs)](https://govon-org.github.io/GovOn/)
-[![Public Roadmap](https://img.shields.io/badge/Public_Roadmap-Workstreams-7C3AED)](https://github.com/GovOn-Org/GovOn/issues?q=label%3A%22%F0%9F%A7%AD+Workstream%22+sort%3Aupdated-desc)
+[![Public Roadmap](https://img.shields.io/badge/Public_Roadmap-Workstreams-7C3AED)](https://github.com/GovOn-Org/GovOn/issues/402)
+[![HF Space](https://img.shields.io/badge/HF_Space-Runtime-yellow?logo=huggingface)](https://huggingface.co/spaces/umyunsang/govon-runtime)
+[![Discussion](https://img.shields.io/badge/Discussion-Community-green?logo=github)](https://github.com/GovOn-Org/GovOn/discussions/606)
 
 <!-- DORA-BADGES:START -->
 ![DORA Grade](https://img.shields.io/badge/DORA-Elite-brightgreen)
@@ -13,155 +18,308 @@ GovOn은 행정 업무를 보조하는 **에이전틱 CLI 셸**이다. 사용자
 ![MTTR](https://img.shields.io/badge/MTTR-0.0h-brightgreen)
 <!-- DORA-BADGES:END -->
 
+---
+
+## 핵심 특징
+
+### 1. ReAct 자율 에이전트
+
+LLM이 사용자의 의도를 이해하고 **7개 도구 중 어떤 것을 호출할지 자율적으로 판단**합니다.
+키워드 매칭이 아니라, 맥락 기반 추론으로 도구를 선택합니다.
+
+| 도구 | 역할 |
+|------|------|
+| `api_lookup` | 민원 데이터 API 조회 |
+| `issue_detector` | 주요 이슈 탐지 |
+| `stats_lookup` | 통계 데이터 조회 |
+| `keyword_analyzer` | 핵심 키워드 분석 |
+| `demographics_lookup` | 인구통계 조회 |
+| `public_admin_adapter` | 민원답변 초안 생성 (civil LoRA) |
+| `legal_adapter` | 법률 근거 보강 (legal LoRA) |
+
+### 2. 도메인 특화 Multi-LoRA
+
+단일 EXAONE 4.0-32B-AWQ 베이스 모델 위에 요청별로 LoRA 어댑터를 동적 전환합니다.
+
+| 어댑터 | 학습 데이터 | 용도 |
+|--------|-----------|------|
+| [**civil-adapter**](https://huggingface.co/umyunsang/govon-civil-adapter) (r16) | 74K 민원-답변 쌍 | `public_admin_adapter` tool_call 시 attach |
+| [**legal-adapter**](https://huggingface.co/siwo/govon-legal-adapter) (r16) | 270K 법률 문서 | `legal_adapter` tool_call 시 attach |
+
+### 3. Human-in-the-loop 승인 흐름
+
+AI가 도구를 실행하기 전에 사용자에게 승인을 요청합니다.
+완전 자동화가 아닌, **사람의 판단을 존중하는 반자동화**입니다.
+
+```bash
+$ govon
+GovOn Shell v1.0 — 무엇을 도와드릴까요?
+
+> 도로 파손 민원에 대한 답변 초안을 작성해줘
+
+┌─ 작업 승인 요청 ─────────────────┐
+│  유형: 답변 초안 작성              │
+│  목표: 도로 파손 민원 답변 생성     │
+│  작업:                            │
+│   • 민원 처리 근거 확인            │
+│   • 유사 사례 및 담당 부서 조회     │
+│                                   │
+│  ● 승인  ○ 거절                   │
+└───────────────────────────────────┘
+```
+
+---
+
 ## 아키텍처
 
-> ReAct + ToolNode 기반 v4 아키텍처. LLM이 자율적으로 도구를 선택하며, 정적 planner/executor를 제거했다.
+```mermaid
+graph LR
+    subgraph Client ["사용자 터미널"]
+        CLI["govon CLI"]
+    end
 
-<p align="center">
-  <a href="https://govon-org.github.io/GovOn/govon-tobe-architecture.svg">
-    <img src="docs/architecture/govon-tobe-architecture.svg" alt="GovOn TO-BE Architecture" width="100%"/>
-  </a>
-</p>
+    subgraph HFSpace ["HF Space — A100 80GB"]
+        subgraph FastAPI ["FastAPI :7860"]
+            V4["v4 Agent\n(approval flow)"]
+            V3["v3 Agent\n(auto-execute)"]
+            CTX["6-Layer\nContext Mgmt"]
+        end
+        subgraph VLLM ["vLLM :8000"]
+            BASE["EXAONE-4.0\n32B-AWQ"]
+            LORA1["civil LoRA"]
+            LORA2["legal LoRA"]
+        end
+    end
 
-### 모델 구성
+    CLI -- "HTTP/SSE" --> V4
+    CLI -- "HTTP/SSE" --> V3
+    V4 --> CTX
+    V3 --> CTX
+    V4 -- "httpx" --> BASE
+    V3 -- "httpx" --> BASE
+    BASE --- LORA1
+    BASE --- LORA2
 
-베이스 LLM **EXAONE 4.0-32B-AWQ** 단일 모델이 사용자 쿼리의 의도를 분석하고 `tool_call`을 자율 결정한다. 어댑터 도구가 호출되면 해당 LoRA를 per-request로 attach하여 추론한다.
+    style Client fill:#e0f2fe,stroke:#0284c7
+    style HFSpace fill:#fef3c7,stroke:#d97706
+    style FastAPI fill:#dcfce7,stroke:#16a34a
+    style VLLM fill:#fce7f3,stroke:#db2777
+```
 
-| 구성 요소 | LoRA | tool_call 시 동작 |
-|---|---|---|
-| 베이스 모델 (EXAONE 4.0-32B-AWQ) | 없음 | 의도 분석 · `bind_tools()` · ReAct 루프 · Tier 0 도구 실행 |
-| [**civil-adapter**](https://huggingface.co/umyunsang/govon-civil-adapter) (r16) | 74K 민원-답변 쌍 학습 | `public_admin_adapter` tool_call 시 per-request attach |
-| [**legal-adapter**](https://huggingface.co/siwo/govon-legal-adapter) (r16) | 270K 법률 문서 학습 | `legal_adapter` tool_call 시 per-request attach |
+### ReAct 루프 흐름
+
+```mermaid
+graph TD
+    START([START]) --> SL[session_load\n컨텍스트 복원]
+    SL --> AGENT[agent\nLLM 자율 도구 선택]
+    AGENT -->|tool_calls 없음| END_NODE[persist + END]
+    AGENT -->|Tier 0 도구| TOOLS[tools\nToolNode 실행]
+    AGENT -->|승인 필요| APPROVAL[approval_wait\nHuman-in-the-loop]
+    APPROVAL -->|승인| TOOLS
+    APPROVAL -->|거절| AGENT
+    TOOLS --> AGENT
+
+    style SL fill:#dbeafe
+    style AGENT fill:#fef9c3
+    style TOOLS fill:#dcfce7
+    style END_NODE fill:#f3e8ff
+    style APPROVAL fill:#fee2e2
+```
+
+### 6-Layer 컨텍스트 관리
+
+장기 대화에서 토큰 오버플로를 방지하는 6단계 파이프라인:
+
+| Layer | 단계 | 메커니즘 |
+|-------|------|---------|
+| L1 | 도구 실행 | 도구 출력 3000자 head+tail 절단 |
+| L2 | LLM 호출 | 오래된 도구 결과 placeholder 교체 |
+| L3 | LLM 호출 | 역순 토큰 예산 trim (4500 토큰) |
+| L4 | LLM 호출 | 예산 초과 시 강제 제거 |
+| L5 | 세션 복원 | 룰 기반 대화 요약 |
+| L6 | 세션 복원 | 토큰 예산 영구 삭제 |
+
+---
 
 ## 데이터 파이프라인
 
 ```mermaid
 flowchart LR
-    subgraph Sources["Data Sources"]
-        A1["AI Hub 71852\nPublic Civil QA\n29K"]
-        A2["AI Hub 71847\nAdmin Law QA\n37K"]
-        A3["AI Hub 71841/43/48\nCivil/IP/Criminal\n200K"]
-        A4["HF Precedents\nCourt Decisions\n85K"]
+    subgraph Sources["공공 데이터 소스"]
+        A1["AI Hub 71852\n민원 QA 29K"]
+        A2["AI Hub 71847\n행정법 QA 37K"]
+        A3["AI Hub 71841/43/48\n민사/지재/형사 200K"]
+        A4["HF 판례\n법원 판결 85K"]
     end
 
     subgraph Civil["Civil Adapter"]
-        B1["parsers.py"] --> B2["train 33K"]
+        B1["parsers.py"] --> B2["train 74K"]
         B2 --> B3["HF Hub"]
     end
 
     subgraph Legal["Legal Adapter"]
-        C1["build_dataset.py"] --> C2["train 243K"]
+        C1["build_dataset.py"] --> C2["train 270K"]
         C2 --> C3["HF Hub"]
     end
 
     subgraph Training["Unsloth QLoRA"]
         D1["EXAONE 4.0-32B\n4-bit NF4"] --> D2["LoRA r16"]
-        D2 --> D3["HF Spaces\nL40S 48GB"]
+        D2 --> D3["HF Spaces\nA100 80GB"]
     end
 
     A1 --> B1
-    A2 --> C1
+    A2 --> B1
     A3 --> C1
     A4 --> C1
     B3 --> D1
     C3 --> D1
+
+    style Sources fill:#e0f2fe,stroke:#0284c7
+    style Civil fill:#dcfce7,stroke:#16a34a
+    style Legal fill:#fce7f3,stroke:#db2777
+    style Training fill:#fef9c3,stroke:#ca8a04
 ```
 
 | 데이터셋 | 건수 | HuggingFace Hub |
-|---|---|---|
-| Civil Response | 33K (train) | [umyunsang/govon-civil-response-data](https://huggingface.co/datasets/umyunsang/govon-civil-response-data) |
-| Legal Citation | 243K (train) | [umyunsang/govon-legal-response-data](https://huggingface.co/datasets/umyunsang/govon-legal-response-data) |
+|---------|------|-----------------|
+| Civil Response | 74K | [umyunsang/govon-civil-response-data](https://huggingface.co/datasets/umyunsang/govon-civil-response-data) |
+| Legal Citation | 270K | [umyunsang/govon-legal-response-data](https://huggingface.co/datasets/umyunsang/govon-legal-response-data) |
 
-## LangGraph Agent Flow
+---
 
+## 빠른 시작
+
+```bash
+# 1. HF Space 런타임에 직접 요청
+export GOVON_RUNTIME_URL=https://umyunsang-govon-runtime.hf.space
+
+# 2. v3 자동 실행 모드
+curl -X POST $GOVON_RUNTIME_URL/v3/agent/run \
+  -H "Content-Type: application/json" \
+  -d '{"query": "도로 파손 민원 현황 알려줘", "session_id": "demo-1", "max_iterations": 10}'
+
+# 3. v4 승인 흐름 (CLI 권장)
+pip install govon
+govon
 ```
-START → session_load → agent → [route_agent]
-     ├── (no tool_calls)   → persist → END
-     ├── (all Tier 0)      → tools → agent → ...  (ReAct loop)
-     └── (needs approval)  → approval_wait → [route_after_approval]
-                                 ├── (approved) → tools → agent → ...
-                                 └── (rejected) → agent → ...  (suggest alternatives)
-```
 
-## 현재 제품 기준
+상세한 사용법은 [사용자 가이드](docs/guide/user-guide.md)를 참고하세요.
 
-- 진입점은 웹이 아니라 `govon` 대화형 CLI 셸
-- 내부 runtime은 로컬 FastAPI daemon 또는 원격 서버 (`GOVON_RUNTIME_URL`)
-- LangGraph ReAct 루프에서 agent LLM이 자율적으로 도구 호출을 결정
-- 도구 선택은 EXAONE 4.0의 `bind_tools()` + 네이티브 tool calling으로 수행
-- Tier 0 도구(검색/분석)는 자동 실행, Tier 1 도구(어댑터)는 사용자 승인 후 실행
-- 민원 답변 작성 시 `public_admin_adapter`, 법률 근거 시 `legal_adapter` LoRA tool 사용
-- 거부 시 agent가 대안을 제시하는 루프 구조
-- 서빙은 HuggingFace Spaces ZeroGPU 또는 전용 GPU Space
+---
 
-상세 기준 문서는 [docs/architecture/GovOn-shell-mvp-architecture.md](docs/architecture/GovOn-shell-mvp-architecture.md)다.
+## 검증 지표
 
-## MVP 범위
+### E2E 테스트: 27/27 통과
 
-포함:
+| Phase | 시나리오 | 검증 대상 |
+|-------|---------|---------|
+| 1. Infrastructure | 3 | 헬스체크, 베이스 모델, vLLM 연결 |
+| 2. v2 Pipeline | 6 | 승인 흐름, 거절, 멀티턴, 동시성 |
+| 3. v3 ReAct | 10 | 직접 응답, 도구 실행, SSE 스트리밍 |
+| 4. Cross-version | 2 | v2↔v3 일관성 |
+| 5. Multi-turn | 3 | 컨텍스트 유지, 세션 격리, 3턴 워크플로우 |
+| 6. Context Mgmt | 3 | 도구 클리어링, 5턴 요약 |
 
-- 자연어 기반 CLI 셸 + 로컬 daemon / 원격 서버 연결
-- ReAct 루프 기반 LLM 자율 도구 선택 (`bind_tools`)
-- Tier 0 자동 실행 도구: `rag_search`, `api_lookup`, `stats_lookup`, `keyword_analyzer`, `demographics_lookup`, `issue_detector`
-- Tier 1 승인 필요 도구: `public_admin_adapter` (민원 답변 LoRA), `legal_adapter` (법률 근거 LoRA)
-- Human-in-the-loop 승인 게이트 (`interrupt()` + approve/reject)
-- 거부 시 agent 대안 제시 루프
-- `adapters.yaml` 기반 동적 도구 등록 (코드 변경 없이 어댑터 추가)
-- LangGraph checkpointer 기반 세션 resume
+### DORA Elite
 
-제외:
+| 지표 | 값 | 수집 방식 |
+|------|---|----------|
+| Deployment Frequency | 30/주 | main 머지 PR 수 |
+| Lead Time | 0.9h | PR 첫 커밋 → 머지 |
+| Change Failure Rate | 28.6% | hotfix/revert 비율 |
+| MTTR | 0.0h | bug 이슈 open → close |
 
-- 공문서 작성
-- 웹/앱 제품화
+- **실시간 대시보드**: [Grafana Cloud](https://umyunsang.grafana.net/d/govon-dora/)
+- **주간 보고서**: [`metrics/reports/`](metrics/reports/)
 
-## 사용자 흐름
-
-1. 사용자가 `govon`을 실행하면 CLI가 로컬 daemon에 연결한다.
-2. 사용자가 자연어로 업무를 요청한다.
-3. `session_load` 노드가 기존 대화 컨텍스트를 복원한다.
-4. `agent` 노드(LLM + `bind_tools`)가 요청을 분석하여 도구 호출 또는 직접 답변을 결정한다.
-5. Tier 0 도구(검색/분석)만 호출되면 `ToolNode`가 즉시 병렬 실행하고 결과를 agent에 반환한다 (ReAct loop).
-6. Tier 1 도구(어댑터)가 포함되면 `approval_wait`에서 `interrupt()` — 사용자에게 승인/거절 UI를 보여준다.
-7. 승인 시 `ToolNode`가 실행하고 agent로 재진입, 거절 시 agent가 대안을 제시한다.
-8. agent가 충분한 정보를 모으면 최종 답변을 직접 작성한다 (tool_calls 없음 → `persist` → END).
-9. `persist` 노드가 대화 턴과 evidence를 DB에 저장하고 세션 ID를 반환한다.
+---
 
 ## 문서
 
-- 아키텍처 다이어그램: [TO-BE Architecture SVG](https://govon-org.github.io/GovOn/govon-tobe-architecture.svg)
-- ADR: [docs/adr/README.md](docs/adr/README.md)
-- PRD: [docs/prd.md](docs/prd.md)
-- WBS: [docs/wbs.md](docs/wbs.md)
-- 공식 문서: [docs/official](docs/official)
-- v3 아키텍처 아카이브: [docs/archive/v3-planner-era/](docs/archive/v3-planner-era/)
+| 문서 | 설명 |
+|------|------|
+| [사용자 가이드](docs/guide/user-guide.md) | 설치, CLI 사용법, 도구 설명 |
+| [운영 가이드](docs/guide/ops-guide.md) | 배포, 환경변수, 모니터링, 트러블슈팅 |
+| [데모 패키지](docs/demo/README.md) | 시연 시나리오 3종 + curl 재현 |
+| [프로젝트 회고](docs/retrospective.md) | v1→v4 진화, 기술적 도전, KPT |
+| [ADR](docs/adr/README.md) | Architecture Decision Records |
+| [PRD](docs/prd.md) | Product Requirements Document |
+| [WBS](docs/wbs.md) | Work Breakdown Structure |
+| [Docs Portal](https://govon-org.github.io/GovOn/) | GitHub Pages 통합 문서 |
 
-## GitHub 이슈 구조
+---
 
-- root roadmap: `#402`
-- roadmap의 하위: `workstream`
-- workstream의 하위: `task`
-- 세부 작업 내용은 `task` 이슈 본문에만 작성한다.
+## 프로젝트 구조
 
-## DORA Metrics
+```
+src/
+├── cli/                    # CLI 인터페이스
+│   ├── shell.py            # 인터랙티브 REPL
+│   ├── approval_ui.py      # Rich Panel 승인 UI
+│   ├── daemon.py           # 백그라운드 데몬
+│   └── renderer.py         # 출력 렌더러
+└── inference/              # 추론 엔진
+    ├── api_server.py       # FastAPI 서버
+    ├── session_context.py  # SQLite 세션 저장소
+    └── graph/              # LangGraph 코어
+        ├── builder.py      # v4/v3 그래프 빌더
+        ├── nodes.py        # 노드 팩토리 (5개 노드)
+        ├── state.py        # GovOnGraphState
+        ├── capabilities/   # 도구 Capability 클래스
+        └── tools/          # StructuredTool 팩토리
+```
 
-<!-- latest-dora.png는 워크플로우 첫 실행 후 자동 생성됩니다. 실시간 대시보드는 아래 Grafana 링크를 이용하세요. -->
+---
 
-| 지표 | 설명 | 수집 방식 |
-|------|------|----------|
-| Deployment Frequency | main 머지 PR 수 / 주 | GitHub API |
-| Lead Time | PR 첫 커밋 → 머지 평균 시간 | GitHub API |
-| Change Failure Rate | hotfix/revert 커밋 비율 | git log |
-| MTTR | bug 이슈 open → close 평균 시간 | GitHub API |
+## API 엔드포인트
 
-- **실시간 대시보드**: [Grafana Cloud](https://umyunsang.grafana.net/d/govon-dora/govon-dora-metrics-dashboard?orgId=1&from=now-7d&to=now&timezone=Asia%2FSeoul)
-- **주간 보고서**: [`metrics/reports/`](metrics/reports/)
-- **수집 워크플로우**: [`.github/workflows/dora-metrics.yml`](.github/workflows/dora-metrics.yml)
+| 메서드 | 엔드포인트 | 용도 |
+|--------|-----------|------|
+| GET | `/health` | 헬스체크 (인증 불필요) |
+| POST | `/v2/agent/stream` | v4 에이전트 스트리밍 (승인 흐름) |
+| POST | `/v2/agent/run` | v4 에이전트 동기 실행 |
+| POST | `/v2/agent/approve` | 도구 실행 승인/거절 |
+| POST | `/v2/agent/cancel` | 실행 취소 |
+| POST | `/v3/agent/stream` | v3 에이전트 SSE 스트리밍 |
+| POST | `/v3/agent/run` | v3 에이전트 동기 실행 |
+
+---
+
+## 리소스
+
+| 자원 | 링크 |
+|------|------|
+| HF Space (Runtime) | [umyunsang/govon-runtime](https://huggingface.co/spaces/umyunsang/govon-runtime) |
+| Civil Adapter | [umyunsang/govon-civil-adapter](https://huggingface.co/umyunsang/govon-civil-adapter) |
+| Legal Adapter | [siwo/govon-legal-adapter](https://huggingface.co/siwo/govon-legal-adapter) |
+| Civil Dataset | [umyunsang/govon-civil-response-data](https://huggingface.co/datasets/umyunsang/govon-civil-response-data) |
+| Legal Dataset | [umyunsang/govon-legal-response-data](https://huggingface.co/datasets/umyunsang/govon-legal-response-data) |
+| DORA Dashboard | [Grafana Cloud](https://umyunsang.grafana.net/d/govon-dora/) |
+| Public Roadmap | [#402](https://github.com/GovOn-Org/GovOn/issues/402) |
+
+---
 
 ## 개발 규칙
 
-기여 전 아래 문서를 먼저 본다.
+- 브랜치 전략: GitHub Flow (`main` 단일 브랜치)
+- 모든 변경은 PR을 통해 진행
+- CI: lint(Black+isort+flake8) + test(pytest 3.10/3.11/3.12) + security + runtime-contract
+- 기여 가이드: [CONTRIBUTING.md](CONTRIBUTING.md)
 
-- [CONTRIBUTING.md](CONTRIBUTING.md)
-- [site/docs/guide/development.md](site/docs/guide/development.md)
+---
 
-브랜치는 GitHub Flow를 사용하고, 기본 대상 브랜치는 항상 `main`이다.
+## GitHub 이슈 구조
+
+```
+#402 Public Roadmap (root)
+ ├── Workstream (🧭 라벨)
+ │    └── Task ([Task X.Y] 접두사)
+ └── Workstream
+      └── Task
+```
+
+---
+
+## 라이선스
+
+이 프로젝트는 동아대학교 현장미러형 산학연계 프로젝트의 산출물입니다.

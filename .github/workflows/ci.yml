@@ -9,6 +9,9 @@ on:
 
 permissions:
   contents: read
+  security-events: write
+  issues: write
+  checks: write
 
 concurrency:
   group: pr-gate-${{ github.ref }}

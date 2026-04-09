@@ -75,24 +75,24 @@ graph TB
 
 ```bash
 # 1. 환경변수 파일 준비
-cp .env.example .env
+cp deploy/env/.env.example .env
 # .env 에서 API_KEY, MODEL_PATH, ADAPTER_PATHS 등 수정
 
 # 2. 빌드 및 실행
-docker compose up -d --build
+docker compose -f deploy/compose/docker-compose.yml up -d --build
 
 # 3. 로그 확인
-docker compose logs -f govon-backend
+docker compose -f deploy/compose/docker-compose.yml logs -f govon-backend
 
 # 4. 헬스체크
 curl http://localhost:8000/health
 ```
 
-`docker-compose.yml`은 단일 서비스(`govon-backend`)를 정의한다.
+`deploy/compose/docker-compose.yml`은 단일 서비스(`govon-backend`)를 정의한다.
 
 | 항목 | 값 |
 |------|-----|
-| 이미지 | `Dockerfile` 기반 빌드 |
+| 이미지 | `deploy/docker/Dockerfile` 기반 빌드 |
 | 외부 포트 | `${HOST_PORT:-8000}` |
 | GPU | NVIDIA 전체 GPU 할당 |
 | 재시작 정책 | `unless-stopped` |
@@ -109,19 +109,19 @@ curl http://localhost:8000/health
 | `./logs` | `/var/log/govon` | 서버 로그 |
 | `./.cache` | `/app/.cache` | HuggingFace 캐시 |
 
-### 프로덕션 배포 (docker-compose.prod.yml)
+### 프로덕션 배포 (deploy/compose/docker-compose.prod.yml)
 
 프로덕션 환경에서는 Blue/Green 배포 전략을 사용한다.
 
 ```bash
 # Blue 배포 시작
-docker compose -f docker-compose.prod.yml --profile blue up -d
+docker compose -f deploy/compose/docker-compose.prod.yml --profile blue up -d
 
 # Green 배포 (새 버전)
-docker compose -f docker-compose.prod.yml --profile green up -d
+docker compose -f deploy/compose/docker-compose.prod.yml --profile green up -d
 
 # Nginx 라우터 시작
-docker compose -f docker-compose.prod.yml --profile router up -d
+docker compose -f deploy/compose/docker-compose.prod.yml --profile router up -d
 ```
 
 ```mermaid
@@ -141,7 +141,7 @@ graph LR
 
 ### Dockerfile 구조
 
-`Dockerfile.hfspace`(HF Space/프로덕션 통합)의 빌드 순서:
+`deploy/docker/Dockerfile.hfspace`(HF Space/프로덕션 통합)의 빌드 순서:
 
 1. **베이스 이미지**: `nvidia/cuda:12.6.3-runtime-ubuntu22.04`
 2. **Python 의존성**: `uv`(Astral)를 사용해 빌드. torch CUDA 12.6 → autoawq → 나머지 순서로 설치
@@ -162,7 +162,7 @@ graph LR
 
 | 트리거 | 조건 |
 |--------|------|
-| Push | `main` 브랜치, `Dockerfile.hfspace`, `src/**`, `requirements.txt` 변경 시 |
+| Push | `main` 브랜치, `deploy/docker/Dockerfile.hfspace`, `src/**`, `requirements.txt` 변경 시 |
 | 수동 | `workflow_dispatch` (하드웨어 선택 가능) |
 
 **워크플로우 단계**:
@@ -193,7 +193,7 @@ git clone https://huggingface.co/spaces/umyunsang/govon-runtime /tmp/hfspace
 cd /tmp/hfspace
 
 # 2. Dockerfile 및 소스 복사
-cp /path/to/GovOn/Dockerfile.hfspace Dockerfile
+cp /path/to/GovOn/deploy/docker/Dockerfile.hfspace Dockerfile
 cp /path/to/GovOn/requirements.txt .
 rsync -a --delete /path/to/GovOn/src/ src/
 
@@ -213,7 +213,7 @@ GOVON_RUNTIME_URL=https://umyunsang-govon-runtime.hf.space \
 
 ## 환경변수 레퍼런스
 
-`.env.example` 기반 전체 환경변수 목록이다.
+`deploy/env/.env.example` 기반 전체 환경변수 목록이다.
 
 ### 서버 설정
 
@@ -436,7 +436,7 @@ curl http://localhost:8000/health
 
 ### Docker 헬스체크
 
-`docker-compose.yml`에 정의된 헬스체크가 30초 간격으로 실행된다. Docker가 unhealthy 상태를 감지하면 `restart: unless-stopped` 정책에 따라 컨테이너를 재시작한다.
+`deploy/compose/docker-compose.yml`에 정의된 헬스체크가 30초 간격으로 실행된다. Docker가 unhealthy 상태를 감지하면 `restart: unless-stopped` 정책에 따라 컨테이너를 재시작한다.
 
 ```bash
 # Docker 헬스 상태 확인
@@ -466,7 +466,7 @@ docker compose logs -f govon-backend
 docker exec govon-backend ls /var/log/govon/
 ```
 
-프로덕션 환경(`docker-compose.prod.yml`)에서는 JSON 파일 로그 드라이버를 사용한다 (최대 50MB x 5개 파일).
+프로덕션 환경(`deploy/compose/docker-compose.prod.yml`)에서는 JSON 파일 로그 드라이버를 사용한다 (최대 50MB x 5개 파일).
 
 ---
 
@@ -563,7 +563,7 @@ docker exec govon-backend ls /var/log/govon/
 
 **해결**:
 1. HF Space 로그 확인 (huggingface.co/spaces/umyunsang/govon-runtime > Logs)
-2. `Dockerfile.hfspace` 빌드 오류 확인
+2. `deploy/docker/Dockerfile.hfspace` 빌드 오류 확인
 3. Space 하드웨어가 `a100-large`인지 확인 (32B 모델에 필요)
 4. Space를 수동으로 Restart (Settings > Factory Reboot)
 

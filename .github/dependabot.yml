@@ -31,7 +31,7 @@ updates:
 
   # Docker base image
   - package-ecosystem: "docker"
-    directory: "/"
+    directory: "/deploy/docker"
     schedule:
       interval: "weekly"
       day: "monday"

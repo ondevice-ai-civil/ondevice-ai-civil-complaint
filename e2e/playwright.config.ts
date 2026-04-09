@@ -8,7 +8,7 @@ import { defineConfig } from '@playwright/test';
  * 향후 /api/v2/* session runtime 및 shell transcript 시나리오를 같은 디렉터리에서 확장한다.
  */
 export default defineConfig({
-  testDir: './e2e',
+  testDir: '.',
   timeout: 30000,
   expect: {
     timeout: 5000,

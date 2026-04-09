@@ -64,7 +64,7 @@
 ## 6. 보안
 
 - [ ] Dependabot 보안 알림 0건 (또는 알려진 이슈로 문서화)
-- [ ] `.env.example`의 `API_KEY`가 placeholder 상태 (실제 키 노출 없음)
+- [ ] `deploy/env/.env.example`의 `API_KEY`가 placeholder 상태 (실제 키 노출 없음)
 - [ ] GitHub Secrets 모두 설정 완료 (HF_TOKEN, PYPI_TOKEN 등)
 - [ ] `ALLOW_NO_AUTH=false` (프로덕션 환경)
 - [ ] CORS 설정 적절함

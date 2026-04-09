@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 IMAGE_FILE="${PROJECT_DIR}/govon-image.tar.gz"
-ENV_TEMPLATE="${PROJECT_DIR}/.env.airgap.example"
+ENV_TEMPLATE="${PROJECT_DIR}/deploy/env/.env.airgap.example"
 ENV_FILE="${PROJECT_DIR}/.env"
 API_KEY_PLACEHOLDER="CHANGE_ME_TO_SECURE_RANDOM_KEY"
 BM25_INDEX_HMAC_KEY_PLACEHOLDER="CHANGE_ME_TO_SECURE_HMAC_KEY"
@@ -72,7 +72,7 @@ echo "[OK] 이미지 로드 완료"
 # 5. 환경변수 템플릿 준비
 if [ ! -f "$ENV_FILE" ] && [ -f "$ENV_TEMPLATE" ]; then
     cp "$ENV_TEMPLATE" "$ENV_FILE"
-    echo "[OK] .env 파일을 .env.airgap.example 기준으로 생성했습니다."
+    echo "[OK] .env 파일을 deploy/env/.env.airgap.example 기준으로 생성했습니다."
     echo "     API_KEY, BM25_INDEX_HMAC_KEY, CORS_ORIGINS 등을 수정한 뒤 재실행하세요."
 fi
 
@@ -103,7 +103,7 @@ echo "[OK] 볼륨 디렉토리 준비 완료"
 
 # 7. 컨테이너 실행
 echo "컨테이너 시작 중..."
-docker compose --env-file "${ENV_FILE}" -f "${PROJECT_DIR}/docker-compose.offline.yml" up -d
+docker compose --env-file "${ENV_FILE}" -f "${PROJECT_DIR}/deploy/compose/docker-compose.offline.yml" up -d
 echo "[OK] 컨테이너 시작됨"
 
 # 8. 헬스체크 대기
@@ -124,5 +124,5 @@ done
 
 echo ""
 echo "[ERROR] 서버 시작 실패 (120초 타임아웃)"
-echo "로그 확인: docker compose --env-file ${ENV_FILE} -f ${PROJECT_DIR}/docker-compose.offline.yml logs"
+echo "로그 확인: docker compose --env-file ${ENV_FILE} -f ${PROJECT_DIR}/deploy/compose/docker-compose.offline.yml logs"
 exit 1

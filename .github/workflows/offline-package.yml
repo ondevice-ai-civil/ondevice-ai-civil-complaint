@@ -38,10 +38,10 @@ jobs:
         run: |
           tar czf govon-offline-package.tar.gz \
             govon-image.tar.gz \
-            .env.airgap.example \
+            deploy/env/.env.airgap.example \
             scripts/offline-deploy.sh \
             scripts/smoke-test.sh \
-            docker-compose.offline.yml
+            deploy/compose/docker-compose.offline.yml
 
       - name: Upload to release
         if: github.event_name == 'release'

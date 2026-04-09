@@ -36,10 +36,10 @@ test:
 	pytest --cov=src --cov-report=term-missing
 
 docker-build:
-	docker build -t govon-backend .
+	docker build -f deploy/docker/Dockerfile -t govon-backend .
 
 docker-run:
-	docker compose up -d
+	docker compose -f deploy/compose/docker-compose.yml up -d
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +

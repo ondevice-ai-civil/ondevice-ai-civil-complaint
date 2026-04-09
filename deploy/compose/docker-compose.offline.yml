@@ -1,27 +1,28 @@
+# 볼륨 마운트 안내:
+# ./models → /app/models (faiss_index, bm25_index 등 모든 모델 데이터 포함)
+# ./data   → /app/data   (학습/테스트 데이터)
+
 services:
   govon-backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: ${GOVON_IMAGE:-govon-backend:latest}
+    image: ${GOVON_IMAGE:-ghcr.io/govon-org/govon:latest}
     container_name: ${GOVON_CONTAINER_NAME:-govon-backend}
     ports:
       - "${HOST_PORT:-8000}:8000"
     volumes:
-      - ./models:/app/models
-      - ./data:/app/data
-      - ./agents:/app/agents
-      - ./configs:/app/configs
-      - ./logs:/var/log/govon
-      - ./.cache:/app/.cache
+      - ../../models:/app/models
+      - ../../data:/app/data
+      - ../../agents:/app/agents
+      - ../../configs:/app/configs
+      - ../../logs:/var/log/govon
+      - ../../.cache:/app/.cache
     environment:
-      SERVING_PROFILE: ${SERVING_PROFILE:-container}
+      SERVING_PROFILE: ${SERVING_PROFILE:-airgap}
       HOST: 0.0.0.0
       PORT: 8000
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       RELOAD: "false"
-      API_KEY: ${API_KEY:-}
-      MODEL_PATH: ${MODEL_PATH:-LGAI-EXAONE/EXAONE-4.0-32B-AWQ}
+      API_KEY: ${API_KEY:?Set API_KEY in .env before starting offline runtime}
+      MODEL_PATH: ${MODEL_PATH:-/app/models/EXAONE-4.0-32B-AWQ}
       TRUST_REMOTE_CODE: ${TRUST_REMOTE_CODE:-true}
       MODEL_DTYPE: ${MODEL_DTYPE:-half}
       ENFORCE_EAGER: ${ENFORCE_EAGER:-true}
@@ -35,11 +36,10 @@ services:
       GPU_UTILIZATION: ${GPU_UTILIZATION:-0.8}
       MAX_MODEL_LEN: ${MAX_MODEL_LEN:-8192}
       SKIP_MODEL_LOAD: ${SKIP_MODEL_LOAD:-false}
-      ADAPTER_PATHS: ${ADAPTER_PATHS:-}
       RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
-      REQUEST_TIMEOUT_SEC: ${REQUEST_TIMEOUT_SEC:-60}
-      CORS_ORIGINS: ${CORS_ORIGINS:-}
-      BM25_INDEX_HMAC_KEY: ${BM25_INDEX_HMAC_KEY:-}
+      REQUEST_TIMEOUT_SEC: ${REQUEST_TIMEOUT_SEC:-90}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://10.0.0.100:3000}
+      BM25_INDEX_HMAC_KEY: ${BM25_INDEX_HMAC_KEY:?Set BM25_INDEX_HMAC_KEY in .env before starting offline runtime}
       DATA_GO_KR_API_KEY: ${DATA_GO_KR_API_KEY:-}
       USE_RAG_PIPELINE: ${USE_RAG_PIPELINE:-true}
       MODEL_VERSION: ${MODEL_VERSION:-v2_lora}
@@ -47,6 +47,9 @@ services:
       LANGGRAPH_MODEL_API_KEY: ${LANGGRAPH_MODEL_API_KEY:-EMPTY}
       HEALTH_INTERVAL_SEC: ${HEALTH_INTERVAL_SEC:-30}
       HEALTH_TIMEOUT_SEC: ${HEALTH_TIMEOUT_SEC:-10}
+      HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-1}
+      TRANSFORMERS_OFFLINE: ${TRANSFORMERS_OFFLINE:-1}
+      HF_DATASETS_OFFLINE: ${HF_DATASETS_OFFLINE:-1}
     deploy:
       resources:
         reservations:

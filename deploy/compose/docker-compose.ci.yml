@@ -1,19 +1,19 @@
 services:
   govon-backend:
     build:
-      context: .
-      dockerfile: Dockerfile.ci
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.ci
     image: govon-backend:ci
     container_name: govon-backend-ci
     ports:
       - "18000:8000"
     volumes:
-      - ./models:/app/models
-      - ./data:/app/data
-      - ./agents:/app/agents
-      - ./configs:/app/configs
-      - ./logs:/var/log/govon
-      - ./.cache:/app/.cache
+      - ../../models:/app/models
+      - ../../data:/app/data
+      - ../../agents:/app/agents
+      - ../../configs:/app/configs
+      - ../../logs:/var/log/govon
+      - ../../.cache:/app/.cache
     environment:
       SERVING_PROFILE: container
       HOST: 0.0.0.0

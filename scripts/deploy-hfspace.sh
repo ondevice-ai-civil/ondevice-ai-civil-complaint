@@ -27,7 +27,7 @@ api = HfApi(token=os.environ['HF_TOKEN'])
 space_repo = os.environ['SPACE_REPO']
 
 # Dockerfile
-api.upload_file(path_or_fileobj='Dockerfile.hfspace', path_in_repo='Dockerfile',
+api.upload_file(path_or_fileobj='deploy/docker/Dockerfile.hfspace', path_in_repo='Dockerfile',
     repo_id=space_repo, repo_type='space')
 
 # requirements.txt

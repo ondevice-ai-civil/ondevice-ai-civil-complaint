@@ -44,15 +44,12 @@ jobs:
             runtime_contract:
               - 'src/inference/**'
               - 'e2e/**'
-              - 'playwright.config.ts'
-              - 'package.json'
-              - 'package-lock.json'
               - '.github/actions/**'
               - '.github/workflows/ci.yml'
             packaging:
-              - 'Dockerfile'
+              - 'deploy/docker/Dockerfile'
               - '.dockerignore'
-              - 'docker-compose*.yml'
+              - 'deploy/compose/docker-compose*.yml'
               - 'pyproject.toml'
               - 'uv.lock'
               - '.github/workflows/docker-publish.yml'
@@ -181,18 +178,21 @@ jobs:
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: playwright-${{ runner.os }}-${{ hashFiles('e2e/package-lock.json') }}
 
       - name: Install Node dependencies
         run: npm ci
+        working-directory: e2e
 
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
+        working-directory: e2e
 
       - name: Install Playwright deps (cache hit)
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
+        working-directory: e2e
 
       - name: Run shell-first runtime contract tests
         env:
@@ -229,7 +229,7 @@ jobs:
           done
 
           curl -fsS http://127.0.0.1:8000/health > /dev/null
-          npx playwright test
+          cd e2e && npx playwright test
 
       - name: Upload runtime contract artifacts
         if: ${{ !cancelled() }}

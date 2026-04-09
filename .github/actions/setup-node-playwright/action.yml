@@ -17,7 +17,7 @@ inputs:
   working-directory:
     description: 'Directory to run npm ci in (must contain package.json and package-lock.json)'
     required: false
-    default: '.'
+    default: 'e2e'
 runs:
   using: 'composite'
   steps:
@@ -35,7 +35,7 @@ runs:
       id: playwright-cache
       with:
         path: ~/.cache/ms-playwright
-        key: playwright-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
+        key: playwright-${{ runner.os }}-${{ hashFiles('e2e/package-lock.json') }}
         restore-keys: |
           playwright-${{ runner.os }}-
     - name: Install Playwright browsers

@@ -28,7 +28,6 @@ from src.cli.approval_ui import (
     _normalize_approval_request,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -187,9 +186,7 @@ def test_normalize_approval_request_empty_dict():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(
-    not approval_ui._RICH_AVAILABLE, reason="rich 미설치"
-)
+@pytest.mark.skipif(not approval_ui._RICH_AVAILABLE, reason="rich 미설치")
 def test_build_choice_text_selected():
     """selected=True이면 ● bullet과 bold 스타일이 적용된다."""
     text = approval_ui._build_choice_text("승인", selected=True, style="green")
@@ -198,9 +195,7 @@ def test_build_choice_text_selected():
     assert "bold" in text.style
 
 
-@pytest.mark.skipif(
-    not approval_ui._RICH_AVAILABLE, reason="rich 미설치"
-)
+@pytest.mark.skipif(not approval_ui._RICH_AVAILABLE, reason="rich 미설치")
 def test_build_choice_text_not_selected():
     """selected=False이면 ○ bullet과 dim 스타일이 적용된다."""
     text = approval_ui._build_choice_text("거절", selected=False, style="red")

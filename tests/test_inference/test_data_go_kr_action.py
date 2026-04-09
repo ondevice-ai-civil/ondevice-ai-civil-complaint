@@ -1,6 +1,5 @@
 """민원분석 API action 및 api_lookup 중심 테스트."""
 
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -108,5 +107,3 @@ class TestMinwonAnalysisAction:
         )
 
         assert query == prepared
-
-

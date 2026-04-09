@@ -35,7 +35,6 @@ from .session_context import SessionContext, SessionStore
 SKIP_MODEL_LOAD = os.getenv("SKIP_MODEL_LOAD", "false").lower() in ("true", "1", "yes")
 
 
-
 try:
     from slowapi import Limiter
     from slowapi.middleware import SlowAPIMiddleware
@@ -102,7 +101,6 @@ class _VLLMOutputItem:
         self.text = text
         self.finish_reason = finish_reason
         self.token_ids = token_ids
-
 
 
 class _VLLMHttpResult:

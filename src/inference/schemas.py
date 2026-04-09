@@ -36,7 +36,6 @@ class GenerateCivilResponseResponse(BaseGenerateResponse):
     retrieved_cases: Optional[List[RetrievedCase]] = None
 
 
-
 class AgentRunRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=10000)
     session_id: Optional[str] = None

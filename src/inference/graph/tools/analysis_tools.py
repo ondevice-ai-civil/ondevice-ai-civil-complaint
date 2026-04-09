@@ -36,7 +36,9 @@ class StatsLookupInput(BaseModel):
     date_from: Optional[str] = Field(
         None, description="Start date (YYYYMMDD format). Example: '20260101'"
     )
-    date_to: Optional[str] = Field(None, description="End date (YYYYMMDD format). Example: '20260408'")
+    date_to: Optional[str] = Field(
+        None, description="End date (YYYYMMDD format). Example: '20260408'"
+    )
     period: Optional[str] = Field(
         None, description="Aggregation period (DAILY, WEEKLY, MONTHLY, YEARLY)"
     )
@@ -49,7 +51,9 @@ class KeywordAnalyzerInput(BaseModel):
     date_from: Optional[str] = Field(
         None, description="Start date (YYYYMMDD format). Example: '20260101'"
     )
-    date_to: Optional[str] = Field(None, description="End date (YYYYMMDD format). Example: '20260408'")
+    date_to: Optional[str] = Field(
+        None, description="End date (YYYYMMDD format). Example: '20260408'"
+    )
     result_count: int = Field(20, description="Number of keywords to return", ge=1)
 
 
@@ -60,7 +64,9 @@ class DemographicsLookupInput(BaseModel):
     date_from: Optional[str] = Field(
         None, description="Start date (YYYYMMDD format). Example: '20260101'"
     )
-    date_to: Optional[str] = Field(None, description="End date (YYYYMMDD format). Example: '20260408'")
+    date_to: Optional[str] = Field(
+        None, description="End date (YYYYMMDD format). Example: '20260408'"
+    )
 
 
 # ---------------------------------------------------------------------------

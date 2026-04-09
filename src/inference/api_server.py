@@ -839,7 +839,9 @@ class vLLMEngineManager:
         # 시스템 프롬프트 ~500 + 도구 스키마 ~1000 + 안전 마진 ~500 = 2000 오버헤드
         _max_model_len = runtime_config.model.max_model_len
         _llm_max_tokens = min(2048, _max_model_len - 2000)
-        logger.info(f"[_init_graph] max_model_len={_max_model_len}, llm_max_tokens={_llm_max_tokens}")
+        logger.info(
+            f"[_init_graph] max_model_len={_max_model_len}, llm_max_tokens={_llm_max_tokens}"
+        )
 
         # LLM 인스턴스 구성
         if SKIP_MODEL_LOAD:
@@ -1763,9 +1765,7 @@ async def v3_agent_stream(
     try:
         existing_state = await manager.graph_v3.aget_state(config)
         has_history = (
-            existing_state
-            and existing_state.values
-            and existing_state.values.get("messages")
+            existing_state and existing_state.values and existing_state.values.get("messages")
         )
     except Exception as exc:
         logger.warning(f"[v3/agent/stream] aget_state 실패, 신규 세션으로 진행: {exc}")
@@ -1922,9 +1922,7 @@ async def v3_agent_run(
         try:
             existing_state = await manager.graph_v3.aget_state(config)
             has_history = (
-                existing_state
-                and existing_state.values
-                and existing_state.values.get("messages")
+                existing_state and existing_state.values and existing_state.values.get("messages")
             )
         except Exception as exc:
             logger.warning(f"[v3/agent/run] aget_state 실패, 신규 세션으로 진행: {exc}")

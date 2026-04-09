@@ -27,7 +27,6 @@ from fastapi.testclient import TestClient
 
 from src.inference.api_server import app, manager
 
-
 # ---------------------------------------------------------------------------
 # 헬퍼: FakeGraphState
 # ---------------------------------------------------------------------------

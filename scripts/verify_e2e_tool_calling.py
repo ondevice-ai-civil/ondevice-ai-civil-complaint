@@ -155,7 +155,7 @@ try:
                     line = line.strip()
                     if not line.startswith("data:"):
                         continue
-                    payload = line[len("data:"):].strip()
+                    payload = line[len("data:") :].strip()
                     if not payload:
                         continue
                     try:
@@ -223,7 +223,7 @@ except ImportError:
                     line = raw_line.decode("utf-8", errors="replace").strip()
                     if not line.startswith("data:"):
                         continue
-                    payload = line[len("data:"):].strip()
+                    payload = line[len("data:") :].strip()
                     if not payload:
                         continue
                     try:
@@ -348,7 +348,9 @@ async def _v2_stream_and_approve(
 
     # planned_tools 수집 (커버리지 추적용)
     for ev in events:
-        planned = ev.get("planned_tools") or ev.get("approval_request", {}).get("planned_tools") or []
+        planned = (
+            ev.get("planned_tools") or ev.get("approval_request", {}).get("planned_tools") or []
+        )
         for tool_name in planned:
             if isinstance(tool_name, str) and tool_name:
                 _observed_tools.add(tool_name)
@@ -529,8 +531,14 @@ async def scenario1_health_profile() -> dict:
                     await asyncio.sleep(backoffs[attempt_idx])
                     continue
                 return _record(
-                    1, "Health & Profile", 1, "failed", elapsed, attempts,
-                    error=last_error, detail={"body": body},
+                    1,
+                    "Health & Profile",
+                    1,
+                    "failed",
+                    elapsed,
+                    attempts,
+                    error=last_error,
+                    detail={"body": body},
                 )
 
             assertions = ["HTTP 200: OK"]
@@ -550,11 +558,20 @@ async def scenario1_health_profile() -> dict:
                 warnings.append(f"agents_loaded={body.get('agents_loaded')} (not True)")
 
             return _record(
-                1, "Health & Profile", 1, "passed", elapsed, attempts,
-                assertions=assertions, warnings=warnings,
-                detail={"status": body.get("status"), "profile": body.get("profile"),
-                        "vllm_connected": body.get("vllm_connected"),
-                        "agents_loaded": body.get("agents_loaded")},
+                1,
+                "Health & Profile",
+                1,
+                "passed",
+                elapsed,
+                attempts,
+                assertions=assertions,
+                warnings=warnings,
+                detail={
+                    "status": body.get("status"),
+                    "profile": body.get("profile"),
+                    "vllm_connected": body.get("vllm_connected"),
+                    "agents_loaded": body.get("agents_loaded"),
+                },
             )
 
         except Exception as exc:
@@ -582,8 +599,13 @@ async def scenario2_base_model_generation() -> dict:
 
         if status_code != 200:
             return _record(
-                2, "Base Model Generation", 1, "failed", elapsed,
-                error=f"HTTP {status_code}", detail={"resp": resp},
+                2,
+                "Base Model Generation",
+                1,
+                "failed",
+                elapsed,
+                error=f"HTTP {status_code}",
+                detail={"resp": resp},
             )
 
         assertions = ["HTTP 200: OK"]
@@ -591,18 +613,39 @@ async def scenario2_base_model_generation() -> dict:
         if choices:
             assertions.append("choices 배열 존재")
         else:
-            return _record(2, "Base Model Generation", 1, "failed", elapsed,
-                           error="choices 없음", detail={"resp": resp})
+            return _record(
+                2,
+                "Base Model Generation",
+                1,
+                "failed",
+                elapsed,
+                error="choices 없음",
+                detail={"resp": resp},
+            )
 
         content = choices[0].get("message", {}).get("content", "") or ""
         if len(content) > 0:
             assertions.append(f"content 비어있지 않음 (len={len(content)})")
         else:
-            return _record(2, "Base Model Generation", 1, "failed", elapsed,
-                           error="content 비어있음", detail={"resp": resp})
+            return _record(
+                2,
+                "Base Model Generation",
+                1,
+                "failed",
+                elapsed,
+                error="content 비어있음",
+                detail={"resp": resp},
+            )
 
-        return _record(2, "Base Model Generation", 1, "passed", elapsed,
-                       assertions=assertions, detail={"content_len": len(content)})
+        return _record(
+            2,
+            "Base Model Generation",
+            1,
+            "passed",
+            elapsed,
+            assertions=assertions,
+            detail={"content_len": len(content)},
+        )
 
     except Exception as exc:
         elapsed = time.monotonic() - t0
@@ -617,17 +660,23 @@ async def scenario3_vllm_connection() -> dict:
         elapsed = time.monotonic() - t0
 
         if status_code != 200:
-            return _record(3, "vLLM Connection", 1, "failed", elapsed,
-                           error=f"HTTP {status_code}")
+            return _record(3, "vLLM Connection", 1, "failed", elapsed, error=f"HTTP {status_code}")
 
         vllm_connected = body.get("vllm_connected")
         if vllm_connected is True:
-            return _record(3, "vLLM Connection", 1, "passed", elapsed,
-                           assertions=["vllm_connected=true"])
+            return _record(
+                3, "vLLM Connection", 1, "passed", elapsed, assertions=["vllm_connected=true"]
+            )
         else:
-            return _record(3, "vLLM Connection", 1, "failed", elapsed,
-                           error=f"vllm_connected={vllm_connected}",
-                           detail={"body": body})
+            return _record(
+                3,
+                "vLLM Connection",
+                1,
+                "failed",
+                elapsed,
+                error=f"vllm_connected={vllm_connected}",
+                detail={"body": body},
+            )
 
     except Exception as exc:
         elapsed = time.monotonic() - t0
@@ -685,10 +734,21 @@ async def scenario4_v2_direct_answer() -> dict:
         status = "failed"
         error = err or "응답 없음"
 
-    return _record(4, "v2 Direct Answer (no tool)", 2, status, elapsed,
-                   assertions=assertions, warnings=warnings, error=error,
-                   detail={"text_len": len(text) if text else 0,
-                           "event_count": len(events), "nodes": node_names})
+    return _record(
+        4,
+        "v2 Direct Answer (no tool)",
+        2,
+        status,
+        elapsed,
+        assertions=assertions,
+        warnings=warnings,
+        error=error,
+        detail={
+            "text_len": len(text) if text else 0,
+            "event_count": len(events),
+            "nodes": node_names,
+        },
+    )
 
 
 async def scenario5_v2_tool_execution_approval() -> dict:
@@ -738,10 +798,21 @@ async def scenario5_v2_tool_execution_approval() -> dict:
         status = "failed"
         error = err or "응답 없음"
 
-    return _record(5, "v2 Tool Execution with Approval", 2, status, elapsed,
-                   assertions=assertions, warnings=warnings, error=error,
-                   detail={"text_len": len(text) if text else 0,
-                           "nodes": node_names, "approval_found": approval_found})
+    return _record(
+        5,
+        "v2 Tool Execution with Approval",
+        2,
+        status,
+        elapsed,
+        assertions=assertions,
+        warnings=warnings,
+        error=error,
+        detail={
+            "text_len": len(text) if text else 0,
+            "nodes": node_names,
+            "approval_found": approval_found,
+        },
+    )
 
 
 async def scenario6_v2_approval_rejection() -> dict:
@@ -796,9 +867,17 @@ async def scenario6_v2_approval_rejection() -> dict:
             status = "failed"
             error = err or "응답 없음"
 
-    return _record(6, "v2 Approval Rejection Flow", 2, status, elapsed,
-                   assertions=assertions, warnings=warnings, error=error,
-                   detail={"nodes": node_names, "approval_found": approval_found})
+    return _record(
+        6,
+        "v2 Approval Rejection Flow",
+        2,
+        status,
+        elapsed,
+        assertions=assertions,
+        warnings=warnings,
+        error=error,
+        detail={"nodes": node_names, "approval_found": approval_found},
+    )
 
 
 async def scenario7_v2_multi_turn_session() -> dict:
@@ -841,11 +920,22 @@ async def scenario7_v2_multi_turn_session() -> dict:
         status = "failed"
         error = f"1차: {err1 or 'OK'}, 2차: {err2 or 'OK'}"
 
-    return _record(7, "v2 Multi-turn Session", 2, status, elapsed,
-                   assertions=assertions, warnings=warnings, error=error,
-                   detail={"turn1_ok": ok1, "turn2_ok": ok2,
-                           "turn1_text_len": len(text1) if text1 else 0,
-                           "turn2_text_len": len(text2) if text2 else 0})
+    return _record(
+        7,
+        "v2 Multi-turn Session",
+        2,
+        status,
+        elapsed,
+        assertions=assertions,
+        warnings=warnings,
+        error=error,
+        detail={
+            "turn1_ok": ok1,
+            "turn2_ok": ok2,
+            "turn1_text_len": len(text1) if text1 else 0,
+            "turn2_text_len": len(text2) if text2 else 0,
+        },
+    )
 
 
 async def scenario8_v2_empty_query() -> dict:
@@ -857,14 +947,21 @@ async def scenario8_v2_empty_query() -> dict:
         elapsed = time.monotonic() - t0
 
         if status_code == 422:
-            return _record(8, "v2 Empty Query", 2, "passed", elapsed,
-                           assertions=["HTTP 422: validation error"])
+            return _record(
+                8, "v2 Empty Query", 2, "passed", elapsed, assertions=["HTTP 422: validation error"]
+            )
         else:
             # 일부 구현은 빈 쿼리를 다르게 처리할 수 있음
-            return _record(8, "v2 Empty Query", 2, "passed", elapsed,
-                           assertions=[f"HTTP {status_code}: 처리됨"],
-                           warnings=[f"422 예상이었으나 {status_code} 반환"],
-                           detail={"status_code": status_code})
+            return _record(
+                8,
+                "v2 Empty Query",
+                2,
+                "passed",
+                elapsed,
+                assertions=[f"HTTP {status_code}: 처리됨"],
+                warnings=[f"422 예상이었으나 {status_code} 반환"],
+                detail={"status_code": status_code},
+            )
 
     except Exception as exc:
         elapsed = time.monotonic() - t0
@@ -903,9 +1000,16 @@ async def scenario9_v2_concurrent_requests() -> dict:
         status = "failed"
         error = f"성공 {successes}/3: {errors}"
 
-    return _record(9, "v2 Concurrent Requests", 2, status, elapsed,
-                   assertions=assertions, error=error,
-                   detail={"successes": successes, "errors": errors})
+    return _record(
+        9,
+        "v2 Concurrent Requests",
+        2,
+        status,
+        elapsed,
+        assertions=assertions,
+        error=error,
+        detail={"successes": successes, "errors": errors},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -938,9 +1042,17 @@ async def scenario10_v3_direct_answer() -> dict:
             warnings.append(f"응답 짧음: {text[:80]!r}")
 
     status = "passed" if ok else "failed"
-    return _record(10, "v3 Direct Answer (no-tool)", 3, status, elapsed,
-                   assertions=assertions, warnings=warnings, error=err if not ok else None,
-                   detail={"text_len": len(text) if text else 0, "metadata": metadata})
+    return _record(
+        10,
+        "v3 Direct Answer (no-tool)",
+        3,
+        status,
+        elapsed,
+        assertions=assertions,
+        warnings=warnings,
+        error=err if not ok else None,
+        detail={"text_len": len(text) if text else 0, "metadata": metadata},
+    )
 
 
 async def scenario11_v3_tool_execution() -> dict:
@@ -972,10 +1084,21 @@ async def scenario11_v3_tool_execution() -> dict:
         warnings.append("도구 호출 미확인 (LLM이 직접 답변 선택 가능)")
 
     status = "passed" if ok else "failed"
-    return _record(11, "v3 Tool Execution", 3, status, elapsed,
-                   assertions=assertions, warnings=warnings, error=err if not ok else None,
-                   detail={"text_len": len(text) if text else 0,
-                           "total_tool_calls": total_tool_calls, "metadata": metadata})
+    return _record(
+        11,
+        "v3 Tool Execution",
+        3,
+        status,
+        elapsed,
+        assertions=assertions,
+        warnings=warnings,
+        error=err if not ok else None,
+        detail={
+            "text_len": len(text) if text else 0,
+            "total_tool_calls": total_tool_calls,
+            "metadata": metadata,
+        },
+    )
 
 
 async def scenario12_v3_multi_iteration() -> dict:
@@ -1009,9 +1132,17 @@ async def scenario12_v3_multi_iteration() -> dict:
         warnings.append(f"total_iterations 미확인: {total_iterations!r}")
 
     status = "passed" if ok else "failed"
-    return _record(12, "v3 Multi-iteration", 3, status, elapsed,
-                   assertions=assertions, warnings=warnings, error=err if not ok else None,
-                   detail={"metadata": metadata, "text_len": len(text) if text else 0})
+    return _record(
+        12,
+        "v3 Multi-iteration",
+        3,
+        status,
+        elapsed,
+        assertions=assertions,
+        warnings=warnings,
+        error=err if not ok else None,
+        detail={"metadata": metadata, "text_len": len(text) if text else 0},
+    )
 
 
 async def scenario13_v3_max_iterations_1() -> dict:
@@ -1041,9 +1172,17 @@ async def scenario13_v3_max_iterations_1() -> dict:
         warnings.append(f"total_iterations={total_iterations!r} (max=1인데 초과 가능)")
 
     status = "passed" if ok else "failed"
-    return _record(13, "v3 max_iterations=1", 3, status, elapsed,
-                   assertions=assertions, warnings=warnings, error=err if not ok else None,
-                   detail={"metadata": metadata})
+    return _record(
+        13,
+        "v3 max_iterations=1",
+        3,
+        status,
+        elapsed,
+        assertions=assertions,
+        warnings=warnings,
+        error=err if not ok else None,
+        detail={"metadata": metadata},
+    )
 
 
 async def scenario14_v3_max_iterations_validation() -> dict:
@@ -1069,10 +1208,16 @@ async def scenario14_v3_max_iterations_validation() -> dict:
     elapsed = time.monotonic() - t0
 
     if errors:
-        return _record(14, "v3 max_iterations Validation", 3, "failed", elapsed,
-                       assertions=assertions, error="; ".join(errors))
-    return _record(14, "v3 max_iterations Validation", 3, "passed", elapsed,
-                   assertions=assertions)
+        return _record(
+            14,
+            "v3 max_iterations Validation",
+            3,
+            "failed",
+            elapsed,
+            assertions=assertions,
+            error="; ".join(errors),
+        )
+    return _record(14, "v3 max_iterations Validation", 3, "passed", elapsed, assertions=assertions)
 
 
 async def scenario15_v3_sse_stream_no_tool() -> dict:
@@ -1105,9 +1250,17 @@ async def scenario15_v3_sse_stream_no_tool() -> dict:
             assertions.append("응답 길이 >30")
 
     status = "passed" if ok else "failed"
-    return _record(15, "v3 SSE Stream (no-tool)", 3, status, elapsed,
-                   assertions=assertions, warnings=warnings, error=err if not ok else None,
-                   detail={"event_types": event_types, "text_len": len(text) if text else 0})
+    return _record(
+        15,
+        "v3 SSE Stream (no-tool)",
+        3,
+        status,
+        elapsed,
+        assertions=assertions,
+        warnings=warnings,
+        error=err if not ok else None,
+        detail={"event_types": event_types, "text_len": len(text) if text else 0},
+    )
 
 
 async def scenario16_v3_sse_stream_with_tool() -> dict:
@@ -1144,10 +1297,21 @@ async def scenario16_v3_sse_stream_with_tool() -> dict:
         assertions.append(f"텍스트 수신 (len={len(text)})")
 
     status = "passed" if ok else "failed"
-    return _record(16, "v3 SSE Stream (with-tool)", 3, status, elapsed,
-                   assertions=assertions, warnings=warnings, error=err if not ok else None,
-                   detail={"event_count": len(events), "event_types": event_types,
-                           "total_tool_calls": total_tool_calls})
+    return _record(
+        16,
+        "v3 SSE Stream (with-tool)",
+        3,
+        status,
+        elapsed,
+        assertions=assertions,
+        warnings=warnings,
+        error=err if not ok else None,
+        detail={
+            "event_count": len(events),
+            "event_types": event_types,
+            "total_tool_calls": total_tool_calls,
+        },
+    )
 
 
 async def scenario17_v3_sse_run_complete_metadata() -> dict:
@@ -1187,9 +1351,17 @@ async def scenario17_v3_sse_run_complete_metadata() -> dict:
         warnings.append("run_complete 이벤트 없음")
 
     status = "passed" if ok else "failed"
-    return _record(17, "v3 SSE run_complete Metadata", 3, status, elapsed,
-                   assertions=assertions, warnings=warnings, error=err if not ok else None,
-                   detail={"metadata": metadata})
+    return _record(
+        17,
+        "v3 SSE run_complete Metadata",
+        3,
+        status,
+        elapsed,
+        assertions=assertions,
+        warnings=warnings,
+        error=err if not ok else None,
+        detail={"metadata": metadata},
+    )
 
 
 async def scenario18_v3_empty_query() -> dict:
@@ -1201,13 +1373,25 @@ async def scenario18_v3_empty_query() -> dict:
         elapsed = time.monotonic() - t0
 
         if status_code == 422:
-            return _record(18, "v3 Empty Query", 3, "passed", elapsed,
-                           assertions=["HTTP 422: validation error"])
+            return _record(
+                18,
+                "v3 Empty Query",
+                3,
+                "passed",
+                elapsed,
+                assertions=["HTTP 422: validation error"],
+            )
         else:
-            return _record(18, "v3 Empty Query", 3, "passed", elapsed,
-                           assertions=[f"HTTP {status_code}: 처리됨"],
-                           warnings=[f"422 예상이었으나 {status_code} 반환"],
-                           detail={"status_code": status_code})
+            return _record(
+                18,
+                "v3 Empty Query",
+                3,
+                "passed",
+                elapsed,
+                assertions=[f"HTTP {status_code}: 처리됨"],
+                warnings=[f"422 예상이었으나 {status_code} 반환"],
+                detail={"status_code": status_code},
+            )
 
     except Exception as exc:
         elapsed = time.monotonic() - t0
@@ -1245,9 +1429,16 @@ async def scenario19_v3_concurrent_requests() -> dict:
         status = "failed"
         error = f"성공 {successes}/2: {errs}"
 
-    return _record(19, "v3 Concurrent Requests", 3, status, elapsed,
-                   assertions=assertions, error=error,
-                   detail={"successes": successes, "errors": errs})
+    return _record(
+        19,
+        "v3 Concurrent Requests",
+        3,
+        status,
+        elapsed,
+        assertions=assertions,
+        error=error,
+        detail={"successes": successes, "errors": errs},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1301,11 +1492,22 @@ async def scenario20_v2_then_v3_same_query() -> dict:
         status = "failed"
         error = f"v2: {err_v2}, v3: {err_v3}"
 
-    return _record(20, "v2 then v3 Same Query", 4, status, elapsed,
-                   assertions=assertions, warnings=warnings, error=error,
-                   detail={"v2_ok": ok_v2, "v3_ok": ok_v3,
-                           "v2_text_len": len(text_v2) if text_v2 else 0,
-                           "v3_text_len": len(text_v3) if text_v3 else 0})
+    return _record(
+        20,
+        "v2 then v3 Same Query",
+        4,
+        status,
+        elapsed,
+        assertions=assertions,
+        warnings=warnings,
+        error=error,
+        detail={
+            "v2_ok": ok_v2,
+            "v3_ok": ok_v3,
+            "v2_text_len": len(text_v2) if text_v2 else 0,
+            "v3_text_len": len(text_v3) if text_v3 else 0,
+        },
+    )
 
 
 async def scenario21_v3_long_query() -> dict:
@@ -1340,10 +1542,22 @@ async def scenario21_v3_long_query() -> dict:
         assertions.append(f"텍스트 수신 (len={len(text)})")
 
     status = "passed" if ok else "failed"
-    return _record(21, "v3 Long Query Handling", 4, status, elapsed,
-                   assertions=assertions, warnings=warnings, error=err if not ok else None,
-                   detail={"query_len": len(long_query), "elapsed_s": round(elapsed, 2),
-                           "text_len": len(text) if text else 0, "metadata": metadata})
+    return _record(
+        21,
+        "v3 Long Query Handling",
+        4,
+        status,
+        elapsed,
+        assertions=assertions,
+        warnings=warnings,
+        error=err if not ok else None,
+        detail={
+            "query_len": len(long_query),
+            "elapsed_s": round(elapsed, 2),
+            "text_len": len(text) if text else 0,
+            "metadata": metadata,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1371,8 +1585,9 @@ async def scenario22_v3_multi_turn_context() -> dict:
     )
     if not ok1:
         elapsed = time.monotonic() - t0
-        return _record(22, "v3 Multi-turn Context", 5, "failed", elapsed,
-                       error=f"Turn 1 실패: {err1}")
+        return _record(
+            22, "v3 Multi-turn Context", 5, "failed", elapsed, error=f"Turn 1 실패: {err1}"
+        )
     turn1_msgs = meta1.get("total_messages", 0)
     assertions.append(f"Turn 1 성공 (len={len(text1)}, msgs={turn1_msgs})")
 
@@ -1386,8 +1601,15 @@ async def scenario22_v3_multi_turn_context() -> dict:
     elapsed = time.monotonic() - t0
 
     if not ok2:
-        return _record(22, "v3 Multi-turn Context", 5, "failed", elapsed,
-                       assertions=assertions, error=f"Turn 2 실패: {err2}")
+        return _record(
+            22,
+            "v3 Multi-turn Context",
+            5,
+            "failed",
+            elapsed,
+            assertions=assertions,
+            error=f"Turn 2 실패: {err2}",
+        )
     turn2_msgs = meta2.get("total_messages", 0)
     assertions.append(f"Turn 2 성공 (len={len(text2)}, msgs={turn2_msgs})")
 
@@ -1395,24 +1617,55 @@ async def scenario22_v3_multi_turn_context() -> dict:
     # → checkpointer가 이전 대화를 복원하여 새 HumanMessage가 누적되었음을 의미
     if turn2_msgs > turn1_msgs:
         assertions.append(f"컨텍스트 누적 확인: {turn1_msgs} → {turn2_msgs} messages")
-        return _record(22, "v3 Multi-turn Context", 5, "passed", elapsed,
-                       assertions=assertions,
-                       detail={"turn1_msgs": turn1_msgs, "turn2_msgs": turn2_msgs,
-                               "turn1_len": len(text1), "turn2_len": len(text2)})
+        return _record(
+            22,
+            "v3 Multi-turn Context",
+            5,
+            "passed",
+            elapsed,
+            assertions=assertions,
+            detail={
+                "turn1_msgs": turn1_msgs,
+                "turn2_msgs": turn2_msgs,
+                "turn1_len": len(text1),
+                "turn2_len": len(text2),
+            },
+        )
     elif turn2_msgs == 0 and turn1_msgs == 0:
         # metadata에 total_messages가 없는 경우 → 응답 길이로 fallback
         warnings.append("total_messages 미반환 — 응답 길이로 fallback 검증")
         if text2 and len(text2.strip()) >= 30:
-            return _record(22, "v3 Multi-turn Context", 5, "passed", elapsed,
-                           assertions=assertions, warnings=warnings,
-                           detail={"turn1_len": len(text1), "turn2_len": len(text2)})
-        return _record(22, "v3 Multi-turn Context", 5, "failed", elapsed,
-                       assertions=assertions, warnings=warnings, error="Turn 2 응답 부족")
+            return _record(
+                22,
+                "v3 Multi-turn Context",
+                5,
+                "passed",
+                elapsed,
+                assertions=assertions,
+                warnings=warnings,
+                detail={"turn1_len": len(text1), "turn2_len": len(text2)},
+            )
+        return _record(
+            22,
+            "v3 Multi-turn Context",
+            5,
+            "failed",
+            elapsed,
+            assertions=assertions,
+            warnings=warnings,
+            error="Turn 2 응답 부족",
+        )
     else:
-        return _record(22, "v3 Multi-turn Context", 5, "failed", elapsed,
-                       assertions=assertions,
-                       error=f"컨텍스트 미누적: Turn1={turn1_msgs}, Turn2={turn2_msgs}",
-                       detail={"turn1_msgs": turn1_msgs, "turn2_msgs": turn2_msgs})
+        return _record(
+            22,
+            "v3 Multi-turn Context",
+            5,
+            "failed",
+            elapsed,
+            assertions=assertions,
+            error=f"컨텍스트 미누적: Turn1={turn1_msgs}, Turn2={turn2_msgs}",
+            detail={"turn1_msgs": turn1_msgs, "turn2_msgs": turn2_msgs},
+        )
 
 
 async def scenario23_v3_multi_turn_isolation() -> dict:
@@ -1431,8 +1684,9 @@ async def scenario23_v3_multi_turn_isolation() -> dict:
     )
     if not ok_a:
         elapsed = time.monotonic() - t0
-        return _record(23, "v3 Multi-turn Isolation", 5, "failed", elapsed,
-                       error=f"Session A 실패: {err_a}")
+        return _record(
+            23, "v3 Multi-turn Isolation", 5, "failed", elapsed, error=f"Session A 실패: {err_a}"
+        )
     assertions.append("Session A 성공")
 
     # Session B: 독립 요청 (A의 컨텍스트를 모름)
@@ -1445,14 +1699,27 @@ async def scenario23_v3_multi_turn_isolation() -> dict:
     elapsed = time.monotonic() - t0
 
     if not ok_b:
-        return _record(23, "v3 Multi-turn Isolation", 5, "failed", elapsed,
-                       assertions=assertions, error=f"Session B 실패: {err_b}")
+        return _record(
+            23,
+            "v3 Multi-turn Isolation",
+            5,
+            "failed",
+            elapsed,
+            assertions=assertions,
+            error=f"Session B 실패: {err_b}",
+        )
     assertions.append("Session B 성공 (독립 세션)")
 
     # 두 세션 모두 성공이면 격리 확인
-    return _record(23, "v3 Multi-turn Isolation", 5, "passed", elapsed,
-                   assertions=assertions,
-                   detail={"a_len": len(text_a), "b_len": len(text_b) if text_b else 0})
+    return _record(
+        23,
+        "v3 Multi-turn Isolation",
+        5,
+        "passed",
+        elapsed,
+        assertions=assertions,
+        detail={"a_len": len(text_a), "b_len": len(text_b) if text_b else 0},
+    )
 
 
 async def scenario24_v3_multi_turn_3_turns() -> dict:
@@ -1475,13 +1742,19 @@ async def scenario24_v3_multi_turn_3_turns() -> dict:
         )
         if not ok:
             elapsed = time.monotonic() - t0
-            return _record(24, "v3 3-turn Conversation", 5, "failed", elapsed,
-                           assertions=assertions, error=f"Turn {i} 실패: {err}")
+            return _record(
+                24,
+                "v3 3-turn Conversation",
+                5,
+                "failed",
+                elapsed,
+                assertions=assertions,
+                error=f"Turn {i} 실패: {err}",
+            )
         assertions.append(f"Turn {i} 성공 (len={len(text)})")
 
     elapsed = time.monotonic() - t0
-    return _record(24, "v3 3-turn Conversation", 5, "passed", elapsed,
-                   assertions=assertions)
+    return _record(24, "v3 3-turn Conversation", 5, "passed", elapsed, assertions=assertions)
 
 
 # ---------------------------------------------------------------------------

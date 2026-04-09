@@ -837,7 +837,7 @@ class vLLMEngineManager:
 
         # max_tokens 동적 계산: max_model_len에서 입력 오버헤드(시스템 프롬프트+도구 스키마+대화이력)를 제외
         # 시스템 프롬프트 ~500 + 도구 스키마 ~1000 + 안전 마진 ~500 = 2000 오버헤드
-        _max_model_len = runtime_config.model.max_model_len
+        _max_model_len = runtime_config.max_model_len
         _llm_max_tokens = max(256, min(2048, _max_model_len - 2000))
         if _max_model_len < 2500:
             logger.warning(

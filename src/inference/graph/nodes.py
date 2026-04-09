@@ -76,15 +76,15 @@ def make_session_load_node(session_store: "SessionStore"):
     토큰 예산 분배 (max_model_len=8192):
       시스템 프롬프트:     ~500 토큰
       도구 스키마 (7개):   ~1,000 토큰
-      대화 이력 (messages): ~4,000 토큰
-      LLM 응답 (max_tokens): ~2,048 토큰
-      안전 마진:           ~644 토큰
+      대화 이력 (messages): ~4,500 토큰
+      LLM 응답 (max_tokens): ~1,024 토큰
+      안전 마진:           ~168 토큰
     """
 
     # 메시지에 할당 가능한 토큰 예산
-    # max_model_len(8192) - max_tokens(2048) - overhead(2500) - margin(644) = 3000
+    # max_model_len(8192) - max_tokens(1024) - overhead(2500) - margin(168) = 4500
     # 오버헤드: 시스템 프롬프트(~600) + 도구 스키마 7개(~1500) + 안전 마진(~400) = ~2500
-    MAX_MESSAGE_TOKENS = 3000
+    MAX_MESSAGE_TOKENS = 4500
     # 최근 N개 메시지는 무조건 보존 (현재 턴의 맥락 유지)
     KEEP_RECENT = 6
 

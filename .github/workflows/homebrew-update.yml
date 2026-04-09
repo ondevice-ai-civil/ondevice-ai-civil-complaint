@@ -1,23 +1,33 @@
 name: Homebrew Formula Auto-Update
 
 on:
-  # 수동 트리거 (PyPI 배포 후 sha256 갱신 등에 활용)
+  # PyPI 배포 완료 후 자동 트리거
+  workflow_run:
+    workflows: ["Publish to PyPI"]
+    types: [completed]
+
+  # 수동 트리거
   workflow_dispatch:
     inputs:
       version:
-        description: "GovOn 버전 (예: 1.0.2)"
-        required: true
+        description: "GovOn version (e.g. 1.0.6)"
+        required: false
         type: string
-      pypi_sha256:
-        description: "PyPI sdist sha256 해시값"
-        required: true
-        type: string
+
+permissions:
+  contents: read
 
 jobs:
   update-formula:
     name: Update Homebrew Formula
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
+    # workflow_run: PyPI 배포 성공 + tag push인 경우만
+    # workflow_dispatch: 항상 실행
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
 
     permissions:
       contents: write
@@ -34,36 +44,68 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Validate inputs
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          if ! echo "$INPUT_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error::Invalid version format: must match X.Y.Z"
-            exit 1
-          fi
-          if ! echo "$INPUT_SHA256" | grep -qE '^[a-f0-9]{64}$'; then
-            echo "::error::Invalid sha256 format: must be 64 hex characters"
-            exit 1
-          fi
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-          INPUT_SHA256: ${{ inputs.pypi_sha256 }}
-
-      - name: Resolve version and sha256
+      - name: Resolve version and sha256 from PyPI
         id: resolve
         env:
-          INPUT_VERSION: ${{ inputs.version }}
-          INPUT_SHA256: ${{ inputs.pypi_sha256 }}
+          INPUT_VERSION: ${{ inputs.version || '' }}
+          TRIGGER_BRANCH: ${{ github.event.workflow_run.head_branch || '' }}
         run: |
-          VERSION="${INPUT_VERSION}"
-          SHA256="${INPUT_SHA256}"
-          PYPI_URL="https://files.pythonhosted.org/packages/source/G/GovOn/GovOn-${VERSION}.tar.gz"
+          pip install requests --quiet
 
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
-          echo "pypi_url=${PYPI_URL}" >> "$GITHUB_OUTPUT"
+          python3 << 'PYEOF'
+          import json, os, re, sys
+          import requests
 
-      - name: Update formula version and sha256
+          input_version = os.environ.get("INPUT_VERSION", "").strip()
+          trigger_branch = os.environ.get("TRIGGER_BRANCH", "").strip()
+
+          # Determine version: input > trigger branch tag > PyPI latest
+          version = None
+          if input_version:
+              version = input_version.lstrip("v")
+          elif trigger_branch.startswith("v"):
+              version = trigger_branch.lstrip("v")
+
+          # Fetch from PyPI
+          resp = requests.get("https://pypi.org/pypi/govon/json", timeout=30)
+          resp.raise_for_status()
+          data = resp.json()
+
+          if not version:
+              version = data["info"]["version"]
+
+          if version not in data["releases"]:
+              print(f"::error::Version {version} not found on PyPI")
+              sys.exit(1)
+
+          releases = data["releases"][version]
+          sdist = next((r for r in releases if r["packagetype"] == "sdist"), None)
+          if not sdist:
+              print(f"::error::No sdist found for version {version}")
+              sys.exit(1)
+
+          url = sdist["url"]
+          sha256 = sdist["digests"]["sha256"]
+
+          # Validate
+          if not re.match(r"^[0-9]+\.[0-9]+\.[0-9]+", version):
+              print(f"::error::Invalid version: {version}")
+              sys.exit(1)
+          if not re.match(r"^[a-f0-9]{64}$", sha256):
+              print(f"::error::Invalid sha256: {sha256}")
+              sys.exit(1)
+
+          print(f"Version: {version}")
+          print(f"URL: {url}")
+          print(f"SHA256: {sha256}")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"version={version}\n")
+              f.write(f"sha256={sha256}\n")
+              f.write(f"pypi_url={url}\n")
+          PYEOF
+
+      - name: Update formula
         env:
           VERSION: ${{ steps.resolve.outputs.version }}
           SHA256: ${{ steps.resolve.outputs.sha256 }}
@@ -71,65 +113,29 @@ jobs:
         run: |
           FORMULA="homebrew/govon.rb"
 
-          # url 업데이트
-          sed -i "s|url \"https://files.pythonhosted.org/packages/source/G/GovOn/.*\"|url \"${PYPI_URL}\"|" "$FORMULA"
+          # Update url (first url line = main package)
+          sed -i "0,|url \".*\"|s|url \".*\"|url \"${PYPI_URL}\"|" "$FORMULA"
 
-          # 메인 패키지 sha256만 업데이트 (resource 블록의 sha256은 건드리지 않음)
-          # 메인 stanza는 url 바로 다음 줄에 위치
-          sed -i "/^  url /{ n; s|sha256 \".*\"|sha256 \"${SHA256}\"| }" "$FORMULA"
-
-          # version 업데이트 (메인 stanza만)
-          sed -i "s|version \".*\"|version \"${VERSION}\"|" "$FORMULA"
-
-          # 메인 url 줄의 TODO 주석만 제거
-          sed -i '/^  url /{n; /# TODO/d}' "$FORMULA"
+          # Update sha256 (first sha256 line = main package)
+          sed -i "0,/sha256 \".*\"/s/sha256 \".*\"/sha256 \"${SHA256}\"/" "$FORMULA"
 
           echo "=== Updated formula ==="
-          cat "$FORMULA"
+          head -15 "$FORMULA"
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "chore: homebrew formula 버전 ${{ steps.resolve.outputs.version }} 업데이트"
-          branch: "chore/homebrew-update-${{ steps.resolve.outputs.version }}"
+          commit-message: "chore: update homebrew formula to ${{ steps.resolve.outputs.version }}"
+          branch: "chore/homebrew-${{ steps.resolve.outputs.version }}"
           delete-branch: true
-          title: "chore: Homebrew formula v${{ steps.resolve.outputs.version }} 자동 업데이트"
+          title: "chore: Homebrew formula v${{ steps.resolve.outputs.version }}"
           body: |
-            ## 관련 이슈
-            - Refs #500
+            Automated update after PyPI release.
 
-            ## 작업 배경
-            PyPI 릴리즈(`GovOn==${{ steps.resolve.outputs.version }}`) 완료 후 Homebrew formula를 자동 업데이트합니다.
-
-            ## 주요 변경 사항
-            - `homebrew/govon.rb` 버전을 `${{ steps.resolve.outputs.version }}`으로 업데이트
-            - `sha256` 해시를 실제 PyPI sdist 값으로 교체
-            - `url`을 실제 PyPI 다운로드 URL로 교체
-
-            ## 테스트 결과
-            - [ ] `brew install --formula homebrew/govon.rb` 로컬 검증
-            - [ ] `govon --help` 실행 확인
-
-            ## 기타 사항
-            이 PR은 `homebrew-update.yml` 워크플로우에 의해 자동 생성되었습니다.
-
-            ---
-
-            ## 머지 조건 체크리스트
-            - [ ] 1명 이상의 코드리뷰 승인 완료
-            - [ ] CODEOWNERS(팀장) 최종 승인 완료
-            - [ ] 모든 리뷰 코멘트 해결(resolved) 완료
-
-            ## 리뷰어 가이드
-
-            | 태그 | 의미 | 예시 |
-            |------|------|------|
-            | `[MUST]` | 반드시 수정 (보안·버그·성능 이슈) | `[MUST] sha256 불일치` |
-            | `[SHOULD]` | 수정 강권 (코드 품질·유지보수성) | `[SHOULD] resource 블록 추가 필요` |
-            | `[NITS]` | 사소한 개선 (스타일·네이밍) | `[NITS] 주석 정리` |
-            | `[QUESTION]` | 이해를 위한 질문 | `[QUESTION] 이 의존성이 필요한가요?` |
+            - Version: `${{ steps.resolve.outputs.version }}`
+            - SHA256: `${{ steps.resolve.outputs.sha256 }}`
+            - Source: `${{ steps.resolve.outputs.pypi_url }}`
           labels: |
             chore
-            homebrew
             automated

@@ -70,11 +70,29 @@ jobs:
             --token ${{ secrets.GITHUB_TOKEN }} \
             dist/* || echo "::warning::GitHub Packages PyPI publish failed, continuing..."
 
+      - name: Wait for GitHub Release to be created
+        if: github.ref_type == 'tag'
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          echo "Waiting for release ${TAG} to be created by release.yml..."
+          for i in $(seq 1 30); do
+            if gh release view "$TAG" > /dev/null 2>&1; then
+              echo "Release ${TAG} found."
+              exit 0
+            fi
+            echo "Attempt ${i}/30: release not ready, waiting 10s..."
+            sleep 10
+          done
+          echo "::error::Timed out waiting for release ${TAG}"
+          exit 1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Attach artifacts to GitHub Release
         if: github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          gh release upload "$TAG" dist/* --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

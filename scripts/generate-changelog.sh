@@ -93,7 +93,7 @@ done <<< "$RAW"
 print_section() {
   local title="$1"
   shift
-  if [[ $# -eq 0 ]]; then
+  if [[ $# -le 0 ]]; then
     return
   fi
   echo "### ${title}"
@@ -104,13 +104,13 @@ print_section() {
   echo ""
 }
 
-print_section "New Features" "${FEAT[@]}"
-print_section "Bug Fixes" "${FIX[@]}"
-print_section "Documentation" "${DOCS[@]}"
-print_section "Refactoring" "${REFACTOR[@]}"
-print_section "Tests" "${TEST[@]}"
-print_section "Chores" "${CHORE[@]}"
-print_section "Other Changes" "${OTHER[@]}"
+print_section "New Features" "${FEAT[@]+"${FEAT[@]}"}"
+print_section "Bug Fixes" "${FIX[@]+"${FIX[@]}"}"
+print_section "Documentation" "${DOCS[@]+"${DOCS[@]}"}"
+print_section "Refactoring" "${REFACTOR[@]+"${REFACTOR[@]}"}"
+print_section "Tests" "${TEST[@]+"${TEST[@]}"}"
+print_section "Chores" "${CHORE[@]+"${CHORE[@]}"}"
+print_section "Other Changes" "${OTHER[@]+"${OTHER[@]}"}"
 
 # --- contributors ---------------------------------------------------------
 echo "### Contributors"

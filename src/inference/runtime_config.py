@@ -1,22 +1,26 @@
-"""GovOn Runtime 서빙 프로필 및 모델 설정 구성.
+"""GovOn Runtime serving profile and model configuration.
 
-환경변수 기반으로 로컬 개발, 단일 서버(프로덕션), 폐쇄망(에어갭) 설치용
-프로필을 정의하고, generation defaults와 timeout 설정을 표준화한다.
+Defines profiles for local development, single-server (production), and
+air-gapped installations based on environment variables. Standardises
+generation defaults and timeout settings.
 
-사용법:
+Usage:
     config = RuntimeConfig.from_env()
     config.log_summary()
+
+    # Unified hyperparameter config (YAML + env var overrides):
+    govon_config = GovOnConfig.load()
 """
 
 import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-# 프로젝트 루트 경로 (src/inference/runtime_config.py → ../../..)
+# Project root path (src/inference/runtime_config.py → ../../..)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
@@ -391,3 +395,359 @@ class RuntimeConfig:
         if self.reload:
             kwargs["reload"] = True
         return kwargs
+
+
+# ---------------------------------------------------------------------------
+# GovOnConfig — unified hyperparameter config (YAML + env var overrides)
+# ---------------------------------------------------------------------------
+
+_GOVON_YAML_PATH = _PROJECT_ROOT / "config" / "govon.yaml"
+
+
+def _load_yaml(path: Path) -> Dict[str, Any]:
+    """Load a YAML file and return its contents as a dict.
+
+    Returns an empty dict if the file does not exist or PyYAML is not installed.
+    """
+    if not path.exists():
+        logger.warning(f"[GovOnConfig] config file not found: {path}. Using defaults.")
+        return {}
+    try:
+        import yaml  # type: ignore
+
+        with open(path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        logger.debug(f"[GovOnConfig] loaded config from {path}")
+        return data
+    except ImportError:
+        logger.warning("[GovOnConfig] PyYAML not installed; falling back to defaults.")
+        return {}
+    except Exception as exc:
+        logger.warning(f"[GovOnConfig] failed to load {path}: {exc}. Using defaults.")
+        return {}
+
+
+def _env(key: str, default: Any, cast=None) -> Any:
+    """Read an environment variable and cast it to the required type.
+
+    Returns *default* when the variable is absent or empty.
+    """
+    raw = os.getenv(key)
+    if raw is None or raw == "":
+        return default
+    if cast is not None:
+        try:
+            return cast(raw)
+        except (ValueError, TypeError) as exc:
+            logger.warning(f"[GovOnConfig] invalid env {key}={raw!r}: {exc}. Using default.")
+            return default
+    return raw
+
+
+@dataclass(frozen=True)
+class _GenerationConfig:
+    """LLM generation hyperparameters."""
+
+    max_tokens: int = 512
+    temperature: float = 0.7
+    top_p: float = 0.9
+    repetition_penalty: float = 1.1
+    stop_sequences: List[str] = field(default_factory=lambda: ["[|endofturn|]"])
+    agent_temperature: float = 0.0
+
+
+@dataclass(frozen=True)
+class _ServingConfig:
+    """vLLM / GPU serving hyperparameters."""
+
+    gpu_memory_utilization: float = 0.90
+    max_model_len: int = 8192
+    max_loras: int = 4
+    max_lora_rank: int = 64
+    kv_cache_dtype: str = "auto"
+    vllm_request_timeout: float = 300.0
+    vllm_connect_timeout: float = 30.0
+    vllm_startup_max_wait: int = 900
+    health_check_timeout: int = 10
+
+
+@dataclass(frozen=True)
+class _ContextConfig:
+    """Context window management hyperparameters."""
+
+    agent_input_budget: int = 4500
+    max_message_tokens: int = 4500
+    keep_recent_messages: int = 6
+    summary_threshold_ratio: float = 0.6
+    max_tool_result_chars: int = 3000
+    system_prompt_overhead: int = 2000
+    max_consecutive_rejections: int = 2
+    tool_clear_after_iteration: int = 2
+    tool_keep_recent: int = 2
+    max_iterations: int = 10
+
+
+@dataclass(frozen=True)
+class _ToolDefaultConfig:
+    """Default timeout and retry settings for a single tool."""
+
+    timeout_sec: float = 10.0
+    max_retries: int = 0
+
+
+@dataclass(frozen=True)
+class _ToolsConfig:
+    """Tool execution hyperparameters."""
+
+    defaults: _ToolDefaultConfig = field(default_factory=_ToolDefaultConfig)
+    overrides: Dict[str, _ToolDefaultConfig] = field(default_factory=dict)
+
+    def for_tool(self, name: str) -> _ToolDefaultConfig:
+        """Return per-tool config, falling back to defaults."""
+        return self.overrides.get(name, self.defaults)
+
+
+@dataclass(frozen=True)
+class _RateLimitConfig:
+    """API rate limiting configuration."""
+
+    default: str = "30/minute"
+
+
+@dataclass(frozen=True)
+class _ValidationConfig:
+    """Request validation limits."""
+
+    max_prompt_length: int = 4096
+    max_tokens_ceiling: int = 4096
+
+
+@dataclass(frozen=True)
+class GovOnConfig:
+    """Unified hyperparameter configuration for GovOn.
+
+    Load via :meth:`GovOnConfig.load` which reads ``config/govon.yaml`` and
+    applies environment variable overrides on top.
+
+    Environment variables follow the ``GOVON_<SECTION>_<KEY>`` naming convention
+    (e.g. ``GOVON_GENERATION_MAX_TOKENS``). Legacy ``GEN_*`` variables are also
+    supported for backward compatibility.
+    """
+
+    generation: _GenerationConfig = field(default_factory=_GenerationConfig)
+    serving: _ServingConfig = field(default_factory=_ServingConfig)
+    context: _ContextConfig = field(default_factory=_ContextConfig)
+    tools: _ToolsConfig = field(default_factory=_ToolsConfig)
+    rate_limit: _RateLimitConfig = field(default_factory=_RateLimitConfig)
+    validation: _ValidationConfig = field(default_factory=_ValidationConfig)
+
+    @classmethod
+    def load(cls, path: Optional[Path] = None) -> "GovOnConfig":
+        """Load config from YAML and apply environment variable overrides.
+
+        Priority (highest first):
+          1. Environment variables (GOVON_* or legacy GEN_*)
+          2. config/govon.yaml values
+          3. Dataclass defaults (hardcoded fallbacks)
+        """
+        raw = _load_yaml(path or _GOVON_YAML_PATH)
+        gen_raw = raw.get("generation", {})
+        srv_raw = raw.get("serving", {})
+        ctx_raw = raw.get("context", {})
+        tls_raw = raw.get("tools", {})
+        rl_raw = raw.get("rate_limit", {})
+        val_raw = raw.get("validation", {})
+
+        # --- generation ---
+        gen = _GenerationConfig(
+            max_tokens=_env(
+                "GOVON_GENERATION_MAX_TOKENS",
+                _env("GEN_MAX_TOKENS", gen_raw.get("max_tokens", 512), int),
+                int,
+            ),
+            temperature=_env(
+                "GOVON_GENERATION_TEMPERATURE",
+                _env("GEN_TEMPERATURE", gen_raw.get("temperature", 0.7), float),
+                float,
+            ),
+            top_p=_env(
+                "GOVON_GENERATION_TOP_P",
+                _env("GEN_TOP_P", gen_raw.get("top_p", 0.9), float),
+                float,
+            ),
+            repetition_penalty=_env(
+                "GOVON_GENERATION_REPETITION_PENALTY",
+                _env(
+                    "GEN_REPETITION_PENALTY",
+                    gen_raw.get("repetition_penalty", 1.1),
+                    float,
+                ),
+                float,
+            ),
+            stop_sequences=gen_raw.get("stop_sequences", ["[|endofturn|]"]),
+            agent_temperature=_env(
+                "GOVON_GENERATION_AGENT_TEMPERATURE",
+                gen_raw.get("agent_temperature", 0.0),
+                float,
+            ),
+        )
+
+        # --- serving ---
+        srv = _ServingConfig(
+            gpu_memory_utilization=_env(
+                "GOVON_SERVING_GPU_MEMORY_UTILIZATION",
+                srv_raw.get("gpu_memory_utilization", 0.90),
+                float,
+            ),
+            max_model_len=_env(
+                "GOVON_SERVING_MAX_MODEL_LEN",
+                srv_raw.get("max_model_len", 8192),
+                int,
+            ),
+            max_loras=_env(
+                "GOVON_SERVING_MAX_LORAS",
+                _env("MAX_LORAS", srv_raw.get("max_loras", 4), int),
+                int,
+            ),
+            max_lora_rank=_env(
+                "GOVON_SERVING_MAX_LORA_RANK",
+                _env("MAX_LORA_RANK", srv_raw.get("max_lora_rank", 64), int),
+                int,
+            ),
+            kv_cache_dtype=_env(
+                "GOVON_SERVING_KV_CACHE_DTYPE",
+                srv_raw.get("kv_cache_dtype", "auto"),
+            ),
+            vllm_request_timeout=_env(
+                "GOVON_SERVING_VLLM_REQUEST_TIMEOUT",
+                srv_raw.get("vllm_request_timeout", 300.0),
+                float,
+            ),
+            vllm_connect_timeout=_env(
+                "GOVON_SERVING_VLLM_CONNECT_TIMEOUT",
+                srv_raw.get("vllm_connect_timeout", 30.0),
+                float,
+            ),
+            vllm_startup_max_wait=_env(
+                "GOVON_SERVING_VLLM_STARTUP_MAX_WAIT",
+                srv_raw.get("vllm_startup_max_wait", 900),
+                int,
+            ),
+            health_check_timeout=_env(
+                "GOVON_SERVING_HEALTH_CHECK_TIMEOUT",
+                srv_raw.get("health_check_timeout", 10),
+                int,
+            ),
+        )
+
+        # --- context ---
+        ctx = _ContextConfig(
+            agent_input_budget=_env(
+                "GOVON_CONTEXT_AGENT_INPUT_BUDGET",
+                ctx_raw.get("agent_input_budget", 4500),
+                int,
+            ),
+            max_message_tokens=_env(
+                "GOVON_CONTEXT_MAX_MESSAGE_TOKENS",
+                ctx_raw.get("max_message_tokens", 4500),
+                int,
+            ),
+            keep_recent_messages=_env(
+                "GOVON_CONTEXT_KEEP_RECENT_MESSAGES",
+                ctx_raw.get("keep_recent_messages", 6),
+                int,
+            ),
+            summary_threshold_ratio=_env(
+                "GOVON_CONTEXT_SUMMARY_THRESHOLD_RATIO",
+                ctx_raw.get("summary_threshold_ratio", 0.6),
+                float,
+            ),
+            max_tool_result_chars=_env(
+                "GOVON_CONTEXT_MAX_TOOL_RESULT_CHARS",
+                ctx_raw.get("max_tool_result_chars", 3000),
+                int,
+            ),
+            system_prompt_overhead=_env(
+                "GOVON_CONTEXT_SYSTEM_PROMPT_OVERHEAD",
+                ctx_raw.get("system_prompt_overhead", 2000),
+                int,
+            ),
+            max_consecutive_rejections=_env(
+                "GOVON_CONTEXT_MAX_CONSECUTIVE_REJECTIONS",
+                ctx_raw.get("max_consecutive_rejections", 2),
+                int,
+            ),
+            tool_clear_after_iteration=_env(
+                "GOVON_CONTEXT_TOOL_CLEAR_AFTER_ITERATION",
+                ctx_raw.get("tool_clear_after_iteration", 2),
+                int,
+            ),
+            tool_keep_recent=_env(
+                "GOVON_CONTEXT_TOOL_KEEP_RECENT",
+                ctx_raw.get("tool_keep_recent", 2),
+                int,
+            ),
+            max_iterations=_env(
+                "GOVON_CONTEXT_MAX_ITERATIONS",
+                ctx_raw.get("max_iterations", 10),
+                int,
+            ),
+        )
+
+        # --- tools ---
+        tls_defaults_raw = tls_raw.get("defaults", {})
+        tls_overrides_raw = tls_raw.get("overrides", {})
+        tls_defaults = _ToolDefaultConfig(
+            timeout_sec=_env(
+                "GOVON_TOOLS_DEFAULT_TIMEOUT_SEC",
+                tls_defaults_raw.get("timeout_sec", 10.0),
+                float,
+            ),
+            max_retries=_env(
+                "GOVON_TOOLS_DEFAULT_MAX_RETRIES",
+                tls_defaults_raw.get("max_retries", 0),
+                int,
+            ),
+        )
+        tls_overrides: Dict[str, _ToolDefaultConfig] = {}
+        for tool_name, override_raw in tls_overrides_raw.items():
+            tls_overrides[tool_name] = _ToolDefaultConfig(
+                timeout_sec=override_raw.get("timeout_sec", tls_defaults.timeout_sec),
+                max_retries=override_raw.get("max_retries", tls_defaults.max_retries),
+            )
+        tls = _ToolsConfig(defaults=tls_defaults, overrides=tls_overrides)
+
+        # --- rate_limit ---
+        rl = _RateLimitConfig(
+            default=_env(
+                "GOVON_RATE_LIMIT_DEFAULT",
+                rl_raw.get("default", "30/minute"),
+            ),
+        )
+
+        # --- validation ---
+        val = _ValidationConfig(
+            max_prompt_length=_env(
+                "GOVON_VALIDATION_MAX_PROMPT_LENGTH",
+                val_raw.get("max_prompt_length", 4096),
+                int,
+            ),
+            max_tokens_ceiling=_env(
+                "GOVON_VALIDATION_MAX_TOKENS_CEILING",
+                val_raw.get("max_tokens_ceiling", 4096),
+                int,
+            ),
+        )
+
+        return cls(
+            generation=gen,
+            serving=srv,
+            context=ctx,
+            tools=tls,
+            rate_limit=rl,
+            validation=val,
+        )
+
+
+# Module-level singleton — imported by other modules.
+govon_config: GovOnConfig = GovOnConfig.load()

@@ -33,9 +33,11 @@ VLLM_ARGS=(
     --tool-call-parser hermes
 )
 
-# LoRA 어댑터 설정 (ADAPTER_PATHS 환경변수에서 파싱)
+# LoRA adapter configuration (parsed from ADAPTER_PATHS env var)
+MAX_LORAS="${MAX_LORAS:-4}"
+MAX_LORA_RANK="${MAX_LORA_RANK:-64}"
 if [ -n "${ADAPTER_PATHS:-}" ]; then
-    VLLM_ARGS+=(--enable-lora --max-loras 4 --max-lora-rank 64)
+    VLLM_ARGS+=(--enable-lora --max-loras "$MAX_LORAS" --max-lora-rank "$MAX_LORA_RANK")
     # ADAPTER_PATHS 형식: "civil=repo/path,legal=repo/path"
     # vLLM 0.19: --lora-modules를 한 번만 사용, 여러 어댑터는 배열 전개로 개별 인자 전달
     IFS=',' read -ra PAIRS <<< "$ADAPTER_PATHS"

@@ -1,0 +1,151 @@
+# GovOn Unified Hyperparameter Configuration
+# Single source of truth for all LLM, serving, and context parameters.
+#
+# GPU tier guidelines:
+#   A100 80GB  → gpu_memory_utilization: 0.90, max_model_len: 8192+, max_tokens: 2048+
+#   A10G 24GB  → gpu_memory_utilization: 0.70, max_model_len: 4096,  max_tokens: 512-1024
+#   T4 16GB    → gpu_memory_utilization: 0.65, max_model_len: 2048,  max_tokens: 256-512
+#
+# Environment variable overrides: any value can be overridden via env var.
+# Naming convention: GOVON_<SECTION>_<KEY> in UPPER_SNAKE_CASE.
+#   e.g. GOVON_GENERATION_MAX_TOKENS=1024
+# Legacy GEN_* env vars are also supported for backward compatibility.
+
+# ---------------------------------------------------------------------------
+# Section 1: generation — LLM generation parameters
+# ---------------------------------------------------------------------------
+generation:
+  # Max tokens to generate per response.
+  # Range: 128-4096. Higher = longer responses but more VRAM.
+  # GPU guide: A100 80GB → 2048+, A10G 24GB → 512-1024
+  max_tokens: 512
+
+  # Sampling temperature. 0.0 = deterministic, 1.0+ = creative.
+  # Range: 0.0-2.0.
+  temperature: 0.7
+
+  # Nucleus sampling cutoff. Lower = more focused.
+  # Range: 0.0-1.0.
+  top_p: 0.9
+
+  # Penalty for repeating tokens. 1.0 = no penalty.
+  # Range: 1.0-1.5.
+  repetition_penalty: 1.1
+
+  # Tokens that signal end of generation.
+  stop_sequences:
+    - "[|endofturn|]"
+
+  # Agent orchestrator temperature (ReAct loop LLM).
+  # Keep low (0.0-0.1) for deterministic tool selection.
+  agent_temperature: 0.0
+
+# ---------------------------------------------------------------------------
+# Section 2: serving — vLLM / GPU serving parameters
+# ---------------------------------------------------------------------------
+serving:
+  # Fraction of GPU memory to use for model.
+  # Range: 0.5-0.95. Higher = more tokens but risk OOM.
+  # GPU guide: A100 80GB → 0.90, A10G 24GB → 0.70
+  gpu_memory_utilization: 0.90
+
+  # Maximum sequence length the model can handle.
+  # Range: 2048-32768. Limited by GPU VRAM.
+  # GPU guide: A100 80GB → 8192+, A10G 24GB → 4096
+  max_model_len: 8192
+
+  # Maximum concurrent LoRA adapters.
+  max_loras: 4
+
+  # Maximum LoRA rank. Must match training config.
+  max_lora_rank: 64
+
+  # KV cache data type. "auto" uses model's native dtype.
+  kv_cache_dtype: "auto"
+
+  # HTTP client timeout for vLLM requests (seconds).
+  vllm_request_timeout: 300.0
+
+  # HTTP client connect timeout (seconds).
+  vllm_connect_timeout: 30.0
+
+  # vLLM startup max wait time (seconds).
+  vllm_startup_max_wait: 900
+
+  # vLLM health check timeout (seconds).
+  health_check_timeout: 10
+
+# ---------------------------------------------------------------------------
+# Section 3: context — Context window management
+# ---------------------------------------------------------------------------
+context:
+  # Maximum tokens for agent input (system + messages + tools).
+  # Should be less than max_model_len minus generation max_tokens.
+  agent_input_budget: 4500
+
+  # Maximum tokens per message history window.
+  max_message_tokens: 4500
+
+  # Number of recent messages to always keep in context.
+  keep_recent_messages: 6
+
+  # Ratio of budget usage that triggers automatic summarization.
+  # Range: 0.3-0.8. Lower = summarize earlier, saves tokens.
+  summary_threshold_ratio: 0.6
+
+  # Maximum characters for tool result content.
+  # Approximately 2 tokens per Korean character.
+  max_tool_result_chars: 3000
+
+  # Token overhead reserved for system prompt and tool schemas.
+  system_prompt_overhead: 2000
+
+  # Maximum consecutive approval rejections before agent gives up.
+  max_consecutive_rejections: 2
+
+  # After this many iterations, clear old tool messages.
+  tool_clear_after_iteration: 2
+
+  # Number of recent tool messages to keep after clearing.
+  tool_keep_recent: 2
+
+  # Maximum agent iterations per request.
+  max_iterations: 10
+
+# ---------------------------------------------------------------------------
+# Section 4: tools — Tool execution parameters
+# ---------------------------------------------------------------------------
+tools:
+  # Per-tool timeout and retry configuration.
+  defaults:
+    timeout_sec: 10.0
+    max_retries: 0
+
+  overrides:
+    api_lookup:
+      timeout_sec: 10.0
+      max_retries: 1
+    issue_detector:
+      timeout_sec: 15.0
+    stats_lookup:
+      timeout_sec: 15.0
+    demographics_lookup:
+      timeout_sec: 15.0
+
+# ---------------------------------------------------------------------------
+# Section 5: rate_limit — API rate limiting
+# ---------------------------------------------------------------------------
+rate_limit:
+  # Rate limit string for all endpoints. Format: "N/period"
+  # Examples: "30/minute", "100/minute", "5/second"
+  default: "30/minute"
+
+# ---------------------------------------------------------------------------
+# Section 6: validation — Request validation limits
+# ---------------------------------------------------------------------------
+validation:
+  # Maximum input prompt length (characters).
+  max_prompt_length: 4096
+
+  # Maximum tokens ceiling for any single request.
+  max_tokens_ceiling: 4096

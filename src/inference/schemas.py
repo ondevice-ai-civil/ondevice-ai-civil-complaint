@@ -2,6 +2,16 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from src.inference.runtime_config import govon_config
+
+# Expose validation limits from unified config for Field constraints.
+_MAX_PROMPT_LEN = govon_config.validation.max_prompt_length
+_MAX_TOKENS_CEILING = govon_config.validation.max_tokens_ceiling
+_DEFAULT_MAX_TOKENS = govon_config.generation.max_tokens
+_DEFAULT_TEMPERATURE = govon_config.generation.temperature
+_DEFAULT_TOP_P = govon_config.generation.top_p
+_DEFAULT_MAX_ITERATIONS = govon_config.context.max_iterations
+
 
 class RetrievedCase(BaseModel):
     id: Optional[str] = None
@@ -12,10 +22,10 @@ class RetrievedCase(BaseModel):
 
 
 class BaseGenerateRequest(BaseModel):
-    prompt: str = Field(..., min_length=1, max_length=10000)
-    max_tokens: int = Field(default=512, gt=0, le=4096)
-    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
-    top_p: float = Field(default=0.9, ge=0.0, le=1.0)
+    prompt: str = Field(..., min_length=1, max_length=_MAX_PROMPT_LEN)
+    max_tokens: int = Field(default=_DEFAULT_MAX_TOKENS, gt=0, le=_MAX_TOKENS_CEILING)
+    temperature: float = Field(default=_DEFAULT_TEMPERATURE, ge=0.0, le=2.0)
+    top_p: float = Field(default=_DEFAULT_TOP_P, ge=0.0, le=1.0)
     stream: bool = Field(default=False)
     stop: Optional[List[str]] = Field(default=None)
 
@@ -37,13 +47,13 @@ class GenerateCivilResponseResponse(BaseGenerateResponse):
 
 
 class AgentRunRequest(BaseModel):
-    query: str = Field(..., min_length=1, max_length=10000)
+    query: str = Field(..., min_length=1, max_length=_MAX_PROMPT_LEN)
     session_id: Optional[str] = None
     stream: bool = Field(default=False)
     force_tools: Optional[List[str]] = None
-    max_tokens: int = Field(default=512, gt=0, le=4096)
-    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
-    max_iterations: int = Field(default=10, ge=1, le=20)
+    max_tokens: int = Field(default=_DEFAULT_MAX_TOKENS, gt=0, le=_MAX_TOKENS_CEILING)
+    temperature: float = Field(default=_DEFAULT_TEMPERATURE, ge=0.0, le=2.0)
+    max_iterations: int = Field(default=_DEFAULT_MAX_ITERATIONS, ge=1, le=20)
 
 
 class ToolResultSchema(BaseModel):

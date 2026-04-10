@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "govon"
 version = "1.5.1"
-description = "AX platform that unifies Korea's government DX infrastructure through agentic AI"
+description = "GovOn Agentic Shell — CLI client for the GovOn AX national infrastructure platform"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"

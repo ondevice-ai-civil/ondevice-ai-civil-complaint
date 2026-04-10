@@ -37,8 +37,8 @@ export function MarkdownView({ content, streaming = false }: MarkdownViewProps) 
       // Remove trailing newlines produced by marked's block-level output.
       return typeof result === 'string' ? result.trimEnd() : '';
     } catch {
-      // Fall back to raw text so the UI never goes blank on a parse error.
-      return content;
+      // Fall back to sanitized text so the UI never goes blank on a parse error.
+      return stripAnsi(content);
     }
   }, [content, width]);
 

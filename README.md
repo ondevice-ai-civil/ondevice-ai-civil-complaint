@@ -253,7 +253,7 @@ See [`deploy/env/.env.example`](deploy/env/.env.example) for the full list of se
 | Native | `curl -fsSL .../install.sh \| bash` |
 | Docker | `ghcr.io/govon-org/govon` |
 | HF Space (hosted runtime) | [umyunsang/govon-runtime](https://huggingface.co/spaces/umyunsang/govon-runtime) |
-| Civil LoRA Adapter | [umyunsang/govon-civil-adapter](https://huggingface.co/umyunsang/govon-civil-adapter) |
+| Public Admin LoRA Adapter (`public_admin_adapter`) | [umyunsang/govon-civil-adapter](https://huggingface.co/umyunsang/govon-civil-adapter) |
 | Legal LoRA Adapter | [siwo/govon-legal-adapter](https://huggingface.co/siwo/govon-legal-adapter) |
 | Releases | [GitHub Releases](https://github.com/GovOn-Org/GovOn/releases) |
 

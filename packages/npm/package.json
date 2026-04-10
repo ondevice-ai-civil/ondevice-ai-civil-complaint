@@ -1,6 +1,6 @@
 {
   "name": "govon",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "GovOn CLI — AX platform TUI for unified government infrastructure powered by React + Ink",
   "type": "module",
   "bin": {

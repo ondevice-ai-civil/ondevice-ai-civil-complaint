@@ -33,6 +33,7 @@ on:
     branches: [main]
     paths:
       - 'deploy/docker/Dockerfile.hfspace'
+      - 'deploy/hfspace/**'
       - 'src/**'
       - 'requirements.txt'
 
@@ -118,6 +119,8 @@ jobs:
 
           # Copy deploy/docker/Dockerfile.hfspace → Space Dockerfile
           cp $GITHUB_WORKSPACE/deploy/docker/Dockerfile.hfspace Dockerfile
+          # Copy HF Space README.md (contains sleep_time for auto-sleep)
+          cp $GITHUB_WORKSPACE/deploy/hfspace/README.md README.md
           cp $GITHUB_WORKSPACE/requirements.txt requirements.txt
           rsync -a --delete $GITHUB_WORKSPACE/src/ src/
 

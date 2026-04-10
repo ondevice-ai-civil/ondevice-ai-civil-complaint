@@ -39,7 +39,7 @@ jobs:
         run: node -e "const p = require('./package.json'); console.log('name:', p.name, '/ version:', p.version);"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Type check
         run: npm run typecheck

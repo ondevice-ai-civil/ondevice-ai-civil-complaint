@@ -58,7 +58,7 @@ class TestSessionContext:
         ctx.add_graph_run(
             request_id="run-001",
             approval_status="approved",
-            executed_capabilities=["api_lookup", "draft_response"],
+            executed_capabilities=["api_lookup", "domain_adapter"],
         )
 
         summary = ctx.build_context_summary()
@@ -73,7 +73,7 @@ class TestSessionContext:
             request_id="run-001",
             plan_summary="민원 답변 초안 작성",
             approval_status="approved",
-            executed_capabilities=["api_lookup", "draft_response"],
+            executed_capabilities=["api_lookup", "domain_adapter"],
             status="completed",
         )
 
@@ -82,7 +82,7 @@ class TestSessionContext:
         assert ctx.graph_runs[0].approval_status == "approved"
         assert ctx.graph_runs[0].executed_capabilities == [
             "api_lookup",
-            "draft_response",
+            "domain_adapter",
         ]
 
 
@@ -142,7 +142,7 @@ class TestSessionStore:
         ctx.add_graph_run(
             request_id="req-resume",
             approval_status="approved",
-            executed_capabilities=["api_lookup", "draft_response"],
+            executed_capabilities=["api_lookup", "domain_adapter"],
             status="completed_with_errors",
         )
 
@@ -155,7 +155,7 @@ class TestSessionStore:
         assert len(loaded.graph_runs) == 1
         assert loaded.graph_runs[0].executed_capabilities == [
             "api_lookup",
-            "draft_response",
+            "domain_adapter",
         ]
         assert loaded.graph_runs[0].status == "completed_with_errors"
 

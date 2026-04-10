@@ -152,7 +152,7 @@ class vLLMEngineManager:
         self.session_store = SessionStore()
         self.agent_manager = AgentManager(AGENTS_DIR)
         self._api_lookup_action = None  # MinwonAnalysisAction (지연 초기화)
-        self._draft_response_fn = None  # 답변 초안 생성 클로저 (지연 초기화)
+        self._domain_adapter_fn = None  # Domain adapter generation closure (lazy init)
         self.graph = None  # LangGraph CompiledGraph (v2 엔드포인트용)
         self.graph_v3 = None  # v3 ReAct graph (v3 엔드포인트용)
         self._checkpointer_ctx = None  # AsyncSqliteSaver 컨텍스트 매니저 (lifespan에서 관리)
@@ -402,8 +402,8 @@ class vLLMEngineManager:
         gen_defaults = runtime_config.generation
 
         safe_message = self._escape_special_tokens(self._extract_query(request.prompt))
-        user_content = f"다음 민원에 대한 답변을 작성해 주세요.\n\n{safe_message}"
-        prompt = self._build_persona_prompt("draft_response", user_content)
+        user_content = f"다음 요청에 대해 해당 도메인의 전문 지식을 바탕으로 답변을 작성해 주세요.\n\n{safe_message}"
+        prompt = self._build_persona_prompt("domain_adapter", user_content)
 
         sampling_params = SamplingParams(
             temperature=request.temperature,
@@ -431,8 +431,8 @@ class vLLMEngineManager:
 
         safe_message = self._escape_special_tokens(self._extract_query(request.prompt))
         # 학습 데이터 형식: user = instruction + "\n\n" + input
-        user_content = f"다음 민원에 대한 답변을 작성해 주세요.\n\n{safe_message}"
-        prompt = self._build_persona_prompt("draft_response", user_content)
+        user_content = f"다음 요청에 대해 해당 도메인의 전문 지식을 바탕으로 답변을 작성해 주세요.\n\n{safe_message}"
+        prompt = self._build_persona_prompt("domain_adapter", user_content)
 
         sampling_params = SamplingParams(
             temperature=(
@@ -534,7 +534,7 @@ class vLLMEngineManager:
 
         engine_ref = self
 
-        async def _draft_response_tool(
+        async def _domain_adapter_tool(
             query: str,
             context: dict,
             session: SessionContext,
@@ -564,7 +564,7 @@ class vLLMEngineManager:
                     "text": "",
                     "draft_text": "",
                     "success": False,
-                    "error": "민원 답변 초안 생성 실패",
+                    "error": "Domain adapter response generation failed",
                     "results": [],
                     "context_text": "",
                 }
@@ -581,7 +581,7 @@ class vLLMEngineManager:
                 "completion_tokens": len(final_output.outputs[0].token_ids),
             }
 
-        self._draft_response_fn = _draft_response_tool
+        self._domain_adapter_fn = _domain_adapter_tool
 
     def _build_langgraph_tools(self) -> list:
         """LangGraph ToolNode용 도구 목록을 생성한다.
@@ -592,7 +592,7 @@ class vLLMEngineManager:
 
         return build_all_tools(
             api_lookup_action=self._api_lookup_action,
-            draft_response_fn=self._draft_response_fn,
+            domain_adapter_fn=self._domain_adapter_fn,
         )
 
     def _init_graph_with_async_checkpointer(self, checkpointer: object) -> None:

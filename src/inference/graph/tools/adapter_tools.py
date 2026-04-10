@@ -22,12 +22,12 @@ class AdapterToolInput(BaseModel):
     query: str = Field(description="Civil complaint or legal query text")
 
 
-def build_adapter_tools(draft_response_fn: Callable) -> List[StructuredTool]:
+def build_adapter_tools(domain_adapter_fn: Callable) -> List[StructuredTool]:
     """AdapterRegistry의 모든 어댑터에 대해 StructuredTool을 동적 생성한다.
 
     Parameters
     ----------
-    draft_response_fn : Callable
+    domain_adapter_fn : Callable
         ``async (query, context, session) -> dict`` 시그니처의 답변 생성 함수.
 
     Returns
@@ -49,7 +49,7 @@ def build_adapter_tools(draft_response_fn: Callable) -> List[StructuredTool]:
                 try:
                     # session=None: ToolNode에서는 세션 컨텍스트가 불필요.
                     # persist_node가 별도로 세션 저장을 처리한다.
-                    result = await draft_response_fn(
+                    result = await domain_adapter_fn(
                         query=query,
                         context={"adapter": name},
                         session=None,

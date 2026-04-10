@@ -48,7 +48,7 @@ curl -s https://<HF_SPACE_URL>/health | python3 -m json.tool
     "profile": "container",
     "model": "LGAI-EXAONE/EXAONE-4.0-32B-AWQ",
     "vllm_connected": true,
-    "agents_loaded": ["draft_response"],
+    "agents_loaded": ["domain_adapter"],
     "feature_flags": {
         "model_version": "v2"
     },
@@ -114,7 +114,7 @@ curl -s -X POST "${GOVON_BASE_URL}/v3/agent/run" \
     "thread_id": "v3:demo-scenario-1",
     "session_id": "demo-scenario-1",
     "graph_run_id": "...",
-    "text": "안녕하세요! GovOn 민원 답변 보조 시스템입니다. 무엇을 도와드릴까요?",
+    "text": "안녕하세요! GovOn AX 플랫폼입니다. 국가 인프라 통합 에이전트로서 무엇을 도와드릴까요?",
     "evidence_items": [],
     "metadata": {
         "total_iterations": 0,

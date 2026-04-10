@@ -47,8 +47,8 @@ class AgentManager:
 
     Usage:
         manager = AgentManager("agents/")
-        persona = manager.get_agent("draft_response")
-        prompt = manager.build_prompt("draft_response", "민원 답변 초안을 작성해주세요.")
+        persona = manager.get_agent("domain_adapter")
+        prompt = manager.build_prompt("domain_adapter", "건축 허가 절차에 대해 안내해주세요.")
     """
 
     _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n(.*)$", re.DOTALL)

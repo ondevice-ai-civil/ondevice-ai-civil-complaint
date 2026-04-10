@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text } from 'ink';
+import useStdoutDimensions from 'ink-use-stdout-dimensions';
 import { Marked } from 'marked';
 import { markedTerminal } from 'marked-terminal';
 
@@ -17,8 +18,8 @@ function stripAnsi(str: string): string {
 }
 
 export function MarkdownView({ content, streaming = false }: MarkdownViewProps) {
-  const { stdout } = useStdout();
-  const width = stdout?.columns ?? 80;
+  const [columns] = useStdoutDimensions();
+  const width = columns ?? 80;
 
   const rendered = useMemo(() => {
     if (!content) return '';
@@ -37,8 +38,8 @@ export function MarkdownView({ content, streaming = false }: MarkdownViewProps) 
       // Remove trailing newlines produced by marked's block-level output.
       return typeof result === 'string' ? result.trimEnd() : '';
     } catch {
-      // Fall back to raw text so the UI never goes blank on a parse error.
-      return content;
+      // Fall back to sanitized text so the UI never goes blank on a parse error.
+      return stripAnsi(content);
     }
   }, [content, width]);
 

@@ -212,7 +212,7 @@ class TestBuildAllTools:
         tools = build_all_tools(
             api_lookup_action=None,
         )
-        # 1 search + 4 analysis = 5 (draft_response_fn 없음)
+        # 1 search + 4 analysis = 5 (domain_adapter_fn 없음)
         assert len(tools) == 5
 
     def test_all_names_unique(self) -> None:

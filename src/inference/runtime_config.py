@@ -149,10 +149,10 @@ class ModelConfig:
     - vLLM 서빙 옵션: --enable-auto-tool-choice --tool-call-parser hermes
 
     Multi-LoRA 어댑터:
-    - public_admin-adapter (LoRA #1): draft_response 용도
+    - public_admin-adapter (LoRA #1): domain_adapter 용도
       학습 데이터: umyunsang/govon-civil-response-data (74K건), QLoRA on AWQ base
       HF Hub: umyunsang/GovOn-EXAONE-LoRA-v2
-    - legal-adapter (LoRA #2): draft_response 용도
+    - legal-adapter (LoRA #2): domain_adapter 용도
       학습 데이터: umyunsang/govon-legal-response-data (243K건), QLoRA on AWQ base
       HuggingFace: siwo/govon-legal-adapter
     - 나머지 capability (api_lookup, synthesis 등)는 LoRA 없이 base model 사용

@@ -78,6 +78,9 @@ export const HIDE_CURSOR = CSI + '?25l';
 /** Show the cursor (CSI ? 25 h) */
 export const SHOW_CURSOR = CSI + '?25h';
 
+/** Erase from cursor to end of screen (CSI J / CSI 0 J) */
+export const ERASE_TO_END_OF_SCREEN = csi('J');
+
 /** Erase entire current line (CSI 2 K) */
 export const ERASE_LINE = csi('2K');
 

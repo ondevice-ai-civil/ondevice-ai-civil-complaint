@@ -5,6 +5,7 @@ import {
   BSU,
   ESU,
   ERASE_SCREEN,
+  ERASE_TO_END_OF_SCREEN,
   CURSOR_HOME,
   HIDE_CURSOR,
   SHOW_CURSOR,
@@ -12,13 +13,38 @@ import {
 } from './constants.js';
 
 /**
- * RenderInterceptor wraps a real stdout stream and intercepts Ink's render output.
+ * Regex to strip Ink's log-update eraseLines sequences.
  *
- * Pattern (from Claude Code ink.tsx handleResize + onRender):
- *   resize → needsEraseBeforePaint = true   (deferred, no immediate write)
- *   render → if (needsEraseBeforePaint) prepend ERASE_SCREEN + CURSOR_HOME
- *           → wrap entire payload in BSU...ESU
- *           → single atomic realStdout.write()
+ * log-update.js generates: (\x1b[1A\x1b[2K)* \x1b[G
+ *   - \x1b[1A  = cursor up 1 line
+ *   - \x1b[2K  = erase entire line
+ *   - \x1b[G   = cursor to column 1
+ *
+ * These use a stale previousLineCount which causes ghost lines on resize.
+ * We strip them and use CURSOR_HOME + ERASE_TO_END_OF_SCREEN instead.
+ */
+// eslint-disable-next-line no-control-regex
+const ERASE_LINES_RE = /^(\x1b\[1A\x1b\[2K)*\x1b\[G/;
+
+/**
+ * Regex to strip Ink's clearTerminal sequence (used when outputHeight >= rows).
+ * clearTerminal = \x1b[2J\x1b[3J\x1b[H  (erase screen + erase scrollback + cursor home)
+ */
+// eslint-disable-next-line no-control-regex
+const CLEAR_TERMINAL_RE = /\x1b\[2J\x1b\[3J\x1b\[H/g;
+
+/**
+ * RenderInterceptor — capture Ink's render output, strip buggy erase sequences,
+ * and repaint using alternate screen + CURSOR_HOME + ERASE_TO_END_OF_SCREEN.
+ *
+ * Strategy (adapted from Claude Code ink.tsx):
+ *   1. Ink writes to our proxy stream (not real stdout)
+ *   2. We strip log-update's eraseLines (stale line count — root cause of ghost lines)
+ *   3. We prepend CURSOR_HOME (alt-screen: always paint from top-left)
+ *   4. We append ERASE_TO_END_OF_SCREEN (clean up stale content below new frame)
+ *   5. On resize: set needsEraseBeforePaint flag (deferred — NOT immediate erase)
+ *   6. Next flush consumes flag → prepend ERASE_SCREEN + CURSOR_HOME instead
+ *   7. Entire frame wrapped in BSU/ESU for atomic, flicker-free output
  */
 export class RenderInterceptor {
   private realStdout: NodeJS.WriteStream;
@@ -38,11 +64,19 @@ export class RenderInterceptor {
     this.terminalRows = stdout.rows ?? 24;
     this.terminalCols = stdout.columns ?? 80;
 
-    // Build a Writable that captures Ink's output without forwarding to real stdout
+    // Build a Writable that captures Ink's output, strips erase sequences, and flushes
     const interceptor = this;
     const base = new Writable({
       write(chunk: Buffer | string, _encoding: BufferEncoding, callback: () => void) {
-        interceptor.lastOutput = typeof chunk === 'string' ? chunk : chunk.toString();
+        let output = typeof chunk === 'string' ? chunk : chunk.toString();
+
+        // Strip Ink's buggy eraseLines sequences (stale previousLineCount)
+        output = output.replace(ERASE_LINES_RE, '');
+
+        // Strip Ink's clearTerminal fallback
+        output = output.replace(CLEAR_TERMINAL_RE, '');
+
+        interceptor.lastOutput = output;
         interceptor.flush();
         callback();
       },
@@ -163,11 +197,12 @@ export class RenderInterceptor {
    * Write captured Ink output to real stdout in a single atomic call.
    *
    * Layout of the emitted buffer:
-   *   [BSU]
-   *   [ERASE_SCREEN + CURSOR_HOME]   ← only when needsEraseBeforePaint
-   *   [CURSOR_HOME]                  ← always in alt-screen mode
-   *   <Ink output>
-   *   [ESU]
+   *   [BSU]                            ← begin synchronized update
+   *   [ERASE_SCREEN + CURSOR_HOME]     ← only when needsEraseBeforePaint (resize)
+   *   [CURSOR_HOME]                    ← always in alt-screen (paint from top-left)
+   *   <Ink output with erase stripped>
+   *   [ERASE_TO_END_OF_SCREEN]         ← clear stale content below new frame
+   *   [ESU]                            ← end synchronized update
    */
   private flush(): void {
     if (!this.lastOutput) return;
@@ -179,13 +214,16 @@ export class RenderInterceptor {
     if (this.needsEraseBeforePaint) {
       this.needsEraseBeforePaint = false;
       buffer += ERASE_SCREEN + CURSOR_HOME;
-    }
-
-    if (this.altScreenActive) {
+    } else if (this.altScreenActive) {
       buffer += CURSOR_HOME;
     }
 
     buffer += this.lastOutput;
+
+    // Clear any remaining old content below the new frame
+    if (this.altScreenActive) {
+      buffer += ERASE_TO_END_OF_SCREEN;
+    }
 
     if (SYNC_OUTPUT_SUPPORTED) buffer += ESU;
 

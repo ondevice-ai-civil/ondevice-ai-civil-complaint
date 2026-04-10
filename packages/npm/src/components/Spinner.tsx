@@ -30,19 +30,19 @@ function randomVerb(): string {
 export function Spinner({ tokens = 0 }: SpinnerProps) {
   const [frame, setFrame] = useState(0);
   const [verb, setVerb] = useState(randomVerb);
+  const tickRef = useRef(0);
   // Record the mount time so elapsed seconds are accurate even after re-renders
   const startTime = useRef(Date.now());
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setFrame((f) => {
-        const next = f + 1;
-        // Rotate the displayed proverb every verbChangeInterval frames
-        if (next > 0 && next % SPINNER.verbChangeInterval === 0) {
-          setVerb(randomVerb());
-        }
-        return next;
-      });
+      // Advance frame counter (pure updater — no side effects)
+      setFrame((f) => f + 1);
+      // Rotate proverb outside the updater to keep it pure (React StrictMode safe)
+      tickRef.current += 1;
+      if (tickRef.current % SPINNER.verbChangeInterval === 0) {
+        setVerb(randomVerb());
+      }
     }, 1000 / SPINNER.fps);
     return () => clearInterval(interval);
   }, []);

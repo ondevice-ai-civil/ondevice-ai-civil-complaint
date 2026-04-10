@@ -6,11 +6,10 @@
  * tokens are returned as empty strings so callers can safely pass them
  * to Ink's <Text color="..."> prop without emitting ANSI sequences.
  *
- * The returned object is stable across renders (memoised with no deps)
- * because process.env values never change at runtime.
+ * RESOLVED_THEME is computed once at module load time because
+ * process.env values never change at runtime.
  */
 
-import { useMemo } from 'react';
 import { THEME_COLORS } from '../config.js';
 
 // ---------------------------------------------------------------------------
@@ -38,6 +37,19 @@ export interface ThemeTokens {
 }
 
 // ---------------------------------------------------------------------------
+// Module-level constants (computed once, never re-evaluated)
+// ---------------------------------------------------------------------------
+
+const EMPTY_TOKENS: ThemeTokens = {
+  primary: '', accent: '', muted: '', error: '',
+  warning: '', success: '', info: '', dimmed: '',
+};
+
+const RESOLVED_THEME: ThemeTokens = process.env.NO_COLOR !== undefined
+  ? EMPTY_TOKENS
+  : { ...THEME_COLORS };
+
+// ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
 
@@ -49,21 +61,5 @@ export interface ThemeTokens {
  *   <Text color={theme.primary}>Hello</Text>
  */
 export function useTheme(): ThemeTokens {
-  return useMemo(() => {
-    // NO_COLOR env var present → strip all color output regardless of value.
-    if (process.env.NO_COLOR !== undefined) {
-      return {
-        primary: '',
-        accent: '',
-        muted: '',
-        error: '',
-        warning: '',
-        success: '',
-        info: '',
-        dimmed: '',
-      };
-    }
-
-    return { ...THEME_COLORS };
-  }, []);
+  return RESOLVED_THEME;
 }

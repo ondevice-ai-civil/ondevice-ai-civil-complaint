@@ -21,12 +21,18 @@ interface MarkdownViewProps {
   streaming?: boolean;
 }
 
+// Strip ANSI escape sequences from untrusted server content
+function stripAnsi(str: string): string {
+  // eslint-disable-next-line no-control-regex
+  return str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+}
+
 export function MarkdownView({ content, streaming = false }: MarkdownViewProps) {
   const rendered = useMemo(() => {
     if (!content) return '';
     try {
       // marked.parse() is synchronous when the terminal renderer extension is active.
-      const result = marked.parse(content);
+      const result = marked.parse(stripAnsi(content));
       // Remove trailing newlines produced by marked's block-level output.
       return typeof result === 'string' ? result.trimEnd() : '';
     } catch {

@@ -7,12 +7,13 @@
  *   3. On failure → try blocking run  (client.run)
  *
  * Cancellation is handled via an AbortController stored in a ref.
- * The controller is shared with the client by aborting the underlying fetch
- * through the stream generator — on abort the for-await loop throws and
- * the catch block in each path swallows the error and returns early.
+ * The controller.signal is forwarded to every client call so that aborting the
+ * controller immediately cancels the underlying fetch (no zombie requests).
+ *
+ * An unmount guard (mountedRef) prevents dispatching into unmounted components.
  */
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { GovOnClient } from '../client.js';
 import type { V3SSEEvent, V2SSEEvent, Action } from '../types.js';
 import { NODE_STATUS_MESSAGES } from '../types.js';
@@ -42,6 +43,31 @@ export function useSSE({ client, dispatch, sessionId }: UseSSEOptions): UseSSERe
   /** Holds the AbortController for the current in-flight request. */
   const abortRef = useRef<AbortController | null>(null);
 
+  /**
+   * Unmount guard — set to false when the component unmounts.
+   * All async callbacks check this before dispatching to avoid state updates
+   * on unmounted components (which would leak memory and produce React warnings).
+   */
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  /**
+   * Safe dispatch — drops the action if the component has already unmounted.
+   * All internal helpers receive this wrapper instead of the raw dispatch.
+   */
+  const safeDispatch = useCallback(
+    (action: Action) => {
+      if (mountedRef.current) dispatch(action);
+    },
+    [dispatch],
+  );
+
   // -------------------------------------------------------------------------
   // cancel — abort the current streaming request
   // -------------------------------------------------------------------------
@@ -70,9 +96,9 @@ export function useSSE({ client, dispatch, sessionId }: UseSSEOptions): UseSSERe
       const timestamp = new Date().toISOString();
       const sid = sessionId ?? undefined;
 
-      dispatch({ type: 'SET_LOADING', payload: true });
-      dispatch({ type: 'SET_ERROR', payload: null });
-      dispatch({
+      safeDispatch({ type: 'SET_LOADING', payload: true });
+      safeDispatch({ type: 'SET_ERROR', payload: null });
+      safeDispatch({
         type: 'START_ASSISTANT_MESSAGE',
         payload: { id: assistantMsgId, timestamp },
       });
@@ -80,25 +106,39 @@ export function useSSE({ client, dispatch, sessionId }: UseSSEOptions): UseSSERe
       // ------------------------------------------------------------------
       // Path 1: v3 fine-grained streaming
       // ------------------------------------------------------------------
-      const v3Success = await _tryV3(
+      const { success: v3Success, contentDispatched: v3ContentDispatched } = await _tryV3(
         client,
         query,
         sid,
         assistantMsgId,
         controller,
-        dispatch,
+        safeDispatch,
       );
 
       if (v3Success) {
-        dispatch({ type: 'SET_API_VERSION', payload: 'v3' });
-        dispatch({ type: 'SET_LOADING', payload: false });
+        safeDispatch({ type: 'SET_API_VERSION', payload: 'v3' });
+        safeDispatch({ type: 'SET_LOADING', payload: false });
         abortRef.current = null;
         return;
       }
 
       // Bail out immediately if the user cancelled.
       if (controller.signal.aborted) {
-        dispatch({ type: 'SET_LOADING', payload: false });
+        safeDispatch({ type: 'SET_LOADING', payload: false });
+        abortRef.current = null;
+        return;
+      }
+
+      // If v3 emitted content tokens before failing, the message buffer is
+      // already partially written. Falling through to v2 would corrupt it by
+      // appending v2 content on top of the partial v3 content. Treat this as
+      // a terminal error instead.
+      if (v3ContentDispatched) {
+        safeDispatch({
+          type: 'SET_ERROR',
+          payload: 'Streaming interrupted after partial response — please retry.',
+        });
+        safeDispatch({ type: 'SET_LOADING', payload: false });
         abortRef.current = null;
         return;
       }
@@ -112,18 +152,18 @@ export function useSSE({ client, dispatch, sessionId }: UseSSEOptions): UseSSERe
         sid,
         assistantMsgId,
         controller,
-        dispatch,
+        safeDispatch,
       );
 
       if (v2Success) {
-        dispatch({ type: 'SET_API_VERSION', payload: 'v2' });
-        dispatch({ type: 'SET_LOADING', payload: false });
+        safeDispatch({ type: 'SET_API_VERSION', payload: 'v2' });
+        safeDispatch({ type: 'SET_LOADING', payload: false });
         abortRef.current = null;
         return;
       }
 
       if (controller.signal.aborted) {
-        dispatch({ type: 'SET_LOADING', payload: false });
+        safeDispatch({ type: 'SET_LOADING', payload: false });
         abortRef.current = null;
         return;
       }
@@ -131,12 +171,12 @@ export function useSSE({ client, dispatch, sessionId }: UseSSEOptions): UseSSERe
       // ------------------------------------------------------------------
       // Path 3: blocking run
       // ------------------------------------------------------------------
-      await _tryBlocking(client, query, sid, assistantMsgId, controller, dispatch);
+      await _tryBlocking(client, query, sid, assistantMsgId, controller, safeDispatch);
 
-      dispatch({ type: 'SET_LOADING', payload: false });
+      safeDispatch({ type: 'SET_LOADING', payload: false });
       abortRef.current = null;
     },
-    [client, dispatch, sessionId, cancel],
+    [client, safeDispatch, sessionId, cancel],
   );
 
   return { submit, cancel };
@@ -146,9 +186,29 @@ export function useSSE({ client, dispatch, sessionId }: UseSSEOptions): UseSSERe
 // Internal path helpers  (module-level to keep the hook body lean)
 // ---------------------------------------------------------------------------
 
+/** Result shape returned by _tryV3 so callers can inspect partial-write state. */
+interface V3Result {
+  /** true when run_complete was received cleanly. */
+  success: boolean;
+  /**
+   * true when at least one response_delta or thinking_delta was dispatched
+   * before the function returned. Used to decide whether to fall through or
+   * surface an error when v3 fails mid-stream.
+   */
+  contentDispatched: boolean;
+}
+
 /**
- * Attempt v3 SSE streaming. Returns true when the run completed successfully,
- * false when any error occurs so the caller can fall through to the next path.
+ * Attempt v3 SSE streaming. Returns a V3Result describing the outcome.
+ *
+ * Returns success=true only on a clean run_complete event.
+ * Returns success=false, contentDispatched=false on network/HTTP exceptions
+ *   (safe to fall through to v2).
+ * Returns success=false, contentDispatched=false when an explicit `error`
+ *   event is received — the error is already dispatched and the caller
+ *   should NOT fall through (the event is a terminal server-side error).
+ *   We signal this by returning success=false but we still set contentDispatched
+ *   to true so the caller surfaces the error rather than trying v2.
  */
 async function _tryV3(
   client: GovOnClient,
@@ -157,11 +217,13 @@ async function _tryV3(
   assistantMsgId: string,
   controller: AbortController,
   dispatch: React.Dispatch<Action>,
-): Promise<boolean> {
+): Promise<V3Result> {
+  let contentDispatched = false;
+
   try {
-    for await (const raw of client.streamV3(query, sessionId)) {
+    for await (const raw of client.streamV3(query, sessionId, undefined, controller.signal)) {
       // Respect cancellation mid-stream.
-      if (controller.signal.aborted) return false;
+      if (controller.signal.aborted) return { success: false, contentDispatched };
 
       const event = raw as V3SSEEvent;
 
@@ -174,6 +236,7 @@ async function _tryV3(
           break;
 
         case 'thinking_delta':
+          contentDispatched = true;
           dispatch({
             type: 'APPEND_STREAMING_THINKING',
             payload: event.content,
@@ -202,6 +265,7 @@ async function _tryV3(
           break;
 
         case 'response_delta':
+          contentDispatched = true;
           dispatch({
             type: 'APPEND_STREAMING_CONTENT',
             payload: event.content,
@@ -221,13 +285,14 @@ async function _tryV3(
             },
           });
           // run_complete signals a clean finish — return success immediately.
-          return true;
+          return { success: true, contentDispatched };
 
         case 'error':
+          // An explicit server-side error event is a terminal state.
+          // Dispatch the error and signal the caller NOT to fall through by
+          // returning contentDispatched=true (treated as "buffer tainted").
           dispatch({ type: 'SET_ERROR', payload: event.error });
-          // An explicit error event from v3 is still a "handled" terminal state;
-          // return false so the caller falls through to v2/blocking.
-          return false;
+          return { success: false, contentDispatched: true };
 
         default:
           // Unknown event type — ignore and continue streaming.
@@ -236,10 +301,11 @@ async function _tryV3(
     }
 
     // Generator exhausted without a run_complete event — treat as failure.
-    return false;
-  } catch {
+    // contentDispatched reflects whether any tokens were written.
+    return { success: false, contentDispatched };
+  } catch (_err) {
     // Network error, HTTP non-2xx, abort, or JSON parse failure from the client.
-    return false;
+    return { success: false, contentDispatched };
   }
 }
 
@@ -256,7 +322,7 @@ async function _tryV2(
   dispatch: React.Dispatch<Action>,
 ): Promise<boolean> {
   try {
-    for await (const raw of client.stream(query, sessionId)) {
+    for await (const raw of client.stream(query, sessionId, controller.signal)) {
       if (controller.signal.aborted) return false;
 
       const event = raw as V2SSEEvent;
@@ -337,7 +403,8 @@ async function _tryV2(
 
     // Generator exhausted without a persist/agent run_complete event.
     return false;
-  } catch {
+  } catch (_err) {
+    // Network/HTTP error or abort — try next path.
     return false;
   }
 }
@@ -357,7 +424,7 @@ async function _tryBlocking(
   if (controller.signal.aborted) return;
 
   try {
-    const result = await client.run(query, sessionId);
+    const result = await client.run(query, sessionId, controller.signal);
 
     if (controller.signal.aborted) return;
 
@@ -372,6 +439,7 @@ async function _tryBlocking(
         threadId: result.thread_id ?? '',
       },
     });
+    dispatch({ type: 'SET_API_VERSION', payload: 'v2' });
   } catch (err) {
     if (controller.signal.aborted) return;
 

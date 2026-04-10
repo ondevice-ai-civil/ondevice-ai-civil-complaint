@@ -16,7 +16,7 @@
  */
 
 import React, { useReducer, useCallback, useMemo } from 'react';
-import { Box, Text, Static, useApp, useInput } from 'ink';
+import { Box, Text, Static, useApp, useInput, useStdout } from 'ink';
 import { GovOnClient } from './client.js';
 import { getBaseUrl, THEME_COLORS } from './config.js';
 import type { AppState, Action, Message } from './types.js';
@@ -32,6 +32,15 @@ import { MessageBubble } from './components/MessageBubble.js';
 import { ToolPanel } from './components/ToolPanel.js';
 import { ApprovalPrompt } from './components/ApprovalPrompt.js';
 import { MetadataBar } from './components/MetadataBar.js';
+
+// ---------------------------------------------------------------------------
+// Module-level constants
+// ---------------------------------------------------------------------------
+
+/** Sentinel object placed first in the Static items array to render the banner
+ *  exactly once into the terminal scrollback. Hoisted to module level so that
+ *  its reference is stable across renders and Static never re-prints it. */
+const BANNER_ITEM = { _banner: true as const };
 
 // ---------------------------------------------------------------------------
 // Props
@@ -116,11 +125,14 @@ function reducer(state: AppState, action: Action): AppState {
       // Only add if we don't already have an entry for this iteration
       const already = state.pendingThinking.some((s) => s.iteration === iteration);
       if (already) return state;
+      // Initialize with empty content — the stale streamingThinking buffer
+      // must not be snapshotted here because END_THINKING_STEP will append
+      // whatever the stream emits between start and end into this slot.
       return {
         ...state,
         pendingThinking: [
           ...state.pendingThinking,
-          { iteration, content: state.streamingThinking },
+          { iteration, content: '' },
         ],
         streamingThinking: '',
       };
@@ -151,9 +163,13 @@ function reducer(state: AppState, action: Action): AppState {
 
     case 'MARK_TOOL_END': {
       const { tool, success } = action.payload;
-      const updated = state.activeTools.map((t) =>
-        t.tool === tool && t.pending ? { ...t, pending: false, success } : t,
-      );
+      // Use findIndex + targeted update so only the first pending entry for
+      // this tool name is mutated — prevents clobbering later runs of the
+      // same tool if it appears more than once in a single iteration.
+      const idx = state.activeTools.findIndex((t) => t.tool === tool && t.pending);
+      if (idx === -1) return state;
+      const updated = [...state.activeTools];
+      updated[idx] = { ...updated[idx], pending: false, success };
       return { ...state, activeTools: updated };
     }
 
@@ -228,6 +244,7 @@ function reducer(state: AppState, action: Action): AppState {
 
 export function App({ version, initialQuery }: AppProps) {
   const { exit } = useApp();
+  const { stdout } = useStdout();
   const [state, dispatch] = useReducer(reducer, initialState);
 
   // GovOnClient is stable for the lifetime of the app
@@ -272,13 +289,34 @@ export function App({ version, initialQuery }: AppProps) {
       if (!state.threadId || !state.pendingApproval) return;
       dispatch({ type: 'SET_PENDING_APPROVAL', payload: null });
       try {
-        await client.approve(state.threadId, approved);
+        const result = await client.approve(state.threadId, approved);
+        if (approved && result.text) {
+          // The approve endpoint returns the final answer when the agent
+          // completes after approval. Finalize the current assistant message
+          // with that result rather than leaving streaming dangling.
+          const streamingMsg = state.messages.find((m) => m.streaming);
+          if (streamingMsg) {
+            dispatch({
+              type: 'FINALIZE_ASSISTANT_MESSAGE',
+              payload: {
+                messageId: streamingMsg.id,
+                content: result.text,
+                evidence: result.evidence_items ?? [],
+                metadata: {},
+                sessionId: result.session_id,
+                threadId: result.thread_id,
+              },
+            });
+          }
+        }
+        dispatch({ type: 'SET_LOADING', payload: false });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         dispatch({ type: 'SET_ERROR', payload: msg });
+        dispatch({ type: 'SET_LOADING', payload: false });
       }
     },
-    [client, state.threadId, state.pendingApproval, dispatch],
+    [client, state.threadId, state.pendingApproval, state.messages, dispatch],
   );
 
   // Submit initial query on first render once daemon is ready
@@ -327,10 +365,22 @@ export function App({ version, initialQuery }: AppProps) {
   // Banner is the first "static" element, followed by the message history.
   const completedMessages = state.messages.filter((m) => !m.streaming);
 
+  // Memoize the items array so that the reference only changes when
+  // completedMessages changes. Using a stable module-level BANNER_ITEM object
+  // prevents Static from detecting a new array on every render and
+  // re-printing the banner into the scrollback.
+  const staticItems = useMemo(
+    () => [BANNER_ITEM, ...completedMessages],
+    [completedMessages],
+  );
+
+  // Terminal column width for the separator line (Fix 5).
+  const cols = stdout?.columns ?? 80;
+
   return (
     <Box flexDirection="column">
       {/* ── 1. Banner + completed messages in scrollback ── */}
-      <Static items={[{ _banner: true }, ...completedMessages]}>
+      <Static items={staticItems}>
         {(item: { _banner?: boolean } | Message) => {
           if ('_banner' in item && item._banner) {
             return <Banner key="__banner__" version={version} />;
@@ -393,12 +443,14 @@ export function App({ version, initialQuery }: AppProps) {
       {/* ── 5. Separator ── */}
       <Box marginTop={1}>
         <Text color={THEME_COLORS.muted} dimColor>
-          {'─'.repeat(process.stdout.columns > 0 ? process.stdout.columns - 1 : 79)}
+          {'─'.repeat(Math.max(1, cols - 1))}
         </Text>
       </Box>
 
-      {/* ── 6. Input bar ── */}
-      <InputBar onSubmit={handleSubmit} disabled={state.isLoading} />
+      {/* ── 6. Input bar — unmounted during approval to avoid useInput conflicts ── */}
+      {!state.pendingApproval && (
+        <InputBar onSubmit={handleSubmit} disabled={state.isLoading} />
+      )}
 
       {/* ── 7. Status footer ── */}
       <Box marginTop={1}>

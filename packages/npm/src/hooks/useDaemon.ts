@@ -20,7 +20,7 @@ export function useDaemon(client: GovOnClient): DaemonState {
     waiting: true,
     error: null,
   });
-  const abortRef = useRef(false);
+  const controllerRef = useRef(new AbortController());
 
   useEffect(() => {
     let mounted = true;
@@ -39,7 +39,7 @@ export function useDaemon(client: GovOnClient): DaemonState {
             setState({
               ready: ok,
               waiting: false,
-              error: ok ? null : '서버 연결 시간 초과',
+              error: ok ? null : 'Server connection timed out',
             });
           }
         } catch (err) {
@@ -55,7 +55,10 @@ export function useDaemon(client: GovOnClient): DaemonState {
     }
 
     check();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+      controllerRef.current.abort();
+    };
   }, [client]);
 
   return state;

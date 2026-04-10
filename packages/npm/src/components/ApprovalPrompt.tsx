@@ -17,7 +17,11 @@ interface ApprovalPromptProps {
   onApprove: (approved: boolean) => void;
 }
 
+const MAX_DESCRIPTION_LENGTH = 1000;
+
 export function ApprovalPrompt({ request, onApprove }: ApprovalPromptProps) {
+  const safeDescription = request.description?.slice(0, MAX_DESCRIPTION_LENGTH);
+
   useInput(
     useCallback(
       (input: string) => {
@@ -53,9 +57,9 @@ export function ApprovalPrompt({ request, onApprove }: ApprovalPromptProps) {
       </Box>
 
       {/* Description */}
-      {request.description && (
+      {safeDescription && (
         <Box marginTop={1}>
-          <Text wrap="wrap">{request.description}</Text>
+          <Text wrap="wrap">{safeDescription}</Text>
         </Box>
       )}
 

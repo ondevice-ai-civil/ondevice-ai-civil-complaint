@@ -38,4 +38,12 @@ if (argv.version) {
 // argv._[0] is the positional <query> argument when provided
 const query = argv._[0] as string | undefined;
 
-render(<App version={pkg.version} initialQuery={query} />);
+const instance = render(<App version={pkg.version} initialQuery={query} />);
+
+// Fix terminal resize ghost lines: reset log-update's previousLineCount
+// BEFORE Ink's own resize handler fires. Without this, log-update tries to
+// erase the wrong number of lines after text reflow, leaving ghost artifacts.
+// prependListener ensures our handler runs first in the listener chain.
+process.stdout.prependListener('resize', () => {
+  instance.clear();
+});

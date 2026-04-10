@@ -16,7 +16,7 @@
  */
 
 import React, { useReducer, useCallback, useMemo } from 'react';
-import { Box, Text, Static, useApp, useInput } from 'ink';
+import { Box, Text, Static, useApp, useInput, useStdout } from 'ink';
 import { createClient, isMockMode } from './clientFactory.js';
 import { getBaseUrl, THEME_COLORS } from './config.js';
 import type { AppState, Action, Message } from './types.js';
@@ -334,6 +334,10 @@ export function App({ version, initialQuery }: AppProps) {
     if (key.escape && state.isLoading) cancel();
   });
 
+  // Terminal width for full-width separator
+  const { stdout } = useStdout();
+  const cols = stdout?.columns ?? 80;
+
   // ALL hooks must be called ABOVE this line — React requires the same
   // number of hooks on every render. Early returns go BELOW.
 
@@ -442,7 +446,7 @@ export function App({ version, initialQuery }: AppProps) {
 
       {/* ── 5. Separator ── */}
       <Box marginTop={1}>
-        <Text color={THEME_COLORS.muted} dimColor>{'───'}</Text>
+        <Text color={THEME_COLORS.muted} dimColor>{'─'.repeat(Math.max(1, cols - 1))}</Text>
       </Box>
 
       {/* ── 6. Input bar — unmounted during approval to avoid useInput conflicts ── */}

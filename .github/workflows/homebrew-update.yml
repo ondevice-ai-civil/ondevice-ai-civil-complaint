@@ -65,7 +65,7 @@ jobs:
           SHA256=$(curl -fsSL "$TARBALL_URL" | shasum -a 256 | awk '{print $1}')
           echo "SHA256: $SHA256"
 
-          cat > /tmp/govon.rb << FORMULA
+          cat > /tmp/govon.rb <<EOF
           # typed: false
           # frozen_string_literal: true
 
@@ -84,17 +84,19 @@ jobs:
             end
 
             test do
-              assert_match version.to_s, shell_output("#{bin}/govon --version")
+              assert_match version.to_s, shell_output("\#{bin}/govon --version")
             end
           end
-          FORMULA
+          EOF
+          # Remove leading whitespace from heredoc
+          sed -i 's/^          //' /tmp/govon.rb
 
           echo "=== Generated formula ==="
           cat /tmp/govon.rb
 
       - name: Push to homebrew-govon tap
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           VERSION: ${{ steps.resolve.outputs.version }}
         run: |
           git clone "https://x-access-token:${GH_TOKEN}@github.com/GovOn-Org/homebrew-govon.git" /tmp/tap

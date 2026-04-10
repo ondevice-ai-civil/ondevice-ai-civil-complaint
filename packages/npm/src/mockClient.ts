@@ -31,8 +31,30 @@ import type {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Abort-aware sleep. Rejects immediately with AbortError when the signal fires,
+ * so Esc cancellation propagates without waiting for the full delay.
+ */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Aborted', 'AbortError'));
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      reject(new DOMException('Aborted', 'AbortError'));
+    };
+
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 function uuid(): string {
@@ -48,7 +70,7 @@ async function* streamWords(
   const words = text.split(' ');
   for (const word of words) {
     if (signal?.aborted) return;
-    await sleep(delayMs);
+    await sleep(delayMs, signal);
     yield { type: 'response_delta', content: word + ' ' };
   }
 }
@@ -168,7 +190,7 @@ async function* scenarioStats(
     'Let me also check for keyword analysis to provide additional context. ',
   ]) {
     if (signal?.aborted) return;
-    await sleep(80);
+    await sleep(80, signal);
     yield { type: 'thinking_delta', content: line };
   }
   yield {
@@ -183,17 +205,17 @@ async function* scenarioStats(
   // Tool execution
   yield { type: 'tool_start', tool: 'stats_lookup' };
   if (signal?.aborted) return;
-  await sleep(300);
+  await sleep(300, signal);
   yield { type: 'tool_end', tool: 'stats_lookup', success: true };
 
   yield { type: 'tool_start', tool: 'keyword_analyzer' };
   if (signal?.aborted) return;
-  await sleep(200);
+  await sleep(200, signal);
   yield { type: 'tool_end', tool: 'keyword_analyzer', success: true };
 
   // Iteration 2: compose final answer
   yield { type: 'thinking_start', iteration: 2 };
-  await sleep(50);
+  await sleep(50, signal);
   yield { type: 'thinking_delta', content: 'Tools returned successfully. Composing the final answer now.' };
   yield { type: 'thinking_end', iteration: 2, tool_calls: [] };
 
@@ -218,12 +240,12 @@ async function* scenarioError(
 ): AsyncGenerator<V3SSEEvent> {
   // Start thinking, then crash mid-stream
   yield { type: 'thinking_start', iteration: 1 };
-  await sleep(100);
+  await sleep(100, signal);
   yield { type: 'thinking_delta', content: 'Processing the query... ' };
   if (signal?.aborted) return;
-  await sleep(200);
+  await sleep(200, signal);
   yield { type: 'thinking_delta', content: 'Attempting to connect to data source... ' };
-  await sleep(300);
+  await sleep(300, signal);
   yield { type: 'error', error: '[MockError] Backend service unavailable: connection to data source timed out after 30s' };
 }
 
@@ -235,7 +257,7 @@ async function* scenarioToolFail(
 ): AsyncGenerator<V3SSEEvent> {
   // Iteration 1: thinking → 2 tools, one fails
   yield { type: 'thinking_start', iteration: 1 };
-  await sleep(60);
+  await sleep(60, signal);
   yield { type: 'thinking_delta', content: 'I need to look up demographics and statistics for this query. ' };
   yield {
     type: 'thinking_end',
@@ -248,18 +270,18 @@ async function* scenarioToolFail(
 
   yield { type: 'tool_start', tool: 'stats_lookup' };
   if (signal?.aborted) return;
-  await sleep(250);
+  await sleep(250, signal);
   yield { type: 'tool_end', tool: 'stats_lookup', success: true };
 
   yield { type: 'tool_start', tool: 'demographics_lookup' };
   if (signal?.aborted) return;
-  await sleep(500);
+  await sleep(500, signal);
   // This one FAILS
   yield { type: 'tool_end', tool: 'demographics_lookup', success: false };
 
   // Iteration 2: recover and answer with partial data
   yield { type: 'thinking_start', iteration: 2 };
-  await sleep(80);
+  await sleep(80, signal);
   yield { type: 'thinking_delta', content: 'demographics_lookup failed with timeout. I will use cached data to answer. ' };
   yield { type: 'thinking_end', iteration: 2, tool_calls: [] };
 
@@ -284,7 +306,7 @@ async function* scenarioSimple(
 ): AsyncGenerator<V3SSEEvent> {
   // Single iteration — no tool calls, direct answer
   yield { type: 'thinking_start', iteration: 1 };
-  await sleep(60);
+  await sleep(60, signal);
   yield { type: 'thinking_delta', content: 'This is a general question about GovOn. No tools needed — I can answer directly. ' };
   yield { type: 'thinking_end', iteration: 1, tool_calls: [] };
 
@@ -308,7 +330,7 @@ async function* scenarioLong(
 ): AsyncGenerator<V3SSEEvent> {
   // Iteration 1: thinking → 3 tool calls (heavy workload)
   yield { type: 'thinking_start', iteration: 1 };
-  await sleep(80);
+  await sleep(80, signal);
   yield { type: 'thinking_delta', content: 'User is requesting a comprehensive analysis. I need multiple data sources. ' };
   yield { type: 'thinking_delta', content: 'Planning: stats_lookup for volume, keyword_analyzer for trends, demographics_lookup for regional breakdown. ' };
   yield {
@@ -324,22 +346,22 @@ async function* scenarioLong(
   // 3 tools in sequence
   yield { type: 'tool_start', tool: 'stats_lookup' };
   if (signal?.aborted) return;
-  await sleep(400);
+  await sleep(400, signal);
   yield { type: 'tool_end', tool: 'stats_lookup', success: true };
 
   yield { type: 'tool_start', tool: 'keyword_analyzer' };
   if (signal?.aborted) return;
-  await sleep(350);
+  await sleep(350, signal);
   yield { type: 'tool_end', tool: 'keyword_analyzer', success: true };
 
   yield { type: 'tool_start', tool: 'demographics_lookup' };
   if (signal?.aborted) return;
-  await sleep(500);
+  await sleep(500, signal);
   yield { type: 'tool_end', tool: 'demographics_lookup', success: true };
 
   // Iteration 2: compose long report
   yield { type: 'thinking_start', iteration: 2 };
-  await sleep(60);
+  await sleep(60, signal);
   yield { type: 'thinking_delta', content: 'All three tools returned successfully. Composing a comprehensive report with tables and code blocks. ' };
   yield { type: 'thinking_end', iteration: 2, tool_calls: [] };
 
@@ -365,6 +387,15 @@ async function* scenarioLong(
 // ---------------------------------------------------------------------------
 
 export class MockGovOnClient implements IClient {
+  /**
+   * Tracks pending approval requests by thread_id so that approve() can
+   * resolve the waiting v2 stream and reuse the original session_id.
+   */
+  private readonly _pendingApprovals = new Map<
+    string,
+    { sessionId: string; resolve: () => void }
+  >();
+
   async health(): Promise<Record<string, unknown>> {
     return { status: 'ok', mock: true };
   }
@@ -423,7 +454,7 @@ export class MockGovOnClient implements IClient {
     if (scenario === 'approval') {
       // --- V2 approval flow ---
       yield { node: 'session_load', status: 'completed' };
-      await sleep(100);
+      await sleep(100, _signal);
 
       yield {
         node: 'agent',
@@ -431,7 +462,7 @@ export class MockGovOnClient implements IClient {
         planned_tools: ['stats_lookup'],
         task_type: 'stats_query',
       };
-      await sleep(150);
+      await sleep(150, _signal);
 
       // Trigger the approval prompt
       yield {
@@ -447,25 +478,29 @@ export class MockGovOnClient implements IClient {
         },
       };
 
-      // The TUI will show ApprovalPrompt and wait for y/n.
-      // After the user approves via client.approve(), the stream ends.
-      // The approval response from approve() contains the final text.
+      // Keep the generator alive until approve()/cancel() resolves it.
+      // The TUI shows ApprovalPrompt and waits for y/n; once the user
+      // decides, approve() resolves this promise and the stream ends.
+      await new Promise<void>((resolve) => {
+        this._pendingApprovals.set(tid, { sessionId: sid, resolve });
+      });
+
       return;
     }
 
     // Default v2 fallback for non-approval scenarios
     yield { node: 'session_load', status: 'completed' };
-    await sleep(100);
+    await sleep(100, _signal);
 
     yield {
       node: 'agent',
       status: 'completed',
       planned_tools: ['stats_lookup'],
     };
-    await sleep(200);
+    await sleep(200, _signal);
 
     yield { node: 'tools', status: 'completed', tool_results: {} };
-    await sleep(100);
+    await sleep(100, _signal);
 
     yield {
       node: 'persist',
@@ -482,7 +517,7 @@ export class MockGovOnClient implements IClient {
     sessionId?: string,
     _signal?: AbortSignal,
   ): Promise<AgentRunResponse> {
-    await sleep(500);
+    await sleep(500, _signal);
     const sid = sessionId ?? uuid();
     const scenario = resolveScenario(query);
     const text = ANSWERS[scenario] || ANSWERS.stats;
@@ -517,12 +552,23 @@ export class MockGovOnClient implements IClient {
     return result as unknown as Record<string, unknown>;
   }
 
-  async approve(_threadId: string, approved: boolean): Promise<ApprovalResponse> {
+  async approve(threadId: string, approved: boolean): Promise<ApprovalResponse> {
     await sleep(200);
+
+    // Retrieve and clean up the pending approval to reuse the original session_id
+    const pending = this._pendingApprovals.get(threadId);
+    const sid = pending?.sessionId ?? uuid();
+
+    // Resolve the waiting v2 stream so the generator can finish
+    if (pending) {
+      pending.resolve();
+      this._pendingApprovals.delete(threadId);
+    }
+
     return {
       status: approved ? 'approved' : 'rejected',
-      thread_id: _threadId,
-      session_id: uuid(),
+      thread_id: threadId,
+      session_id: sid,
       text: approved ? ANSWERS.approval : undefined,
       evidence_items: approved
         ? [{ source_type: 'api', content: 'Direct DB query result (mock)', score: 0.93 }]
@@ -531,7 +577,13 @@ export class MockGovOnClient implements IClient {
     };
   }
 
-  async cancel(_threadId: string): Promise<Record<string, unknown>> {
-    return { status: 'cancelled', thread_id: _threadId };
+  async cancel(threadId: string): Promise<Record<string, unknown>> {
+    // Clean up any pending approval for this thread
+    const pending = this._pendingApprovals.get(threadId);
+    if (pending) {
+      pending.resolve();
+      this._pendingApprovals.delete(threadId);
+    }
+    return { status: 'cancelled', thread_id: threadId };
   }
 }

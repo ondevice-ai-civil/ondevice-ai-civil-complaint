@@ -22,7 +22,7 @@ Any input not matching the above keywords falls back to the `민원 통계` scen
 
 ## Matching Rules
 
-```
+```text
 query.includes('승인')           → approval
 query.includes('에러' | '오류')  → error
 query.includes('실패')           → tool_fail

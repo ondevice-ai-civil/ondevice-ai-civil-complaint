@@ -24,29 +24,31 @@ from langchain_core.runnables.config import var_child_runnable_config
 from langgraph.types import interrupt
 from loguru import logger
 
+from src.inference.runtime_config import govon_config
+
 from .state import ApprovalStatus, GovOnGraphState
 
 # ---------------------------------------------------------------------------
-# Constants
+# Constants — loaded from unified config (config/govon.yaml + env overrides)
 # ---------------------------------------------------------------------------
 
-_MAX_CONSECUTIVE_REJECTIONS = 2
+_MAX_CONSECUTIVE_REJECTIONS = govon_config.context.max_consecutive_rejections
 
 # ---------------------------------------------------------------------------
-# Context management constants (프로덕션 표준: Claude API/Code/Codex 패턴)
+# Context management constants (production standard: Claude API/Code/Codex pattern)
 # ---------------------------------------------------------------------------
 
-# Tool Result Clearing: iteration N+에서 오래된 ToolMessage를 placeholder로 대체
-_TOOL_CLEAR_AFTER_ITERATION = 2  # iteration 2부터 clearing 적용
-_TOOL_KEEP_RECENT = 2  # 최근 2개 ToolMessage content 보존
+# Tool Result Clearing: replace old ToolMessages with placeholder from iteration N+
+_TOOL_CLEAR_AFTER_ITERATION = govon_config.context.tool_clear_after_iteration
+_TOOL_KEEP_RECENT = govon_config.context.tool_keep_recent
 
-# Conversation Summarization: 멀티턴에서 오래된 턴을 요약으로 압축
-_SUMMARY_THRESHOLD_RATIO = 0.6  # older 토큰이 예산의 60% 초과 시 요약 발동
+# Conversation Summarization: compress old turns into a summary for multi-turn
+_SUMMARY_THRESHOLD_RATIO = govon_config.context.summary_threshold_ratio
 
-# 메시지 토큰 예산
-_MAX_MESSAGE_TOKENS = 4500
-_KEEP_RECENT = 6
-_AGENT_INPUT_BUDGET = 4500
+# Message token budget
+_MAX_MESSAGE_TOKENS = govon_config.context.max_message_tokens
+_KEEP_RECENT = govon_config.context.keep_recent_messages
+_AGENT_INPUT_BUDGET = govon_config.context.agent_input_budget
 
 if TYPE_CHECKING:
     from src.inference.session_context import SessionStore
@@ -654,9 +656,9 @@ def make_tools_node_v3(tool_node_fn):
         LangGraph ToolNode 인스턴스 또는 동등한 async callable.
     """
 
-    # Tool output 크기 제한 (Codex CLI head+tail truncation 패턴)
-    # max_model_len=8192 환경에서 ToolMessage가 컨텍스트를 초과하지 않도록 방지
-    MAX_TOOL_RESULT_CHARS = 3000  # ~1500 토큰 (한국어 기준)
+    # Tool output size limit (Codex CLI head+tail truncation pattern)
+    # Prevents ToolMessage from overflowing context in max_model_len=8192 environments
+    MAX_TOOL_RESULT_CHARS = govon_config.context.max_tool_result_chars
 
     def _truncate_tool_output(content: str) -> str:
         """Tool result를 head+tail 방식으로 truncation."""

@@ -5,7 +5,7 @@ import re
 import time
 import uuid
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
@@ -24,7 +24,7 @@ except ImportError:
 from .adapter_registry import AdapterRegistry
 from .agent_manager import AgentManager
 from .feature_flags import FeatureFlags
-from .runtime_config import RuntimeConfig
+from .runtime_config import RuntimeConfig, govon_config
 from .schemas import (
     AgentRunRequest,
     GenerateCivilResponseRequest,
@@ -78,10 +78,10 @@ AGENTS_DIR = runtime_config.paths.agents_dir
 
 @dataclass
 class SamplingParams:
-    """vLLM HTTP API용 샘플링 파라미터. vLLM 직접 import 없이 동작."""
+    """Sampling parameters for vLLM HTTP API. Works without a direct vLLM import."""
 
-    max_tokens: int = 512
-    temperature: float = 0.7
+    max_tokens: int = field(default_factory=lambda: govon_config.generation.max_tokens)
+    temperature: float = field(default_factory=lambda: govon_config.generation.temperature)
     top_p: float = 1.0
     stop: Optional[list] = None
     repetition_penalty: float = 1.0
@@ -180,7 +180,10 @@ class vLLMEngineManager:
 
         self._http_client = _httpx.AsyncClient(
             base_url=self._vllm_base_url,
-            timeout=_httpx.Timeout(300.0, connect=30.0),
+            timeout=_httpx.Timeout(
+                govon_config.serving.vllm_request_timeout,
+                connect=govon_config.serving.vllm_connect_timeout,
+            ),
         )
 
         # vLLM 서버 health check (entrypoint.sh에서 이미 확인했지만 이중 검증)
@@ -550,8 +553,8 @@ class vLLMEngineManager:
 
             gen_request = GenerateCivilResponseRequest(
                 prompt=working_query,
-                max_tokens=2048,
-                temperature=0.7,
+                max_tokens=govon_config.generation.max_tokens,
+                temperature=govon_config.generation.temperature,
             )
             request_id = str(uuid.uuid4())
             prepared = await engine_ref._prepare_draft_only(gen_request)
@@ -622,10 +625,11 @@ class vLLMEngineManager:
 
         tools = self._build_langgraph_tools()
 
-        # max_tokens 동적 계산: max_model_len에서 입력 오버헤드(시스템 프롬프트+도구 스키마+대화이력)를 제외
-        # 시스템 프롬프트 ~500 + 도구 스키마 ~1000 + 안전 마진 ~500 = 2000 오버헤드
+        # Dynamically calculate max_tokens: subtract input overhead from max_model_len
+        # system prompt ~500 + tool schemas ~1000 + safety margin ~500 = 2000 overhead
         _max_model_len = runtime_config.max_model_len
-        _llm_max_tokens = max(256, min(1024, _max_model_len - 2000))
+        _system_overhead = govon_config.context.system_prompt_overhead
+        _llm_max_tokens = max(256, min(1024, _max_model_len - _system_overhead))
         if _max_model_len < 2500:
             logger.warning(
                 f"[_init_graph] max_model_len={_max_model_len}이 매우 작습니다. "
@@ -647,11 +651,11 @@ class vLLMEngineManager:
                 base_url=os.environ["LANGGRAPH_MODEL_BASE_URL"],
                 api_key=os.getenv("LANGGRAPH_MODEL_API_KEY", "EMPTY"),
                 model=os.getenv("LANGGRAPH_PLANNER_MODEL", runtime_config.model.model_path),
-                temperature=0.0,
+                temperature=govon_config.generation.agent_temperature,
                 max_tokens=_llm_max_tokens,
             )
         else:
-            # 운영 환경: vLLM OpenAI-compatible endpoint 사용
+            # Production: use vLLM OpenAI-compatible endpoint
             from langchain_openai import ChatOpenAI
 
             vllm_port = os.getenv("VLLM_PORT", "8000")
@@ -659,7 +663,7 @@ class vLLMEngineManager:
                 base_url=f"http://localhost:{vllm_port}/v1",
                 api_key="EMPTY",
                 model=runtime_config.model.model_path,
-                temperature=0.0,
+                temperature=govon_config.generation.agent_temperature,
                 max_tokens=_llm_max_tokens,
             )
 
@@ -858,6 +862,10 @@ def _rate_limit(limit_string: str):
     return _noop
 
 
+# Rate limit string sourced from unified config.
+_DEFAULT_RATE_LIMIT = govon_config.rate_limit.default
+
+
 def get_feature_flags(request: Request) -> FeatureFlags:
     header = request.headers.get("X-Feature-Flag")
     return manager.feature_flags.override_from_header(header)
@@ -869,7 +877,7 @@ def get_feature_flags(request: Request) -> FeatureFlags:
 
 
 @app.post("/v2/agent/stream")
-@_rate_limit("30/minute")
+@_rate_limit(_DEFAULT_RATE_LIMIT)
 async def v2_agent_stream(
     request: AgentRunRequest,
     _http_request: Request,
@@ -986,7 +994,7 @@ async def v2_agent_stream(
 
 
 @app.post("/v2/agent/run")
-@_rate_limit("30/minute")
+@_rate_limit(_DEFAULT_RATE_LIMIT)
 async def v2_agent_run(
     request: AgentRunRequest,
     _http_request: Request,
@@ -1102,7 +1110,7 @@ async def v2_agent_run(
 
 
 @app.post("/v2/agent/approve")
-@_rate_limit("30/minute")
+@_rate_limit(_DEFAULT_RATE_LIMIT)
 async def v2_agent_approve(
     thread_id: str,
     approved: bool,
@@ -1188,7 +1196,7 @@ async def v2_agent_approve(
 
 
 @app.post("/v2/agent/cancel")
-@_rate_limit("30/minute")
+@_rate_limit(_DEFAULT_RATE_LIMIT)
 async def v2_agent_cancel(
     thread_id: str,
     _http_request: Request,
@@ -1257,7 +1265,7 @@ async def v2_agent_cancel(
 
 
 @app.post("/v3/agent/stream", response_model=None)
-@_rate_limit("30/minute")
+@_rate_limit(_DEFAULT_RATE_LIMIT)
 async def v3_agent_stream(
     request: AgentRunRequest,
     _http_request: Request,
@@ -1431,7 +1439,7 @@ async def v3_agent_stream(
 
 
 @app.post("/v3/agent/run", response_model=None)
-@_rate_limit("30/minute")
+@_rate_limit(_DEFAULT_RATE_LIMIT)
 async def v3_agent_run(
     request: AgentRunRequest,
     _http_request: Request,

@@ -24,8 +24,9 @@ from langchain_core.runnables.config import var_child_runnable_config
 from langgraph.types import interrupt
 from loguru import logger
 
-from .state import ApprovalStatus, GovOnGraphState
 from src.inference.runtime_config import govon_config
+
+from .state import ApprovalStatus, GovOnGraphState
 
 # ---------------------------------------------------------------------------
 # Constants — loaded from unified config (config/govon.yaml + env overrides)

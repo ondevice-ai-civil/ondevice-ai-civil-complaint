@@ -37,23 +37,26 @@ import type {
  */
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new DOMException('Aborted', 'AbortError'));
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', onAbort);
-      resolve();
-    }, ms);
+    let timer: ReturnType<typeof setTimeout> | undefined;
 
     const onAbort = () => {
-      clearTimeout(timer);
+      if (timer !== undefined) clearTimeout(timer);
       signal?.removeEventListener('abort', onAbort);
       reject(new DOMException('Aborted', 'AbortError'));
     };
 
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+
+    // Register listener BEFORE starting the timer to close the race window.
     signal?.addEventListener('abort', onAbort, { once: true });
+
+    timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
   });
 }
 

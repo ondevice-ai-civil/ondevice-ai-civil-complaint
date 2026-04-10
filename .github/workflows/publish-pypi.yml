@@ -15,19 +15,9 @@ permissions:
   contents: read
 
 jobs:
-  # Step 1: Build Node SEA binaries for all platforms
-  build-sea:
-    name: Build SEA binaries
-    uses: ./.github/workflows/build-sea.yml
-    with:
-      version: ${{ github.ref_name }}
-    permissions:
-      contents: read
-
-  # Step 2: Build Python wheel with SEA binaries bundled
+  # Step 1: Build lightweight Python wheel (launcher only, no SEA binaries)
   build:
     name: Build distribution
-    needs: build-sea
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -65,53 +55,8 @@ jobs:
           fi
           echo "Version check passed: $TOML_VERSION"
 
-      # Download SEA platform binaries into the _bin/ directory
-      # NOTE: darwin-x64 temporarily excluded (macos-13 runners unavailable)
-      - name: Download SEA binary (darwin-arm64)
-        uses: actions/download-artifact@v4
-        with:
-          name: govon-darwin-arm64
-          path: src/govon_cli/_bin/
-      - name: Download SEA binary (linux-x64)
-        uses: actions/download-artifact@v4
-        with:
-          name: govon-linux-x64
-          path: src/govon_cli/_bin/
-      - name: Download SEA binary (linux-arm64)
-        uses: actions/download-artifact@v4
-        with:
-          name: govon-linux-arm64
-          path: src/govon_cli/_bin/
-      - name: Download SEA binary (win-x64)
-        uses: actions/download-artifact@v4
-        with:
-          name: govon-win-x64
-          path: src/govon_cli/_bin/
-
-      - name: Verify SEA binaries
-        run: |
-          echo "=== SEA binaries in _bin/ ==="
-          ls -lh src/govon_cli/_bin/
-          EXPECTED=("govon-darwin-arm64" "govon-linux-x64" "govon-linux-arm64" "govon-win-x64.exe")
-          for bin in "${EXPECTED[@]}"; do
-            if [ ! -f "src/govon_cli/_bin/$bin" ]; then
-              echo "::error::Missing SEA binary: $bin"
-              exit 1
-            fi
-            echo "  ✓ $bin ($(stat -c%s "src/govon_cli/_bin/$bin" 2>/dev/null || stat -f%z "src/govon_cli/_bin/$bin") bytes)"
-          done
-
       - name: Build wheel and sdist
         run: python -m build
-
-      - name: Verify wheel contains binaries
-        run: |
-          WHEEL=$(ls dist/*.whl)
-          echo "Wheel: $WHEEL"
-          python -m zipfile -l "$WHEEL" | grep _bin/ || {
-            echo "::error::Wheel does not contain _bin/ binaries"
-            exit 1
-          }
 
       - name: Upload dist artifacts
         uses: actions/upload-artifact@v7
@@ -119,7 +64,7 @@ jobs:
           name: python-package-distributions
           path: dist/
 
-  # Step 3: Publish to PyPI
+  # Step 2: Publish lightweight wheel to PyPI
   publish-pypi:
     name: Publish to PyPI
     needs: build
@@ -138,3 +83,40 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  # Step 3: Build SEA binaries and attach to GitHub Release
+  build-sea:
+    name: Build & attach SEA binaries
+    needs: publish-pypi
+    uses: ./.github/workflows/build-sea.yml
+    with:
+      version: ${{ github.ref_name }}
+    permissions:
+      contents: read
+
+  attach-sea:
+    name: Attach SEA to Release
+    needs: build-sea
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # needed to upload release assets
+    steps:
+      - name: Download SEA binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: sea-binaries/
+          pattern: govon-*
+          merge-multiple: true
+
+      - name: List binaries
+        run: ls -lh sea-binaries/
+
+      - name: Attach to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          for binary in sea-binaries/govon-*; do
+            echo "Uploading $(basename $binary) to release $TAG..."
+            gh release upload "$TAG" "$binary" --repo "$GITHUB_REPOSITORY" --clobber || true
+          done

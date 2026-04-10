@@ -30,9 +30,19 @@ sys.modules.setdefault("sentence_transformers", MagicMock())
 # 이미 실제 faiss가 로드된 경우에는 mock하지 않는다
 # setdefault를 사용하여 실제 faiss를 덮어쓰지 않음 (직접 대입 대신)
 _faiss_module = sys.modules.get("faiss")
-_faiss_is_real = _faiss_module is not None and not isinstance(_faiss_module, MagicMock)
+_faiss_is_real = (
+    _faiss_module is not None
+    and not isinstance(_faiss_module, MagicMock)
+    and getattr(_faiss_module, "__spec__", None) is not None
+)
 if not _faiss_is_real:
-    sys.modules.setdefault("faiss", MagicMock())
+    # importlib.util.find_spec("faiss") 호환: MagicMock은 __spec__을 처리하지 못해
+    # transformers 내부 faiss 감지 시 ValueError가 발생한다. types.ModuleType을 사용한다.
+    import importlib.machinery
+
+    _faiss_stub = types.ModuleType("faiss")
+    _faiss_stub.__spec__ = importlib.machinery.ModuleSpec("faiss", None)
+    sys.modules.setdefault("faiss", _faiss_stub)
 
 import pytest
 

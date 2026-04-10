@@ -1,0 +1,101 @@
+name: Build Node SEA Binaries
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+
+jobs:
+  build-js:
+    name: Bundle JavaScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        working-directory: packages/npm
+        run: npm ci
+      - name: Bundle for SEA
+        working-directory: packages/npm
+        run: |
+          npx esbuild src/index.tsx \
+            --bundle \
+            --platform=node \
+            --target=node22 \
+            --format=esm \
+            --jsx=automatic \
+            --outfile=dist/sea-bundle.js \
+            --define:process.env.NODE_ENV=\"production\" \
+            --external:react-devtools-core
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sea-bundle
+          path: packages/npm/dist/sea-bundle.js
+
+  build-sea:
+    name: SEA ${{ matrix.platform }}
+    needs: build-js
+    strategy:
+      matrix:
+        include:
+          - os: macos-13
+            platform: darwin-x64
+          - os: macos-14
+            platform: darwin-arm64
+          - os: ubuntu-latest
+            platform: linux-x64
+          - os: ubuntu-24.04-arm
+            platform: linux-arm64
+          - os: windows-latest
+            platform: win-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: sea-bundle
+          path: packages/npm/dist
+      - name: Install postject
+        run: npm install -g postject
+      - name: Generate SEA blob
+        working-directory: packages/npm
+        run: node --experimental-sea-config sea-config.json
+      - name: Create SEA binary
+        working-directory: packages/npm
+        shell: bash
+        run: |
+          BINARY="dist/govon-${{ matrix.platform }}"
+          if [[ "${{ matrix.platform }}" == win-* ]]; then
+            BINARY="${BINARY}.exe"
+            cp "$(which node).exe" "$BINARY" 2>/dev/null || cp "$(which node)" "$BINARY"
+          else
+            cp "$(which node)" "$BINARY"
+          fi
+
+          # Remove signature on macOS before injection
+          if [[ "${{ matrix.platform }}" == darwin-* ]]; then
+            codesign --remove-signature "$BINARY"
+          fi
+
+          # Inject SEA blob
+          npx postject "$BINARY" NODE_SEA_BLOB dist/sea-prep.blob \
+            --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
+
+          # Re-sign on macOS
+          if [[ "${{ matrix.platform }}" == darwin-* ]]; then
+            codesign --sign - "$BINARY"
+          fi
+
+          ls -lh "$BINARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: govon-${{ matrix.platform }}
+          path: packages/npm/dist/govon-${{ matrix.platform }}*

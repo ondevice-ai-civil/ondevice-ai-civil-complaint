@@ -124,8 +124,13 @@ export function useHistory() {
   // Debounce + overlap-guard refs for async persistence
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const writeInProgressRef = useRef(false);
+  const pendingWriteRef = useRef(false);
+  const latestEntriesRef = useRef(entries);
 
-  // Persist entries whenever they change, with debounce and overlap guard
+  // Keep latest entries ref in sync
+  latestEntriesRef.current = entries;
+
+  // Persist entries whenever they change, with debounce and trailing-write guard
   useEffect(() => {
     if (debounceTimerRef.current !== null) {
       clearTimeout(debounceTimerRef.current);
@@ -134,11 +139,23 @@ export function useHistory() {
     debounceTimerRef.current = setTimeout(() => {
       debounceTimerRef.current = null;
 
-      if (writeInProgressRef.current) return; // skip if a write is already running
+      if (writeInProgressRef.current) {
+        // A write is running — queue a trailing write so the latest state is persisted
+        pendingWriteRef.current = true;
+        return;
+      }
 
       writeInProgressRef.current = true;
-      persistEntries(entries).finally(() => {
+      persistEntries(latestEntriesRef.current).finally(() => {
         writeInProgressRef.current = false;
+        // If entries changed while the write was in progress, flush the latest
+        if (pendingWriteRef.current) {
+          pendingWriteRef.current = false;
+          writeInProgressRef.current = true;
+          void persistEntries(latestEntriesRef.current).finally(() => {
+            writeInProgressRef.current = false;
+          });
+        }
       });
     }, DEBOUNCE_MS);
 

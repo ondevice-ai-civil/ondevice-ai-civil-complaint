@@ -80,6 +80,11 @@ jobs:
 
           ## Installation
 
+          ### npm (requires Node.js 18+)
+          \`\`\`
+          npm install -g govon
+          \`\`\`
+
           \`\`\`bash
           pip install govon==${VERSION}
           \`\`\`

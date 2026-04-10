@@ -38,17 +38,21 @@ jobs:
       - name: Validate package.json
         run: node -e "const p = require('./package.json'); console.log('name:', p.name, '/ version:', p.version);"
 
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
       - name: Dry-run pack
         run: |
           set -o pipefail
           npm pack --dry-run 2>&1 | tee pack-output.txt
           echo "### npm pack --dry-run" >> $GITHUB_STEP_SUMMARY
           cat pack-output.txt >> $GITHUB_STEP_SUMMARY
-
-      - name: Verify bin executable
-        run: |
-          node bin/govon.js --check-install || true
-          echo "bin/govon.js syntax OK"
 
   publish:
     name: Publish to npm

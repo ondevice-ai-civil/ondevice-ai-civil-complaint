@@ -41,11 +41,4 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(autouse=True)
-def reset_renderer_narrow_warning_state():
-    """Ensure renderer module state does not leak between tests."""
-    from src.cli import renderer
-
-    renderer._reset_narrow_warning()
-    yield
-    renderer._reset_narrow_warning()
+# Renderer fixture removed — src.cli.renderer was deleted in the npm TUI migration.

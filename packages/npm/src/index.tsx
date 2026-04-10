@@ -10,6 +10,7 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { createRequire } from 'node:module';
 import { App } from './App.js';
+import { RenderInterceptor } from './terminal/index.js';
 
 // Read version from package.json at runtime (avoid bundling the whole file)
 const require = createRequire(import.meta.url);
@@ -39,30 +40,30 @@ if (argv.version) {
 const query = argv._[0] as string | undefined;
 
 // ---------------------------------------------------------------------------
-// Alternate screen buffer — eliminates resize ghost lines
+// Rendering engine — alternate screen + deferred erase + synchronized output
 // ---------------------------------------------------------------------------
 // Ink's log-update tracks previousLineCount to erase old output. On resize,
 // text reflows so the visual row count changes but previousLineCount is stale,
 // causing ghost artifacts. This is a known Ink limitation (PR #916).
 //
-// Solution: enter the alternate screen buffer (\x1b[?1049h), the same
-// mechanism used by vim, htop, and Claude Code. The alternate screen is a
-// separate canvas with NO scrollback, so clearing it on resize is safe —
-// no scrollback pollution. On exit, the original screen is restored.
+// Solution (adapted from Claude Code's ink.tsx):
+//   1. Alternate screen buffer — separate canvas with no scrollback
+//   2. Deferred erase — resize sets a flag, erase happens inside next render
+//   3. BSU/ESU synchronized output — entire frame written atomically
+//
+// The RenderInterceptor provides a proxy stdout stream that captures Ink's
+// output and flushes it to the real terminal with these protections applied.
 // ---------------------------------------------------------------------------
-process.stdout.write('\x1b[?1049h\x1b[2J\x1b[H');
+const interceptor = new RenderInterceptor(process.stdout);
+interceptor.enterAltScreen();
 
-const instance = render(<App version={pkg.version} initialQuery={query} />);
+const instance = render(<App version={pkg.version} initialQuery={query} />, {
+  stdout: interceptor.stdout as unknown as NodeJS.WriteStream,
+});
 
 // Restore normal screen on exit (covers all exit paths)
-const restoreScreen = () => {
-  process.stdout.write('\x1b[?1049l');
-};
-process.on('exit', restoreScreen);
+process.on('exit', () => interceptor.destroy());
 
-// On resize: clear the alternate screen canvas and reset log-update state,
-// then let Ink's own handler recalculate layout and re-render cleanly.
-process.stdout.prependListener('resize', () => {
-  process.stdout.write('\x1b[2J\x1b[H');
-  instance.clear();
-});
+// On resize: deferred erase pattern — sets flag, Ink re-renders, next flush
+// prepends ERASE_SCREEN + CURSOR_HOME inside BSU/ESU atomic write.
+process.stdout.on('resize', () => interceptor.handleResize());

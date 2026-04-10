@@ -4,7 +4,7 @@
 class Govon < Formula
   desc "Agentic TUI for Korean public-sector civil complaint workflows"
   homepage "https://github.com/GovOn-Org/GovOn"
-  url "https://registry.npmjs.org/govon/-/govon-1.5.0.tgz"
+  url "https://registry.npmjs.org/govon/-/govon-1.5.1.tgz"
   sha256 :no_check
   license "MIT"
 

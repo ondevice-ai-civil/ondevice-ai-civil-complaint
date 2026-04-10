@@ -2,10 +2,9 @@
 
 > AI-powered agentic CLI for Korean public-sector civil complaint workflows.
 
-[![PyPI](https://img.shields.io/pypi/v/govon?logo=pypi&logoColor=white)](https://pypi.org/project/govon/)
 [![npm](https://img.shields.io/npm/v/govon?logo=npm)](https://www.npmjs.com/package/govon)
 [![Homebrew](https://img.shields.io/badge/brew-govon--org/govon-FBB040?logo=homebrew)](https://github.com/GovOn-Org/homebrew-govon)
-[![Python](https://img.shields.io/pypi/pyversions/govon)](https://pypi.org/project/govon/)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen?logo=node.js)](https://nodejs.org/)
 [![Docs](https://img.shields.io/badge/Docs-Portal-blue?logo=readthedocs)](https://govon-org.github.io/GovOn/)
 [![License: MIT](https://img.shields.io/badge/Code-MIT-yellow.svg)](LICENSE)
 [![Model: NC](https://img.shields.io/badge/Model-Non--Commercial-red.svg)](https://huggingface.co/LGAI-EXAONE/EXAONE-4.0-32B-AWQ/blob/main/LICENSE)
@@ -27,31 +26,31 @@ The CLI is lightweight (~10 MB). The heavy lifting happens on a remote server ru
 ## Quick Start
 
 ```bash
-pip install govon
+npm install -g govon
 export GOVON_RUNTIME_URL=https://umyunsang-govon-runtime.hf.space
 govon
 ```
 
 ## Installation
 
-**Prerequisites**: Python 3.10+ **or** Node.js 18+ **or** Homebrew
+**Prerequisites**: Node.js 18+
 
-### pip (recommended)
-
-```bash
-pip install govon
-```
-
-### npm
+### npm (recommended)
 
 ```bash
 npm install -g govon
 ```
 
+### Native installer
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/GovOn-Org/GovOn/main/scripts/install.sh | bash
+```
+
 ### Homebrew (macOS / Linux)
 
 ```bash
-brew tap govon-org/govon && brew install govon
+brew install govon-org/tap/govon
 ```
 
 ### Self-hosted runtime (GPU required)
@@ -147,7 +146,7 @@ curl -X POST $GOVON_RUNTIME_URL/v3/agent/run \
 - **Multi-turn conversations** -- session-based context management with extractive summarization
 - **Multi-LoRA inference** -- domain-specific adapters (civil complaints + legal references) on a single base model
 - **Streaming responses** -- real-time SSE streaming with per-node progress display
-- **Three installation methods** -- pip, npm, and Homebrew for maximum accessibility
+- **Three installation methods** -- npm, Homebrew, and native installer
 
 ### Tools
 
@@ -166,7 +165,7 @@ curl -X POST $GOVON_RUNTIME_URL/v3/agent/run \
 ```mermaid
 graph LR
     subgraph Client
-        CLI["govon CLI<br/>pip / npm / brew"]
+        CLI["govon CLI<br/>npm / brew"]
     end
 
     subgraph Server ["Server (HF Space or Docker)"]
@@ -183,7 +182,7 @@ graph LR
 
 **The CLI is thin, the server is powerful.**
 
-- **CLI**: httpx, rich, prompt-toolkit (~10 MB, no GPU needed)
+- **CLI**: React + Ink + TypeScript TUI (Node.js 18+, no GPU needed)
 - **Server**: EXAONE 4.0-32B + vLLM + Multi-LoRA on A100 80 GB
 
 ## Server Management
@@ -229,9 +228,9 @@ See [`deploy/env/.env.example`](deploy/env/.env.example) for the full list of se
 
 | Package | Install |
 |---------|---------|
-| PyPI | [`pip install govon`](https://pypi.org/project/govon/) |
 | npm | [`npm install -g govon`](https://www.npmjs.com/package/govon) |
-| Homebrew | [`brew tap govon-org/govon`](https://github.com/GovOn-Org/homebrew-govon) |
+| Homebrew | [`brew install govon-org/tap/govon`](https://github.com/GovOn-Org/homebrew-govon) |
+| Native | `curl -fsSL .../install.sh \| bash` |
 | Docker | `ghcr.io/govon-org/govon` |
 | HF Space (hosted runtime) | [umyunsang/govon-runtime](https://huggingface.co/spaces/umyunsang/govon-runtime) |
 | Civil LoRA Adapter | [umyunsang/govon-civil-adapter](https://huggingface.co/umyunsang/govon-civil-adapter) |
@@ -243,8 +242,13 @@ See [`deploy/env/.env.example`](deploy/env/.env.example) for the full list of se
 ```bash
 git clone https://github.com/GovOn-Org/GovOn.git
 cd GovOn
+
+# Backend (Python)
 pip install -e ".[dev]"
 pytest
+
+# TUI (Node.js)
+cd packages/npm && npm install && npm run build
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.

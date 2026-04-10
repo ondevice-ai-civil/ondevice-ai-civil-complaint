@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import type { GovOnClient } from '../client.js';
+import type { IClient } from '../client.interface.js';
 
 interface DaemonState {
   /** Server is confirmed ready. */
@@ -14,7 +14,7 @@ interface DaemonState {
  * Check server health on mount. If the server is sleeping (e.g. HF Space),
  * call client.waitForReady() which polls with status messages to stderr.
  */
-export function useDaemon(client: GovOnClient): DaemonState {
+export function useDaemon(client: IClient): DaemonState {
   const [state, setState] = useState<DaemonState>({
     ready: false,
     waiting: true,

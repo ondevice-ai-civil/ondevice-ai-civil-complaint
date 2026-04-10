@@ -17,7 +17,7 @@
 
 import React, { useReducer, useCallback, useMemo } from 'react';
 import { Box, Text, Static, useApp, useInput, useStdout } from 'ink';
-import { GovOnClient } from './client.js';
+import { createClient, isMockMode } from './clientFactory.js';
 import { getBaseUrl, THEME_COLORS } from './config.js';
 import type { AppState, Action, Message } from './types.js';
 import { useDaemon } from './hooks/useDaemon.js';
@@ -247,8 +247,8 @@ export function App({ version, initialQuery }: AppProps) {
   const { stdout } = useStdout();
   const [state, dispatch] = useReducer(reducer, initialState);
 
-  // GovOnClient is stable for the lifetime of the app
-  const client = useMemo(() => new GovOnClient(state.apiBase), [state.apiBase]);
+  // Client is stable for the lifetime of the app (mock or real based on GOVON_MOCK)
+  const client = useMemo(() => createClient(state.apiBase), [state.apiBase]);
 
   // Wait for server readiness
   const daemon = useDaemon(client);
@@ -458,7 +458,7 @@ export function App({ version, initialQuery }: AppProps) {
       {/* ── 7. Status footer ── */}
       <Box marginTop={1}>
         <Text dimColor color={THEME_COLORS.dimmed}>
-          {'esc 취소 · Ctrl+D 종료 · /help 도움말'}
+          {isMockMode ? '[MOCK] esc 취소 · Ctrl+D 종료 · /help 도움말' : 'esc 취소 · Ctrl+D 종료 · /help 도움말'}
         </Text>
       </Box>
     </Box>

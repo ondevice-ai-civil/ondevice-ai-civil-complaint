@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import type { GovOnClient } from '../client.js';
+import type { IClient } from '../client.interface.js';
 import type { V3SSEEvent, V2SSEEvent, Action } from '../types.js';
 import { NODE_STATUS_MESSAGES } from '../types.js';
 
@@ -23,7 +23,7 @@ import { NODE_STATUS_MESSAGES } from '../types.js';
 // ---------------------------------------------------------------------------
 
 export interface UseSSEOptions {
-  client: GovOnClient;
+  client: IClient;
   dispatch: React.Dispatch<Action>;
   sessionId: string | null;
 }
@@ -215,7 +215,7 @@ interface V3Result {
  *   to true so the caller surfaces the error rather than trying v2.
  */
 async function _tryV3(
-  client: GovOnClient,
+  client: IClient,
   query: string,
   sessionId: string | undefined,
   assistantMsgId: string,
@@ -318,7 +318,7 @@ async function _tryV3(
  * false on error so the caller can fall through to the blocking path.
  */
 async function _tryV2(
-  client: GovOnClient,
+  client: IClient,
   query: string,
   sessionId: string | undefined,
   assistantMsgId: string,
@@ -418,7 +418,7 @@ async function _tryV2(
  * Dispatches FINALIZE on success, SET_ERROR on failure.
  */
 async function _tryBlocking(
-  client: GovOnClient,
+  client: IClient,
   query: string,
   sessionId: string | undefined,
   assistantMsgId: string,

@@ -10,6 +10,7 @@
     "build": "tsc && node esbuild.config.mjs",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
+    "dev:mock": "GOVON_MOCK=true node bin/govon.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },

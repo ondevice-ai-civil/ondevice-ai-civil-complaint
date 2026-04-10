@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text } from 'ink';
+import useStdoutDimensions from 'ink-use-stdout-dimensions';
 import { Marked } from 'marked';
 import { markedTerminal } from 'marked-terminal';
 
@@ -17,8 +18,8 @@ function stripAnsi(str: string): string {
 }
 
 export function MarkdownView({ content, streaming = false }: MarkdownViewProps) {
-  const { stdout } = useStdout();
-  const width = stdout?.columns ?? 80;
+  const [columns] = useStdoutDimensions();
+  const width = columns ?? 80;
 
   const rendered = useMemo(() => {
     if (!content) return '';

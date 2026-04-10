@@ -13,10 +13,10 @@ def agents_dir(tmp_path):
         "---\n\n당신은 검색 전문가입니다.\n",
         encoding="utf-8",
     )
-    (tmp_path / "draft_response.md").write_text(
-        "---\nname: draft_response\nrole: Civil Response Officer\n"
-        "description: 민원 답변 생성\ntemperature: 0.7\nmax_tokens: 2048\n"
-        "---\n\n당신은 민원 회신 담당자입니다.\n",
+    (tmp_path / "domain_adapter.md").write_text(
+        "---\nname: domain_adapter\nrole: Domain Adapter Agent\n"
+        "description: AX domain adapter response generation\ntemperature: 0.7\nmax_tokens: 2048\n"
+        "---\n\nGovOn AX 플랫폼의 도메인 어댑터 에이전트입니다.\n",
         encoding="utf-8",
     )
     return str(tmp_path)
@@ -30,7 +30,7 @@ def mgr(agents_dir):
 class TestAgentLoading:
     def test_loads_current_agents(self, mgr):
         assert "retriever" in mgr.list_agents()
-        assert "draft_response" in mgr.list_agents()
+        assert "domain_adapter" in mgr.list_agents()
 
     def test_agent_attributes(self, mgr):
         retriever = mgr.get_agent("retriever")

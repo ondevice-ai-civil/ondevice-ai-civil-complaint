@@ -15,7 +15,7 @@ from .search_tools import build_search_tools
 def build_all_tools(
     *,
     api_lookup_action: Optional[Any] = None,
-    draft_response_fn: Optional[Callable[..., Any]] = None,
+    domain_adapter_fn: Optional[Callable[..., Any]] = None,
 ) -> list:
     """전체 도구 목록을 동적으로 생성한다.
 
@@ -23,7 +23,7 @@ def build_all_tools(
     ----------
     api_lookup_action : Optional[MinwonAnalysisAction]
         공공데이터포털 API Action 인스턴스.
-    draft_response_fn : Optional[Callable]
+    domain_adapter_fn : Optional[Callable]
         답변 초안 생성 클로저. 있으면 adapter_tools를 추가.
 
     Returns
@@ -34,11 +34,11 @@ def build_all_tools(
     tools: list = []
     tools.extend(build_search_tools(api_lookup_action))
     tools.extend(build_analysis_tools(api_lookup_action))
-    if draft_response_fn:
+    if domain_adapter_fn:
         try:
             from .adapter_tools import build_adapter_tools
 
-            tools.extend(build_adapter_tools(draft_response_fn))
+            tools.extend(build_adapter_tools(domain_adapter_fn))
         except ImportError:
             import logging
 

@@ -19,7 +19,7 @@ LOG_PATH = os.environ.get("E2E_LOG_PATH", f"e2e_log_{TIMESTAMP}.jsonl")
 VALID_TOOLS = frozenset(
     {
         "api_lookup",
-        "draft_response",
+        "domain_adapter",
         "issue_detector",
         "stats_lookup",
         "keyword_analyzer",

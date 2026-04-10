@@ -442,7 +442,7 @@ export const NODE_STATUS_MESSAGES: Readonly<Record<string, string>> = {
  * Used in approval dialogs and history views.
  */
 export const TASK_TYPE_LABELS: Readonly<Record<string, string>> = {
-  draft_response: "답변 초안 작성",
+  domain_adapter: "도메인 어댑터 응답",
   revise_response: "답변 수정",
   lookup_stats: "통계 조회",
   issue_detection: "이슈 탐지",
@@ -457,7 +457,7 @@ export const TASK_TYPE_LABELS: Readonly<Record<string, string>> = {
  * Values correspond to Ink's `<Text color="...">` prop.
  */
 export const TASK_TYPE_STYLES: Readonly<Record<string, string>> = {
-  draft_response: "cyan",
+  domain_adapter: "cyan",
   revise_response: "blue",
   lookup_stats: "magenta",
   issue_detection: "yellow",

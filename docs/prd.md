@@ -32,7 +32,7 @@ GovOn은 이 문제를 다음 방식으로 해결한다:
 |------|--------|--------|
 | AX 단일 인터페이스 | 단일 `govon` 셸에서 다중 기관 API 통합 조회 가능 여부 | 100% |
 | 셸 중심 업무 진입 | `govon` 실행 후 첫 응답 가능 상태 | 10초 이내 |
-| 승인 기반 실행 신뢰성 | 승인 없는 tool 실행 비율 | 0% |
+| 승인 기반 실행 신뢰성 | 승인 필요 도구(Tier 1)의 무승인 실행 비율 | 0% |
 | 도메인 답변 초안 생산성 | 도메인 어댑터를 통한 답변 초안 생성 시간 | 60초 이내 |
 | 세션 연속성 | `govon --session <id>` 재개 성공률 | 100% |
 | 근거 보강 가능성 | 초안 생성 후 evidence augmentation 성공률 | 95% 이상 |
@@ -84,7 +84,7 @@ GovOn은 DX → AX 전환을 위한 4계층 구조를 가진다.
    - 거부 시 agent가 대안을 제시하는 루프 구조
 
 4. **Domain Adapter Layer (DX 인프라 래핑)**
-   - Tier 0: `rag_search`, `api_lookup`, `stats_lookup`, `keyword_analyzer`, `demographics_lookup`, `issue_detector`
+   - Tier 0: `api_lookup`, `stats_lookup`, `keyword_analyzer`, `demographics_lookup`, `issue_detector`
    - Tier 1: 도메인 어댑터 — 각 기관 API를 LLM 도구로 래핑, 전문 LoRA로 답변 생성
    - MVP: `public_admin_adapter` (공공행정 LoRA), `legal_adapter` (법률 LoRA)
    - `adapters.yaml` 기반 동적 도구 등록 — 신규 도메인 추가 시 yaml만 수정

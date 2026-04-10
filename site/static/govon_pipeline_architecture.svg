@@ -42,7 +42,7 @@
 
   <text x="480" y="255" fill="#5588aa" font-family="monospace,sans-serif" font-size="9">civil / legal / ...</text>
   <text x="480" y="273" fill="#5588aa" font-family="monospace,sans-serif" font-size="9">rag_search / api / ...</text>
-  <text x="480" y="291" fill="#5588aa" font-family="monospace,sans-serif" font-size="9">draft_response</text>
+  <text x="480" y="291" fill="#5588aa" font-family="monospace,sans-serif" font-size="9">domain_adapter</text>
 
   <g transform="translate(445,330)">
     <polygon points="0,-14 35,0 0,14 -35,0" fill="#ffffff" stroke="#2E6FAD" stroke-width="1.5"/>

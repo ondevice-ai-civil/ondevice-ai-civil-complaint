@@ -22,7 +22,7 @@ jobs:
           node-version: '22'
       - name: Install dependencies
         working-directory: packages/npm
-        run: npm ci
+        run: npm install --no-audit --no-fund
       - name: Bundle for SEA
         working-directory: packages/npm
         run: |

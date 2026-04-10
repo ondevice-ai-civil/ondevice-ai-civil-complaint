@@ -65,12 +65,8 @@ jobs:
           fi
           echo "Version check passed: $TOML_VERSION"
 
-      # Download all SEA platform binaries into the _bin/ directory
-      - name: Download SEA binary (darwin-x64)
-        uses: actions/download-artifact@v4
-        with:
-          name: govon-darwin-x64
-          path: src/govon_cli/_bin/
+      # Download SEA platform binaries into the _bin/ directory
+      # NOTE: darwin-x64 temporarily excluded (macos-13 runners unavailable)
       - name: Download SEA binary (darwin-arm64)
         uses: actions/download-artifact@v4
         with:
@@ -96,7 +92,7 @@ jobs:
         run: |
           echo "=== SEA binaries in _bin/ ==="
           ls -lh src/govon_cli/_bin/
-          EXPECTED=("govon-darwin-x64" "govon-darwin-arm64" "govon-linux-x64" "govon-linux-arm64" "govon-win-x64.exe")
+          EXPECTED=("govon-darwin-arm64" "govon-linux-x64" "govon-linux-arm64" "govon-win-x64.exe")
           for bin in "${EXPECTED[@]}"; do
             if [ ! -f "src/govon_cli/_bin/$bin" ]; then
               echo "::error::Missing SEA binary: $bin"

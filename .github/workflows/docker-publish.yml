@@ -1,10 +1,6 @@
 name: Docker Publish
 
 on:
-  workflow_run:
-    workflows: ["PR Gate"]
-    types: [completed]
-    branches: [main]
   push:
     tags: ['v*']
   workflow_dispatch:
@@ -27,38 +23,7 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  check-changes:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_run'
-    outputs:
-      should-build: ${{ steps.filter.outputs.docker }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            docker:
-              - 'deploy/docker/Dockerfile'
-              - '.dockerignore'
-              - 'deploy/compose/docker-compose*.yml'
-              - 'src/**'
-              - 'pyproject.toml'
-              - 'uv.lock'
-              - '.github/workflows/docker-publish.yml'
-
   build-and-push:
-    needs: [check-changes]
-    if: |
-      always() && (
-        github.event_name == 'workflow_dispatch' ||
-        github.event_name == 'push' ||
-        (github.event_name == 'workflow_run' &&
-         github.event.workflow_run.conclusion == 'success' &&
-         needs.check-changes.outputs.should-build == 'true')
-      )
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -67,12 +32,6 @@ jobs:
       image_tag: ${{ steps.build-metadata.outputs.image_tag }}
 
     steps:
-      - name: Checkout workflow-run commit
-        if: github.event_name == 'workflow_run'
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-
       - name: Checkout requested ref
         if: github.event_name == 'workflow_dispatch'
         uses: actions/checkout@v6
@@ -107,11 +66,9 @@ jobs:
           PRIMARY_TAG="${IMAGE_BASE}:sha-${SHORT_SHA}"
           TAGS="${PRIMARY_TAG}"
 
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            TAGS="${TAGS}"$'\n'"${IMAGE_BASE}:latest"
-            SOURCE="main branch after PR Gate success"
-          elif [ "${{ github.event_name }}" = "push" ]; then
+          if [ "${{ github.event_name }}" = "push" ]; then
             TAGS="${TAGS}"$'\n'"${IMAGE_BASE}:${GITHUB_REF_NAME}"
+            TAGS="${TAGS}"$'\n'"${IMAGE_BASE}:latest"
             SOURCE="release tag ${GITHUB_REF_NAME}"
           else
             SOURCE="manual dispatch (${GITHUB_EVENT_NAME})"

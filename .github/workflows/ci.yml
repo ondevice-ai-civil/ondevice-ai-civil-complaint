@@ -31,6 +31,7 @@ jobs:
       # but are pre-exposed for future training pipeline / monitoring alert job integration.
       training: ${{ steps.filter.outputs.training }}
       monitoring: ${{ steps.filter.outputs.monitoring }}
+      npm_changed: ${{ steps.filter.outputs.npm_changed }}
     steps:
       - uses: actions/checkout@v6
 
@@ -69,6 +70,9 @@ jobs:
               - 'metrics/**'
               - '.github/workflows/dora-metrics.yml'
               - '.github/workflows/monitor-cloud-run.yml'
+            npm_changed:
+              - 'packages/npm/**'
+              - '.github/workflows/publish-npm.yml'
 
       - name: Change summary
         run: |
@@ -268,3 +272,22 @@ jobs:
           name: dist-package
           path: dist/
           retention-days: 14
+
+  npm-check:
+    name: npm package check
+    needs: detect-changes
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.npm_changed == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/npm
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run build

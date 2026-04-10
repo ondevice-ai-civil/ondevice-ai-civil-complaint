@@ -1,15 +1,17 @@
 name: Homebrew Formula Auto-Update
 
+# Production-grade Homebrew update:
+# Pushes the formula directly to the separate tap repository
+# (GovOn-Org/homebrew-govon) which has no branch protection.
+# This is the standard pattern used by Bun, Claude Code, etc.
+
 on:
-  # Auto-trigger on version tag push
   push:
     tags: ['v*']
-
-  # Manual trigger
   workflow_dispatch:
     inputs:
       version:
-        description: "GovOn version (e.g. 1.4.9)"
+        description: "GovOn version (e.g. 1.5.1)"
         required: false
         type: string
 
@@ -17,20 +19,10 @@ permissions:
   contents: read
 
 jobs:
-  update-formula:
-    name: Update Homebrew Formula
+  update-tap:
+    name: Update Homebrew Tap
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: write
-      pull-requests: write
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
       - name: Resolve version
         id: resolve
         env:
@@ -45,70 +37,87 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Version: $VERSION"
 
-          # Fetch npm tarball URL
-          NPM_URL="https://registry.npmjs.org/govon/-/govon-${VERSION}.tgz"
-          echo "npm_url=$NPM_URL" >> "$GITHUB_OUTPUT"
-          echo "URL: $NPM_URL"
-
-      - name: Update formula
+      - name: Wait for npm publish
         env:
           VERSION: ${{ steps.resolve.outputs.version }}
-          NPM_URL: ${{ steps.resolve.outputs.npm_url }}
         run: |
-          python3 << 'PYEOF'
-          import os, re
+          echo "Waiting for govon@${VERSION} on npm..."
+          for i in $(seq 1 30); do
+            NPM_VERSION=$(npm view govon version 2>/dev/null || echo "")
+            if [ "$NPM_VERSION" = "$VERSION" ]; then
+              echo "govon@${VERSION} found on npm (attempt $i)"
+              exit 0
+            fi
+            echo "  Attempt $i: npm has $NPM_VERSION, waiting 10s..."
+            sleep 10
+          done
+          echo "::error::govon@${VERSION} not found on npm after 5 minutes"
+          exit 1
 
-          formula_path = "homebrew/govon.rb"
-          version = os.environ["VERSION"]
-          npm_url = os.environ["NPM_URL"]
+      - name: Generate formula
+        id: formula
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          # Fetch npm tarball SHA256
+          TARBALL_URL="https://registry.npmjs.org/govon/-/govon-${VERSION}.tgz"
+          echo "Downloading tarball for SHA256: $TARBALL_URL"
+          SHA256=$(curl -fsSL "$TARBALL_URL" | shasum -a 256 | awk '{print $1}')
+          echo "SHA256: $SHA256"
 
-          with open(formula_path, "r") as f:
-              content = f.read()
+          cat > /tmp/govon.rb << FORMULA
+          # typed: false
+          # frozen_string_literal: true
 
-          # Replace url line
-          content = re.sub(
-              r'url ".*?"',
-              f'url "{npm_url}"',
-              content,
-              count=1,
-          )
+          class Govon < Formula
+            desc "Agentic TUI for Korean public-sector civil complaint workflows"
+            homepage "https://github.com/GovOn-Org/GovOn"
+            url "https://registry.npmjs.org/govon/-/govon-${VERSION}.tgz"
+            sha256 "${SHA256}"
+            license "MIT"
 
-          with open(formula_path, "w") as f:
-              f.write(content)
+            depends_on "node@22"
 
-          print("=== Updated formula ===")
-          with open(formula_path, "r") as f:
-              for i, line in enumerate(f):
-                  if i >= 12:
-                      break
-                  print(line, end="")
-          PYEOF
+            def install
+              system "npm", "install", *std_npm_args
+              bin.install_symlink libexec.glob("bin/*")
+            end
 
-      - name: Create PR and auto-merge
+            test do
+              assert_match version.to_s, shell_output("#{bin}/govon --version")
+            end
+          end
+          FORMULA
+
+          echo "=== Generated formula ==="
+          cat /tmp/govon.rb
+
+      - name: Push to homebrew-govon tap
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.resolve.outputs.version }}
         run: |
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/GovOn-Org/homebrew-govon.git" /tmp/tap
+          cp /tmp/govon.rb /tmp/tap/Formula/govon.rb
+
+          cd /tmp/tap
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add homebrew/govon.rb
+          git add Formula/govon.rb
           if git diff --cached --quiet; then
-            echo "No formula changes to commit"
+            echo "No formula changes"
             exit 0
           fi
 
-          BRANCH="chore/homebrew-${VERSION}"
-          git checkout -b "$BRANCH"
-          git commit -m "chore: update homebrew formula to ${VERSION}"
-          git push -u origin "$BRANCH"
+          git commit -m "govon ${VERSION}"
+          git push origin main
+          echo "Homebrew tap updated to ${VERSION}"
 
-          PR_URL=$(gh pr create \
-            --title "chore: update homebrew formula to ${VERSION}" \
-            --body "Auto-generated by Homebrew Formula Auto-Update workflow." \
-            --head "$BRANCH" \
-            --base main)
-
-          echo "PR created: $PR_URL"
-          gh pr merge "$PR_URL" --admin --squash --delete-branch
-          echo "Homebrew formula updated to ${VERSION} via PR"
+      - name: Update local formula copy
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          echo "Local homebrew/govon.rb in main repo is a reference copy."
+          echo "Tap repo (GovOn-Org/homebrew-govon) is the source of truth."
+          echo "govon ${VERSION} published to tap."

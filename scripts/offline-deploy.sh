@@ -61,12 +61,17 @@ else
 fi
 
 # 4. 이미지 파일 확인 및 로드
-if [ ! -f "$IMAGE_FILE" ]; then
-    echo "[ERROR] 이미지 파일을 찾을 수 없습니다: $IMAGE_FILE"
+# Support both single-file and split-file formats
+if [ -f "$IMAGE_FILE" ]; then
+    echo "Docker 이미지 로드 중... (시간이 소요될 수 있습니다)"
+    gunzip -c "$IMAGE_FILE" | docker load
+elif ls "${IMAGE_FILE}.part-"* &>/dev/null 2>&1; then
+    echo "분할 이미��� 파일 감지됨. 재결합 후 로드합니다..."
+    cat "${IMAGE_FILE}.part-"* | gunzip | docker load
+else
+    echo "[ERROR] 이미지 파일을 찾을 수 없습니다: $IMAGE_FILE 또는 ${IMAGE_FILE}.part-*"
     exit 1
 fi
-echo "Docker 이미지 로드 중... (시간이 소요될 수 있습니다)"
-gunzip -c "$IMAGE_FILE" | docker load
 echo "[OK] 이미지 로드 완료"
 
 # 5. 환경변수 템플릿 준비

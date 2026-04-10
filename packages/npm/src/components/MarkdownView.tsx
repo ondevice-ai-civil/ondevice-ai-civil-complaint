@@ -2,6 +2,13 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { Marked } from 'marked';
 import { markedTerminal } from 'marked-terminal';
+import { Chalk } from 'chalk';
+
+// Force chalk level 3 (full 16m color) regardless of tty detection.
+// Ink takes over stdout which makes tty.isatty(1) === false, causing the
+// internal chalk instance inside marked-terminal to fall back to level 0
+// and strip all ANSI formatting (bold, italic, code spans, etc.).
+const ink_chalk = new Chalk({ level: 3 });
 
 interface MarkdownViewProps {
   /** Raw markdown text to render. */
@@ -47,6 +54,10 @@ export function MarkdownView({ content, streaming = false }: MarkdownViewProps) 
           reflowText: true,
           width,
           showSectionPrefix: false,
+          strong: ink_chalk.bold,
+          em: ink_chalk.italic,
+          codespan: ink_chalk.cyan,
+          del: ink_chalk.strikethrough,
         }),
       );
       // marked.parse() is synchronous when the terminal renderer extension is active.

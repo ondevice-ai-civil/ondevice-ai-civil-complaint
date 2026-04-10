@@ -23,17 +23,27 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   if (message.role === 'user') {
     return (
       <Box flexDirection="row" marginTop={1}>
-        <Text bold color="green">{'❯ '}</Text>
-        <Text wrap="wrap">{message.content}</Text>
+        <Text bold color={THEME_COLORS.accent}>{'❯ '}</Text>
+        <Text backgroundColor="#2a2a2a" color={THEME_COLORS.accent}>{' ' + message.content + ' '}</Text>
       </Box>
     );
   }
 
+  // Status dot color: error > streaming > success
+  const dotColor = message.error
+    ? THEME_COLORS.error
+    : message.streaming
+      ? THEME_COLORS.warning
+      : THEME_COLORS.success;
+
   // Assistant message
   return (
     <Box flexDirection="column" marginTop={1}>
-      {/* Role label */}
-      <Text bold color={THEME_COLORS.primary}>{'GovOn'}</Text>
+      {/* Role label: status dot + brand name */}
+      <Box flexDirection="row">
+        <Text color={dotColor}>{'● '}</Text>
+        <Text bold color={THEME_COLORS.accent}>{'GovOn'}</Text>
+      </Box>
 
       {/* Thinking steps (collapsed after completion) */}
       {message.thinking && message.thinking.length > 0 && (

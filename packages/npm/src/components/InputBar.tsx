@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { Box, Text } from 'ink';
 import TextInput from 'ink-text-input';
+import { THEME_COLORS } from '../config.js';
 
 interface InputBarProps {
   onSubmit: (query: string) => void;
@@ -36,7 +37,7 @@ export function InputBar({ onSubmit, disabled = false }: InputBarProps) {
 
   return (
     <Box>
-      <Text bold color={disabled ? 'gray' : 'green'}>
+      <Text bold color={disabled ? 'gray' : THEME_COLORS.accent}>
         {'❯ '}
       </Text>
       <TextInput

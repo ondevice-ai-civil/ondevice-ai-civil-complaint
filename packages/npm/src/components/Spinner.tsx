@@ -1,10 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Text } from 'ink';
-import { SPINNER } from '../config.js';
+import React, { useState, useEffect } from 'react';
+import { Box, Text } from 'ink';
+import { Spinner as InkSpinner } from '@inkjs/ui';
+import { THEME_COLORS } from '../config.js';
 import { SPINNER_VERBS } from '../data/spinnerVerbs.js';
 
 interface SpinnerProps {
-  /** Token count to display alongside elapsed time. */
+  /** Color for the status dot. */
+  dotColor?: string;
+  /** Token count to display. */
   tokens?: number;
 }
 
@@ -16,50 +19,43 @@ function formatElapsed(seconds: number): string {
   return `${m}m ${String(s).padStart(2, '0')}s`;
 }
 
-/** Abbreviate large token counts with a 'k' suffix. */
-function formatTokens(count: number): string {
-  if (count >= 1000) return `${(count / 1000).toFixed(1)}k`;
-  return String(count);
-}
-
 /** Pick a random Korean proverb from the verb list. */
 function randomVerb(): string {
   return SPINNER_VERBS[Math.floor(Math.random() * SPINNER_VERBS.length)];
 }
 
-export function Spinner({ tokens = 0 }: SpinnerProps) {
-  const [frame, setFrame] = useState(0);
+export function Spinner({ dotColor = THEME_COLORS.warning, tokens = 0 }: SpinnerProps) {
+  const [elapsed, setElapsed] = useState(0);
   const [verb, setVerb] = useState(randomVerb);
-  const tickRef = useRef(0);
-  // Record the mount time so elapsed seconds are accurate even after re-renders
-  const startTime = useRef(Date.now());
 
+  // Increment elapsed time every second
   useEffect(() => {
-    const interval = setInterval(() => {
-      // Advance frame counter (pure updater — no side effects)
-      setFrame((f) => f + 1);
-      // Rotate proverb outside the updater to keep it pure (React StrictMode safe)
-      tickRef.current += 1;
-      if (tickRef.current % SPINNER.verbChangeInterval === 0) {
-        setVerb(randomVerb());
-      }
-    }, 1000 / SPINNER.fps);
-    return () => clearInterval(interval);
+    const timer = setInterval(() => {
+      setElapsed((s) => s + 1);
+    }, 1000);
+    return () => clearInterval(timer);
   }, []);
 
-  const char = SPINNER.chars[frame % SPINNER.chars.length];
-  const elapsed = Math.floor((Date.now() - startTime.current) / 1000);
+  // Rotate proverb every ~3 seconds
+  useEffect(() => {
+    const rotator = setInterval(() => {
+      setVerb(randomVerb());
+    }, 3000);
+    return () => clearInterval(rotator);
+  }, []);
+
   const elapsedStr = formatElapsed(elapsed);
 
-  // Append token count only when the backend has reported usage
-  const suffix =
-    tokens > 0
-      ? ` (${elapsedStr} · ↓ ${formatTokens(tokens)} tokens)`
-      : ` (${elapsedStr})`;
-
   return (
-    <Text dimColor>
-      {char} {verb}…{suffix}
-    </Text>
+    <Box flexDirection="row" gap={1}>
+      <Text color={dotColor}>●</Text>
+      <Text bold color={THEME_COLORS.accent}>
+        GovOn
+      </Text>
+      <InkSpinner />
+      <Text dimColor>
+        {verb}… ({elapsedStr})
+      </Text>
+    </Box>
   );
 }

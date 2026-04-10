@@ -8,23 +8,30 @@ interface MetadataBarProps {
 }
 
 export function MetadataBar({ metadata }: MetadataBarProps) {
-  const parts: string[] = [];
+  const segments: string[] = [];
+
+  // Thinking iterations: ↻N
   if (metadata.total_iterations !== undefined) {
-    parts.push(`${metadata.total_iterations} iterations`);
-  }
-  if (metadata.total_tool_calls !== undefined) {
-    parts.push(`${metadata.total_tool_calls} tools`);
-  }
-  if (metadata.total_latency_ms !== undefined) {
-    parts.push(`${Math.round(metadata.total_latency_ms).toLocaleString()}ms`);
+    segments.push(`↻${metadata.total_iterations}`);
   }
 
-  if (parts.length === 0) return null;
+  // Tool calls: ⚙N
+  if (metadata.total_tool_calls !== undefined) {
+    segments.push(`⚙${metadata.total_tool_calls}`);
+  }
+
+  // Latency: ⏱ X.Xs
+  if (metadata.total_latency_ms !== undefined) {
+    const seconds = (metadata.total_latency_ms / 1000).toFixed(1);
+    segments.push(`⏱ ${seconds}s`);
+  }
+
+  if (segments.length === 0) return null;
 
   return (
-    <Box marginLeft={2} marginTop={1}>
-      <Text color={THEME_COLORS.muted} dimColor>
-        ─ {parts.join(' · ')}
+    <Box justifyContent="flex-end" marginTop={1}>
+      <Text color={THEME_COLORS.dimmed} dimColor>
+        {segments.join(' ')}
       </Text>
     </Box>
   );

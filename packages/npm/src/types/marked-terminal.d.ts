@@ -14,6 +14,14 @@ declare module 'marked-terminal' {
     firstHeading?: unknown;
     tab?: number;
     tableOptions?: Record<string, unknown>;
+    /** Override the chalk style function used for bold/strong text. */
+    strong?: (text: string) => string;
+    /** Override the chalk style function used for italic/em text. */
+    em?: (text: string) => string;
+    /** Override the chalk style function used for inline code spans. */
+    codespan?: (text: string) => string;
+    /** Override the chalk style function used for strikethrough/del text. */
+    del?: (text: string) => string;
   }
 
   /** Factory that returns a marked extension for terminal rendering. */

@@ -16,7 +16,7 @@
  */
 
 import React, { useReducer, useCallback, useMemo } from 'react';
-import { Box, Text, Static, useApp, useInput, useStdout } from 'ink';
+import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import { createClient, isMockMode } from './clientFactory.js';
 import { getBaseUrl, THEME_COLORS } from './config.js';
 import type { AppState, Action, Message } from './types.js';
@@ -28,19 +28,13 @@ import { InputBar } from './components/InputBar.js';
 import { Spinner } from './components/Spinner.js';
 import { ThinkingBlock } from './components/ThinkingBlock.js';
 import { MarkdownView } from './components/MarkdownView.js';
-import { MessageBubble } from './components/MessageBubble.js';
+import { MessageList } from './components/MessageList.js';
 import { ToolPanel } from './components/ToolPanel.js';
 import { ApprovalPrompt } from './components/ApprovalPrompt.js';
-import { MetadataBar } from './components/MetadataBar.js';
 
 // ---------------------------------------------------------------------------
 // Module-level constants
 // ---------------------------------------------------------------------------
-
-/** Sentinel object placed first in the Static items array to render the banner
- *  exactly once into the terminal scrollback. Hoisted to module level so that
- *  its reference is stable across renders and Static never re-prints it. */
-const BANNER_ITEM = { _banner: true as const };
 
 // ---------------------------------------------------------------------------
 // Props
@@ -334,24 +328,15 @@ export function App({ version, initialQuery }: AppProps) {
     if (key.escape && state.isLoading) cancel();
   });
 
-  // Terminal width for full-width separator
+  // Terminal dimensions for layout calculations
   const { stdout } = useStdout();
   const cols = stdout?.columns ?? 80;
+  const rows = stdout?.rows ?? 24;
+  // Reserve rows for: streaming area (~8), separator (2), input bar (2), status footer (2)
+  const messageListHeight = Math.max(rows - 14, 6);
 
   // ALL hooks must be called ABOVE this line — React requires the same
   // number of hooks on every render. Early returns go BELOW.
-
-  // Completed messages (go to terminal scrollback via <Static>)
-  const completedMessages = state.messages.filter((m) => !m.streaming);
-
-  // Memoize the items array so that the reference only changes when
-  // completedMessages changes. Using a stable module-level BANNER_ITEM object
-  // prevents Static from detecting a new array on every render and
-  // re-printing the banner into the scrollback.
-  const staticItems = useMemo(
-    () => [BANNER_ITEM, ...completedMessages],
-    [completedMessages],
-  );
 
 
   // ---------------------------------------------------------------------------
@@ -383,16 +368,12 @@ export function App({ version, initialQuery }: AppProps) {
 
   return (
     <Box flexDirection="column">
-      {/* ── 1. Banner + completed messages in scrollback ── */}
-      <Static items={staticItems}>
-        {(item: { _banner?: boolean } | Message) => {
-          if ('_banner' in item && item._banner) {
-            return <Banner key="__banner__" version={version} />;
-          }
-          const msg = item as Message;
-          return <MessageBubble key={msg.id} message={msg} />;
-        }}
-      </Static>
+      {/* ── 1. Banner + message history in viewport ── */}
+      <MessageList
+        messages={state.messages}
+        version={version}
+        height={messageListHeight}
+      />
 
       {/* ── 2. Streaming area (live, below scrollback) ── */}
       {state.isLoading && (

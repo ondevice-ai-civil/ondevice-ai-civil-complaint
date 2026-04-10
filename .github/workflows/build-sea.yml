@@ -37,7 +37,7 @@ jobs:
             --external:react-devtools-core
       - name: Generate checksum
         working-directory: packages/npm
-        run: shasum -a 256 dist/sea-bundle.js > dist/sea-bundle.js.sha256
+        run: node -e "const c=require('crypto'),f=require('fs');const h=c.createHash('sha256').update(f.readFileSync('dist/sea-bundle.js')).digest('hex');f.writeFileSync('dist/sea-bundle.js.sha256',h+'\n')"
       - uses: actions/upload-artifact@v4
         with:
           name: sea-bundle
@@ -74,7 +74,7 @@ jobs:
       - name: Verify bundle checksum
         working-directory: packages/npm
         shell: bash
-        run: shasum -a 256 --check dist/sea-bundle.js.sha256
+        run: node -e "const c=require('crypto'),f=require('fs');const expected=f.readFileSync('dist/sea-bundle.js.sha256','utf8').trim();const actual=c.createHash('sha256').update(f.readFileSync('dist/sea-bundle.js')).digest('hex');if(expected!==actual){console.error('Checksum mismatch');process.exit(1)}console.log('Checksum OK:',actual)"
       - name: Install postject
         run: npm install -g postject@1.0.0-alpha.6
       - name: Generate SEA blob

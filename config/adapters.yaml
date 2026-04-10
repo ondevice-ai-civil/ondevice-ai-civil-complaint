@@ -14,7 +14,7 @@
 adapters:
   public_admin:
     path: "umyunsang/govon-civil-adapter"
-    description: "Public administration complaint processing. Trained on 74K government agency complaint-response pairs and administrative law QA."
+    description: "Public administration domain adapter. Trained on 74K central/local government agency QA pairs (AI Hub 71852) and administrative law QA (AI Hub 71847). Handles civil complaints, permits, applications, objections, and administrative procedures."
     domain: "public_admin"
     keywords:
       - complaint
@@ -33,7 +33,7 @@ adapters:
     requires_approval: true
   legal:
     path: "siwo/govon-legal-adapter"
-    description: "Legal question processing with statute citations. Trained on 270K legal documents from court precedents, civil law, IP law, and criminal law QA."
+    description: "Legal domain adapter. Trained on 270K legal documents — court precedents, civil law QA (AI Hub 71841), IP law QA (AI Hub 71843), and criminal law QA (AI Hub 71848). Handles statute interpretation, legal citations, precedent references, and enforcement decrees."
     domain: "legal"
     keywords:
       - law

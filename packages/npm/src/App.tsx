@@ -335,6 +335,24 @@ export function App({ version, initialQuery }: AppProps) {
     if (key.escape && state.isLoading) cancel();
   });
 
+  // ALL hooks must be called ABOVE this line — React requires the same
+  // number of hooks on every render. Early returns go BELOW.
+
+  // Completed messages (go to terminal scrollback via <Static>)
+  const completedMessages = state.messages.filter((m) => !m.streaming);
+
+  // Memoize the items array so that the reference only changes when
+  // completedMessages changes. Using a stable module-level BANNER_ITEM object
+  // prevents Static from detecting a new array on every render and
+  // re-printing the banner into the scrollback.
+  const staticItems = useMemo(
+    () => [BANNER_ITEM, ...completedMessages],
+    [completedMessages],
+  );
+
+  // Terminal column width for the separator line.
+  const cols = stdout?.columns ?? 80;
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -361,22 +379,6 @@ export function App({ version, initialQuery }: AppProps) {
       </Box>
     );
   }
-
-  // Completed messages (go to terminal scrollback via <Static>)
-  // Banner is the first "static" element, followed by the message history.
-  const completedMessages = state.messages.filter((m) => !m.streaming);
-
-  // Memoize the items array so that the reference only changes when
-  // completedMessages changes. Using a stable module-level BANNER_ITEM object
-  // prevents Static from detecting a new array on every render and
-  // re-printing the banner into the scrollback.
-  const staticItems = useMemo(
-    () => [BANNER_ITEM, ...completedMessages],
-    [completedMessages],
-  );
-
-  // Terminal column width for the separator line (Fix 5).
-  const cols = stdout?.columns ?? 80;
 
   return (
     <Box flexDirection="column">

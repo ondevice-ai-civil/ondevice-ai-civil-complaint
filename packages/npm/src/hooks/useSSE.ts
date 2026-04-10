@@ -91,6 +91,10 @@ export function useSSE({ client, dispatch, sessionId }: UseSSEOptions): UseSSERe
       const controller = new AbortController();
       abortRef.current = controller;
 
+      // Guard against stale cleanup: if a newer submit() starts while this
+      // one is still unwinding, we must not null out the newer controller.
+      const isCurrentRun = () => abortRef.current === controller;
+
       // Stable message ID for the assistant slot opened before streaming begins.
       const assistantMsgId = crypto.randomUUID();
       const timestamp = new Date().toISOString();
@@ -118,14 +122,14 @@ export function useSSE({ client, dispatch, sessionId }: UseSSEOptions): UseSSERe
       if (v3Success) {
         safeDispatch({ type: 'SET_API_VERSION', payload: 'v3' });
         safeDispatch({ type: 'SET_LOADING', payload: false });
-        abortRef.current = null;
+        if (isCurrentRun()) abortRef.current = null;
         return;
       }
 
       // Bail out immediately if the user cancelled.
       if (controller.signal.aborted) {
         safeDispatch({ type: 'SET_LOADING', payload: false });
-        abortRef.current = null;
+        if (isCurrentRun()) abortRef.current = null;
         return;
       }
 
@@ -139,7 +143,7 @@ export function useSSE({ client, dispatch, sessionId }: UseSSEOptions): UseSSERe
           payload: 'Streaming interrupted after partial response — please retry.',
         });
         safeDispatch({ type: 'SET_LOADING', payload: false });
-        abortRef.current = null;
+        if (isCurrentRun()) abortRef.current = null;
         return;
       }
 
@@ -158,13 +162,13 @@ export function useSSE({ client, dispatch, sessionId }: UseSSEOptions): UseSSERe
       if (v2Success) {
         safeDispatch({ type: 'SET_API_VERSION', payload: 'v2' });
         safeDispatch({ type: 'SET_LOADING', payload: false });
-        abortRef.current = null;
+        if (isCurrentRun()) abortRef.current = null;
         return;
       }
 
       if (controller.signal.aborted) {
         safeDispatch({ type: 'SET_LOADING', payload: false });
-        abortRef.current = null;
+        if (isCurrentRun()) abortRef.current = null;
         return;
       }
 
@@ -174,7 +178,7 @@ export function useSSE({ client, dispatch, sessionId }: UseSSEOptions): UseSSERe
       await _tryBlocking(client, query, sid, assistantMsgId, controller, safeDispatch);
 
       safeDispatch({ type: 'SET_LOADING', payload: false });
-      abortRef.current = null;
+      if (isCurrentRun()) abortRef.current = null;
     },
     [client, safeDispatch, sessionId, cancel],
   );

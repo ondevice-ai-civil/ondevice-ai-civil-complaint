@@ -6,7 +6,7 @@
  * Calls onApprove(true) or onApprove(false) accordingly.
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ApprovalRequest } from '../types.js';
 import { TASK_TYPE_LABELS, TASK_TYPE_STYLES } from '../types.js';
@@ -21,14 +21,19 @@ const MAX_DESCRIPTION_LENGTH = 1000;
 
 export function ApprovalPrompt({ request, onApprove }: ApprovalPromptProps) {
   const safeDescription = request.description?.slice(0, MAX_DESCRIPTION_LENGTH);
+  // Prevent duplicate approval submissions from repeated keypresses
+  const decidedRef = useRef(false);
 
   useInput(
     useCallback(
       (input: string) => {
+        if (decidedRef.current) return;
         const key = input.toLowerCase();
         if (key === 'y') {
+          decidedRef.current = true;
           onApprove(true);
         } else if (key === 'n') {
+          decidedRef.current = true;
           onApprove(false);
         }
       },

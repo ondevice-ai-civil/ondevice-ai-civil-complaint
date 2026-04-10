@@ -328,10 +328,11 @@ export function App({ version, initialQuery }: AppProps) {
     }
   }, [daemon.ready, initialQuery, handleSubmit]);
 
-  // Keyboard shortcut: Ctrl+D / Ctrl+C exits
-  useInput((input: string, key: { ctrl: boolean }) => {
+  // Keyboard shortcuts: Ctrl+D/Ctrl+C exits, Esc cancels in-flight request
+  useInput((input: string, key: { ctrl: boolean; escape: boolean }) => {
     if (key.ctrl && input === 'd') exit();
     if (key.ctrl && input === 'c') exit();
+    if (key.escape && state.isLoading) cancel();
   });
 
   // ---------------------------------------------------------------------------

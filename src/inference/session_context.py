@@ -1,20 +1,29 @@
-"""세션 컨텍스트 및 SQLite 기반 세션 저장소.
+"""Session context and SQLite-based session store.
 
-GovOn Shell MVP의 세션 모델은 다음을 저장한다.
+GovOn Shell MVP session model stores:
 
-- 대화 기록
-- tool 사용 기록
-- task loop 단위 실행 로그
+- Conversation history
+- Tool usage records
+- Task loop execution logs
 
-초안 버전, 선택 근거 목록 같은 무거운 상태는 제품 기본 저장 범위에서 제외한다.
+Heavy state (draft versions, selection rationale lists) is excluded from the default
+persistence scope.
 
 Schema versioning
 -----------------
-_init_db()는 schema_version 테이블을 통해 순차 migration을 관리한다.
-현재 최신 버전: SCHEMA_VERSION = 2
+_init_db() manages sequential migrations via the schema_version table.
+Current latest version: SCHEMA_VERSION = 2
 
 Migration history:
-  v1 → v2: tool_runs에 graph_run_request_id 컬럼 추가 (이전에는 ad-hoc ALTER TABLE)
+  v1 -> v2: added graph_run_request_id column to tool_runs
+
+Session TTL
+-----------
+SESSION_TTL_SECONDS controls how long an in-memory session lives after the last
+activity.  After the TTL elapses the entry is evicted from _active_sessions so
+the process holds no references and HF Spaces can transition to sleep.
+The SQLite store itself is untouched — only the in-memory activity-tracking dict
+is cleared.
 """
 
 from __future__ import annotations
@@ -32,7 +41,24 @@ from typing import Any, Callable, Dict, List, Optional
 from loguru import logger
 
 SCHEMA_VERSION = 2
-"""현재 SessionStore SQLite 스키마 버전."""
+"""Current SessionStore SQLite schema version."""
+
+# ---------------------------------------------------------------------------
+# Session TTL
+# ---------------------------------------------------------------------------
+try:
+    from .runtime_config import govon_config as _govon_config
+
+    SESSION_TTL_SECONDS: int = getattr(_govon_config, "session_ttl_seconds", 60)
+except Exception:
+    SESSION_TTL_SECONDS = 60
+
+SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", SESSION_TTL_SECONDS))
+"""Idle timeout in seconds before an in-memory session entry is evicted.
+
+Configurable via the SESSION_TTL_SECONDS environment variable.
+Default: 60 seconds.
+"""
 
 
 def _default_session_db_path() -> str:
@@ -219,11 +245,23 @@ class SessionContext:
 
 
 class SessionStore:
-    """SQLite 기반 세션 저장소."""
+    """SQLite-backed session store with in-memory idle-TTL tracking.
+
+    Each session's last-activity timestamp is recorded in ``_active_sessions``.
+    When the elapsed time since last activity exceeds ``SESSION_TTL_SECONDS`` the
+    entry is removed from the dict on the next ``get_or_create`` / ``get`` call,
+    allowing the process (and HF Space container) to become truly idle.
+
+    The SQLite rows themselves are NOT deleted by the TTL — only the in-memory
+    activity tracker is cleared.  Use ``cleanup_old_sessions`` for persistent
+    cleanup.
+    """
 
     def __init__(self, db_path: Optional[str] = None, max_history: int = 20) -> None:
         self._db_path = db_path or os.getenv("GOVON_SESSION_DB") or _default_session_db_path()
         self._max_history = max_history
+        # Maps session_id -> last-activity monotonic timestamp
+        self._active_sessions: Dict[str, float] = {}
         self._init_db()
 
     @property
@@ -662,21 +700,75 @@ class SessionStore:
             _persist_metadata=lambda key, value: self._upsert_metadata(session_id, key, value),
         )
 
+    # ------------------------------------------------------------------
+    # In-memory TTL helpers
+    # ------------------------------------------------------------------
+
+    def _touch(self, session_id: str) -> None:
+        """Record or refresh the last-activity timestamp for *session_id*."""
+        self._active_sessions[session_id] = time.monotonic()
+
+    def _is_expired(self, session_id: str) -> bool:
+        """Return True if *session_id* has exceeded the idle TTL."""
+        last = self._active_sessions.get(session_id)
+        if last is None:
+            # Never seen in this process — treat as expired so the caller
+            # decides whether to load from DB or create fresh.
+            return False
+        return (time.monotonic() - last) > SESSION_TTL_SECONDS
+
+    def cleanup_expired(self) -> int:
+        """Evict all sessions that have exceeded SESSION_TTL_SECONDS.
+
+        Only removes the in-memory activity-tracking entry; SQLite rows are
+        left intact for audit purposes.
+
+        Returns
+        -------
+        int
+            Number of sessions evicted from the in-memory tracker.
+        """
+        now = time.monotonic()
+        expired = [
+            sid
+            for sid, last in list(self._active_sessions.items())
+            if (now - last) > SESSION_TTL_SECONDS
+        ]
+        for sid in expired:
+            del self._active_sessions[sid]
+        if expired:
+            logger.debug(f"SessionStore: evicted {len(expired)} expired in-memory sessions")
+        return len(expired)
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
     def get_or_create(
         self,
         session_id: Optional[str] = None,
         max_history: Optional[int] = None,
     ) -> SessionContext:
+        # Evict stale sessions on every call — keeps _active_sessions lean.
+        self.cleanup_expired()
+
         history_limit = max_history or self._max_history
         if session_id:
+            if self._is_expired(session_id):
+                # TTL elapsed: discard in-memory entry; load fresh from DB below.
+                self._active_sessions.pop(session_id, None)
+                logger.debug(f"Session {session_id}: TTL expired, starting fresh")
+
             existing = self._build_context(session_id, history_limit)
             if existing is not None:
+                self._touch(session_id)
                 return existing
 
         sid = session_id or str(uuid.uuid4())
         created_at = time.time()
         self._ensure_session(sid, created_at=created_at)
-        logger.info(f"새 세션 생성: {sid}")
+        self._touch(sid)
+        logger.info(f"New session created: {sid}")
         return SessionContext(
             session_id=sid,
             max_history=history_limit,
@@ -688,7 +780,14 @@ class SessionStore:
         )
 
     def get(self, session_id: str) -> Optional[SessionContext]:
-        return self._build_context(session_id, self._max_history)
+        if self._is_expired(session_id):
+            self._active_sessions.pop(session_id, None)
+            logger.debug(f"Session {session_id}: TTL expired on get()")
+            return None
+        ctx = self._build_context(session_id, self._max_history)
+        if ctx is not None:
+            self._touch(session_id)
+        return ctx
 
     def delete(self, session_id: str) -> bool:
         with closing(self._connect()) as conn, conn:

@@ -153,14 +153,12 @@ class vLLMEngineManager:
         self.agent_manager = AgentManager(AGENTS_DIR)
         self._api_lookup_action = None  # MinwonAnalysisAction (지연 초기화)
         self._domain_adapter_fn = None  # Domain adapter generation closure (lazy init)
-        self.graph = None  # LangGraph CompiledGraph (v2 엔드포인트용)
-        self.graph_v3 = None  # v3 ReAct graph (v3 엔드포인트용)
-        self._checkpointer_ctx = None  # AsyncSqliteSaver 컨텍스트 매니저 (lifespan에서 관리)
-        self._sync_checkpointer_conn = None  # SqliteSaver용 sqlite3 connection (leak 방지)
-        # session_id 단위 비동기 락: 동시 요청 race condition 방지
+        self.graph = None  # LangGraph CompiledGraph (v2 endpoint)
+        self.graph_v3 = None  # v3 ReAct graph (v3 endpoint)
+        # session_id-level async locks: prevent race conditions on concurrent requests
         self._session_locks: dict[str, asyncio.Lock] = {}
         self._init_tools()
-        # _init_graph()는 lifespan()에서 호출 — 모듈 로드 시점 실행 방지
+        # _init_graph() is called from lifespan() — avoid running at module import time
 
     def get_session_lock(self, session_id: str) -> asyncio.Lock:
         """session_id 단위 비동기 락을 반환한다. 동시 요청 race condition 방지."""
@@ -598,24 +596,17 @@ class vLLMEngineManager:
             domain_adapter_fn=self._domain_adapter_fn,
         )
 
-    def _init_graph_with_async_checkpointer(self, checkpointer: object) -> None:
-        """lifespan에서 AsyncSqliteSaver가 준비된 후 graph를 재구성한다."""
-        self._init_graph(checkpointer=checkpointer)
-
     def _init_graph(self, checkpointer: Optional[object] = None) -> None:
-        """LangGraph StateGraph를 초기화한다.
+        """Initialize the LangGraph StateGraph.
 
-        v4 아키텍처: ReAct + ToolNode 기반.
-        LLM이 자율적으로 도구 호출을 결정한다.
+        v4 architecture: ReAct + ToolNode.  The LLM autonomously decides tool
+        calls.
 
         Parameters
         ----------
         checkpointer : optional
-            외부에서 주입할 LangGraph checkpointer.
-            None이면 SqliteSaver(동기 sqlite3)를 시도하고,
-            import 실패 시 MemorySaver로 fallback한다.
-            SqliteSaver DB 경로는 SessionStore DB와 같은 디렉터리에
-            ``langgraph_checkpoints.db``로 생성된다 (관심사 분리).
+            LangGraph checkpointer to inject.  When None a fresh MemorySaver is
+            used — no file handles, no persistent SQLite connections.
         """
         try:
             from src.inference.graph.builder import build_govon_graph
@@ -667,15 +658,14 @@ class vLLMEngineManager:
                 max_tokens=_llm_max_tokens,
             )
 
-        # checkpointer가 외부에서 주입되지 않으면 SqliteSaver를 시도한다.
+        # Use MemorySaver when no checkpointer is injected from outside.
+        # MemorySaver holds no file handles and keeps no persistent connections,
+        # which allows HF Spaces to transition to sleep after idle periods.
         if checkpointer is None:
-            checkpointer, conn = _build_sync_sqlite_checkpointer(self.session_store.db_path)
-            if self._sync_checkpointer_conn is not None:
-                try:
-                    self._sync_checkpointer_conn.close()
-                except Exception:
-                    pass
-            self._sync_checkpointer_conn = conn
+            from langgraph.checkpoint.memory import MemorySaver
+
+            checkpointer = MemorySaver()
+            logger.info("LangGraph checkpointer: MemorySaver (in-memory, no persistent files)")
 
         self.graph = build_govon_graph(
             llm=llm,
@@ -705,48 +695,9 @@ class vLLMEngineManager:
             self.graph_v3 = None
 
 
-def _build_sync_sqlite_checkpointer(
-    session_db_path: str,
-) -> tuple:
-    """SqliteSaver(동기) 또는 MemorySaver(fallback)를 반환한다.
-
-    LangGraph checkpointer용 SQLite DB는 SessionStore의 sessions.sqlite3와
-    같은 디렉터리에 별도 파일 ``langgraph_checkpoints.db``로 생성한다.
-    두 DB를 분리함으로써 관심사(세션 메타 vs. graph 체크포인트)를 명확히 구분한다.
-
-    SqliteSaver는 프로세스 재시작 후에도 interrupt 상태를 SQLite에서 복원하므로
-    MemorySaver와 달리 재시작-안전(restart-safe)하다.
-
-    Parameters
-    ----------
-    session_db_path : str
-        SessionStore가 사용 중인 sessions.sqlite3 파일 경로.
-        이 경로의 부모 디렉터리에 langgraph_checkpoints.db를 생성한다.
-
-    Returns
-    -------
-    tuple[SqliteSaver | MemorySaver, sqlite3.Connection | None]
-        (checkpointer, conn) 튜플.
-        SqliteSaver 사용 시 conn은 열린 sqlite3.Connection이며,
-        호출자가 적절한 시점에 close해야 한다.
-        MemorySaver fallback 시 conn은 None이다.
-    """
-    cp_db_path = str(Path(session_db_path).parent / "langgraph_checkpoints.db")
-    try:
-        from langgraph.checkpoint.sqlite import SqliteSaver
-
-        conn = __import__("sqlite3").connect(cp_db_path, check_same_thread=False)
-        saver = SqliteSaver(conn)
-        logger.info(f"LangGraph checkpointer: SqliteSaver ({cp_db_path})")
-        return saver, conn
-    except ImportError:
-        logger.warning(
-            "langgraph-checkpoint-sqlite 미설치 — MemorySaver로 fallback합니다. "
-            "프로세스 재시작 시 interrupt 상태가 소멸됩니다."
-        )
-        from langgraph.checkpoint.memory import MemorySaver
-
-        return MemorySaver(), None
+# _build_sync_sqlite_checkpointer has been removed.
+# The server now uses MemorySaver exclusively so that HF Spaces can sleep.
+# Set CHECKPOINTER=sqlite in env to opt back into SQLite persistence (advanced use).
 
 
 manager = vLLMEngineManager()
@@ -754,48 +705,63 @@ manager = vLLMEngineManager()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """FastAPI lifespan: 모델/인덱스 초기화 및 graph 단일 초기화.
+    """FastAPI lifespan: model/index init and single graph initialization.
 
-    AsyncSqliteSaver가 사용 가능하면 그것으로 한 번만 초기화한다.
-    import 실패 시 SqliteSaver(동기) 또는 MemorySaver로 fallback한다.
-    graph 이중 초기화를 방지하기 위해 _init_graph()를 한 번만 호출한다.
-    shutdown 시 httpx AsyncClient를 반드시 종료하여 leak을 방지한다.
+    Uses MemorySaver for LangGraph checkpointing — no file handles, no
+    persistent SQLite connections.  This allows HF Spaces to enter sleep mode
+    after the configured idle period.
+
+    Set CHECKPOINTER=sqlite env var to opt into SQLite persistence (keeps the
+    server alive, suitable for long-running on-prem deployments).
+
+    Guarantees graph is initialized exactly once.
+    Always closes the httpx AsyncClient on shutdown to prevent leaks.
     """
     await manager.initialize()
 
-    # API_KEY 미설정 경고 (운영 프로필에서 명시적으로 알림)
     if _API_KEY is None and runtime_config.profile.value not in ("local",):
-        logger.warning("API_KEY 미설정: 운영 환경에서는 반드시 API_KEY 환경변수를 설정하세요.")
+        logger.warning("API_KEY not set: set API_KEY env var in production.")
 
-    # checkpointer 결정 후 graph를 한 번만 초기화 (이중 초기화 방지)
-    async_cp_db = str(Path(manager.session_store.db_path).parent / "langgraph_checkpoints.db")
-    try:
-        from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+    checkpointer_mode = os.getenv("CHECKPOINTER", "memory").lower()
 
-        async with AsyncSqliteSaver.from_conn_string(async_cp_db) as async_saver:
-            manager._init_graph(checkpointer=async_saver)
-            manager._checkpointer_ctx = async_saver
-            logger.info(f"LangGraph: AsyncSqliteSaver ({async_cp_db})")
-            try:
-                yield
-            finally:
-                manager._checkpointer_ctx = None
-                if manager._http_client:
-                    await manager._http_client.aclose()
-                    logger.info("httpx AsyncClient 종료 완료")
-        return
-    except ImportError:
-        pass
+    if checkpointer_mode == "sqlite":
+        # Opt-in SQLite persistence for on-prem / non-HF deployments.
+        cp_db = str(Path(manager.session_store.db_path).parent / "langgraph_checkpoints.db")
+        try:
+            from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-    # fallback: SqliteSaver(동기) 또는 MemorySaver
+            async with AsyncSqliteSaver.from_conn_string(cp_db) as async_saver:
+                manager._init_graph(checkpointer=async_saver)
+                logger.info(f"LangGraph checkpointer: AsyncSqliteSaver ({cp_db})")
+                try:
+                    yield
+                finally:
+                    if manager._http_client:
+                        await manager._http_client.aclose()
+                        logger.info("httpx AsyncClient closed")
+            return
+        except ImportError:
+            logger.warning(
+                "CHECKPOINTER=sqlite requested but langgraph-checkpoint-sqlite not installed. "
+                "Falling back to MemorySaver."
+            )
+
+    # Default: MemorySaver — no persistent file handles, HF Space sleep-compatible.
     manager._init_graph()
-    logger.info("LangGraph: SqliteSaver(동기) 또는 MemorySaver로 실행합니다.")
+    logger.info("LangGraph checkpointer: MemorySaver (HF Space sleep-compatible)")
     try:
         yield
     finally:
         if manager._http_client:
             await manager._http_client.aclose()
-            logger.info("httpx AsyncClient 종료 완료")
+            logger.info("httpx AsyncClient closed")
+
+
+# ---------------------------------------------------------------------------
+# Idle-time tracker — updated on every incoming request so external
+# health-check scripts can determine if the server is truly idle.
+# ---------------------------------------------------------------------------
+_last_request_time: float = time.monotonic()
 
 
 app = FastAPI(
@@ -803,6 +769,15 @@ app = FastAPI(
     description="Local FastAPI daemon for the GovOn Agentic Shell MVP.",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def _update_last_request_time(request: Request, call_next):
+    """Record the monotonic timestamp of the most recent request."""
+    global _last_request_time
+    _last_request_time = time.monotonic()
+    return await call_next(request)
+
 
 ALLOWED_ORIGINS = os.getenv("CORS_ORIGINS", "").split(",")
 if ALLOWED_ORIGINS and ALLOWED_ORIGINS[0]:
@@ -1021,9 +996,9 @@ async def v2_agent_run(
        동일 thread_id에 새 graph_run을 시작한다. LangGraph checkpointer가
        동일 thread_id에서 이전 상태를 누적하므로 대화 히스토리가 보존된다.
 
-    3. **프로세스 재시작 후**: SqliteSaver 사용 시 DB에서 checkpoint가 복원되므로
-       interrupt 상태가 유지된다. 클라이언트는 기존 thread_id로 `/v2/agent/approve`
-       를 다시 호출하면 중단된 지점에서 resume할 수 있다.
+    3. **After process restart**: With MemorySaver checkpoints are in-memory only
+       and do not survive restarts.  Set CHECKPOINTER=sqlite to opt into SQLite
+       persistence for restart-safe interrupt resumption.
 
     Note: session_id == thread_id. 두 값은 항상 동일하게 유지된다.
     """

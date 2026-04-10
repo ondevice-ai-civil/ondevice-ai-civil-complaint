@@ -1,69 +1,193 @@
-import { useState, useCallback, useEffect } from 'react';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { useReducer, useCallback, useEffect, useRef } from 'react';
+import { writeFile } from 'node:fs/promises';
+import { readFileSync, mkdirSync, lstatSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
 const HISTORY_DIR = join(homedir(), '.govon');
 const HISTORY_FILE = join(HISTORY_DIR, 'history');
 const MAX_ENTRIES = 500;
+const MAX_ENTRY_BYTES = 4096;
+const DEBOUNCE_MS = 300;
+
+// ---------------------------------------------------------------------------
+// State shape
+// ---------------------------------------------------------------------------
+
+interface HistoryState {
+  entries: string[];
+  cursor: number; // -1 = at current input
+}
+
+type HistoryAction =
+  | { type: 'PUSH'; entry: string }
+  | { type: 'NAVIGATE'; direction: 'up' | 'down' }
+  | { type: 'RESET_CURSOR' };
+
+// ---------------------------------------------------------------------------
+// Reducer — makes push (entries + cursor) atomic
+// ---------------------------------------------------------------------------
+
+function historyReducer(state: HistoryState, action: HistoryAction): HistoryState {
+  switch (action.type) {
+    case 'PUSH': {
+      const trimmed = action.entry.trim();
+      if (!trimmed) return state;
+      if (Buffer.byteLength(trimmed, 'utf8') > MAX_ENTRY_BYTES) return state;
+
+      // Deduplicate consecutive identical entries
+      const next =
+        state.entries[state.entries.length - 1] === trimmed
+          ? state.entries
+          : [...state.entries, trimmed];
+
+      return { entries: next.slice(-MAX_ENTRIES), cursor: -1 };
+    }
+
+    case 'NAVIGATE': {
+      const { entries, cursor } = state;
+      if (entries.length === 0) return state;
+
+      if (action.direction === 'up') {
+        const next = cursor === -1 ? entries.length - 1 : Math.max(0, cursor - 1);
+        return { ...state, cursor: next };
+      }
+
+      // direction === 'down'
+      if (cursor === -1) return state; // already at current input — nothing to do
+      if (cursor + 1 >= entries.length) {
+        return { ...state, cursor: -1 }; // back to empty input
+      }
+      return { ...state, cursor: cursor + 1 };
+    }
+
+    case 'RESET_CURSOR':
+      return { ...state, cursor: -1 };
+
+    default:
+      return state;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Initial state loader
+// ---------------------------------------------------------------------------
+
+function loadInitialEntries(): string[] {
+  try {
+    const raw = readFileSync(HISTORY_FILE, 'utf-8');
+    return raw.split('\n').filter(Boolean).slice(-MAX_ENTRIES);
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Async persist helper — symlink-safe
+// ---------------------------------------------------------------------------
+
+async function persistEntries(entries: string[]): Promise<void> {
+  try {
+    mkdirSync(HISTORY_DIR, { recursive: true });
+
+    // Reject symlinks to prevent symlink-based write attacks
+    try {
+      const stat = lstatSync(HISTORY_FILE);
+      if (!stat.isFile()) return; // reject symlinks or other non-regular files
+    } catch {
+      // File does not exist yet — safe to create
+    }
+
+    await writeFile(HISTORY_FILE, entries.join('\n') + '\n', 'utf-8');
+  } catch {
+    // Silently ignore write failures (read-only fs, etc.)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
 
 /**
  * Load and persist CLI input history from ~/.govon/history.
- * Returns the history array, a push function, and a navigate function.
+ * Returns the history entries, a push function, a navigate function, and the
+ * current cursor position (-1 means "at current input").
  */
 export function useHistory() {
-  const [entries, setEntries] = useState<string[]>(() => {
-    try {
-      const raw = readFileSync(HISTORY_FILE, 'utf-8');
-      return raw.split('\n').filter(Boolean).slice(-MAX_ENTRIES);
-    } catch {
-      return [];
-    }
-  });
+  const [state, dispatch] = useReducer(historyReducer, undefined, () => ({
+    entries: loadInitialEntries(),
+    cursor: -1,
+  }));
 
-  const [cursor, setCursor] = useState(-1);
+  const { entries, cursor } = state;
+
+  // Debounce + overlap-guard refs for async persistence
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const writeInProgressRef = useRef(false);
+
+  // Persist entries whenever they change, with debounce and overlap guard
+  useEffect(() => {
+    if (debounceTimerRef.current !== null) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    debounceTimerRef.current = setTimeout(() => {
+      debounceTimerRef.current = null;
+
+      if (writeInProgressRef.current) return; // skip if a write is already running
+
+      writeInProgressRef.current = true;
+      persistEntries(entries).finally(() => {
+        writeInProgressRef.current = false;
+      });
+    }, DEBOUNCE_MS);
+
+    return () => {
+      if (debounceTimerRef.current !== null) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+    };
+  }, [entries]);
 
   const push = useCallback((entry: string) => {
-    const trimmed = entry.trim();
-    if (!trimmed) return;
-    setEntries((prev) => {
-      // Deduplicate consecutive
-      const next = prev[prev.length - 1] === trimmed ? prev : [...prev, trimmed];
-      return next.slice(-MAX_ENTRIES);
-    });
-    setCursor(-1);
+    dispatch({ type: 'PUSH', entry });
   }, []);
 
-  // Navigate up/down through history
+  // Navigate up/down through history.
+  // Returns the selected entry string, '' when returning to current input, or
+  // undefined when there is nothing to navigate.
   const navigate = useCallback(
     (direction: 'up' | 'down'): string | undefined => {
       if (entries.length === 0) return undefined;
 
-      let next: number;
-      if (direction === 'up') {
-        next = cursor === -1 ? entries.length - 1 : Math.max(0, cursor - 1);
-      } else {
-        next = cursor === -1 ? -1 : Math.min(entries.length - 1, cursor + 1);
-        if (next >= entries.length) {
-          setCursor(-1);
-          return '';
+      const prevCursor = cursor;
+
+      if (direction === 'down') {
+        if (prevCursor === -1) return undefined; // already at current input
+        if (prevCursor + 1 >= entries.length) {
+          dispatch({ type: 'NAVIGATE', direction: 'down' });
+          return ''; // signal: restore empty input
         }
       }
-      setCursor(next);
-      return entries[next];
+
+      dispatch({ type: 'NAVIGATE', direction });
+
+      // Compute the next cursor locally so we can return the correct entry
+      // without waiting for the next render cycle.
+      if (direction === 'up') {
+        const next = prevCursor === -1 ? entries.length - 1 : Math.max(0, prevCursor - 1);
+        return entries[next];
+      } else {
+        return entries[prevCursor + 1];
+      }
     },
     [entries, cursor],
   );
 
-  // Persist on change
-  useEffect(() => {
-    try {
-      mkdirSync(HISTORY_DIR, { recursive: true });
-      writeFileSync(HISTORY_FILE, entries.join('\n') + '\n', 'utf-8');
-    } catch {
-      // Silently ignore write failures (read-only fs, etc.)
-    }
-  }, [entries]);
+  const resetCursor = useCallback(() => {
+    dispatch({ type: 'RESET_CURSOR' });
+  }, []);
 
-  return { entries, push, navigate, cursor };
+  return { entries, push, navigate, resetCursor, cursor };
 }

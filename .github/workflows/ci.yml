@@ -276,7 +276,9 @@ jobs:
   npm-check:
     name: npm package check
     needs: detect-changes
-    if: needs.detect-changes.outputs.npm_changed == 'true'
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.npm_changed == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:

@@ -8,6 +8,9 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: read
+
 jobs:
   build-js:
     name: Bundle JavaScript
@@ -32,10 +35,15 @@ jobs:
             --outfile=dist/sea-bundle.js \
             --define:process.env.NODE_ENV=\"production\" \
             --external:react-devtools-core
+      - name: Generate checksum
+        working-directory: packages/npm
+        run: sha256sum dist/sea-bundle.js > dist/sea-bundle.js.sha256
       - uses: actions/upload-artifact@v4
         with:
           name: sea-bundle
-          path: packages/npm/dist/sea-bundle.js
+          path: |
+            packages/npm/dist/sea-bundle.js
+            packages/npm/dist/sea-bundle.js.sha256
 
   build-sea:
     name: SEA ${{ matrix.platform }}
@@ -63,8 +71,12 @@ jobs:
         with:
           name: sea-bundle
           path: packages/npm/dist
+      - name: Verify bundle checksum
+        working-directory: packages/npm
+        shell: bash
+        run: sha256sum --check dist/sea-bundle.js.sha256
       - name: Install postject
-        run: npm install -g postject
+        run: npm install -g postject@1.0.0-alpha.6
       - name: Generate SEA blob
         working-directory: packages/npm
         run: node --experimental-sea-config sea-config.json

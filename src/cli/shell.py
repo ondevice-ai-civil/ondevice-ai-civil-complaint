@@ -1,8 +1,8 @@
-"""GovOn CLI — main REPL loop and entry point.
+"""GovOn CLI — main REPL loop and entry point (Python-based).
 
 Entry point registered in pyproject.toml:
   [project.scripts]
-  govon = "src.cli.shell:main"
+  govon-shell = "src.cli.shell:main"
 """
 
 from __future__ import annotations

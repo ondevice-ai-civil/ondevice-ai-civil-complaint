@@ -36,23 +36,32 @@ jobs:
 
       - name: Build offline deployment package
         run: |
-          tar czf govon-offline-package.tar.gz \
-            govon-image.tar.gz \
+          # Package deployment scripts separately (small, always single file)
+          tar czf govon-offline-scripts.tar.gz \
             deploy/env/.env.airgap.example \
             scripts/offline-deploy.sh \
             scripts/smoke-test.sh \
             deploy/compose/docker-compose.offline.yml
 
+          # Split Docker image into chunks under 1.9GB for GitHub Release limit
+          split -b 1900m govon-image.tar.gz govon-image.tar.gz.part-
+          ls -lh govon-image.tar.gz.part-* govon-offline-scripts.tar.gz
+
       - name: Upload to release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: govon-offline-package.tar.gz
+          files: |
+            govon-offline-scripts.tar.gz
+            govon-image.tar.gz.part-*
+          overwrite_files: true
 
       - name: Upload as artifact
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v7
         with:
           name: govon-offline-package
-          path: govon-offline-package.tar.gz
+          path: |
+            govon-offline-scripts.tar.gz
+            govon-image.tar.gz.part-*
           retention-days: 7

@@ -1,14 +1,33 @@
 {
   "name": "govon",
   "version": "0.1.0",
-  "description": "npm wrapper for the GovOn CLI — Shell-first local agentic runtime for administrative assistance and civil complaint workflows",
+  "description": "GovOn CLI — Agentic TUI for Korean civil complaint assistance powered by React + Ink",
+  "type": "module",
+  "bin": {
+    "govon": "./bin/govon.js"
+  },
+  "scripts": {
+    "build": "tsc && node esbuild.config.mjs",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "README.md"
+  ],
   "keywords": [
     "govon",
-    "agentic-shell",
-    "local-runtime",
-    "civil-complaint",
+    "agentic-tui",
+    "cli",
     "korean-nlp",
-    "cli"
+    "civil-complaint",
+    "react-ink"
   ],
   "homepage": "https://github.com/GovOn-Org/GovOn#readme",
   "bugs": {
@@ -20,18 +39,24 @@
     "directory": "packages/npm"
   },
   "license": "MIT",
-  "bin": {
-    "govon": "./bin/govon.js"
+  "dependencies": {
+    "cli-highlight": "^2.1.11",
+    "eventsource-parser": "^3.0.0",
+    "ink": "^5.2.0",
+    "ink-spinner": "^5.0.0",
+    "ink-text-input": "^6.0.0",
+    "marked": "^15.0.0",
+    "marked-terminal": "^7.3.0",
+    "react": "^18.3.1",
+    "yargs": "^17.7.2"
   },
-  "scripts": {
-    "postinstall": "node ./bin/govon.js --check-install || true"
-  },
-  "engines": {
-    "node": ">=18"
-  },
-  "files": [
-    "bin/",
-    "lib/",
-    "README.md"
-  ]
+  "devDependencies": {
+    "@types/node": "^25.5.2",
+    "@types/react": "^18.3.0",
+    "@types/yargs": "^17.0.33",
+    "esbuild": "^0.25.0",
+    "ink-testing-library": "^4.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.1.0"
+  }
 }

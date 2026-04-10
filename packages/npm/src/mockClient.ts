@@ -61,17 +61,21 @@ function uuid(): string {
   return crypto.randomUUID();
 }
 
-/** Stream text word-by-word as response_delta events. */
-async function* streamWords(
+/**
+ * Stream text in small chunks as response_delta events.
+ * Uses a fixed chunk size instead of splitting on spaces to preserve
+ * exact whitespace (repeated spaces, newlines, code-block indentation).
+ */
+async function* streamChunks(
   text: string,
   delayMs: number,
   signal?: AbortSignal,
+  chunkSize = 12,
 ): AsyncGenerator<V3SSEEvent> {
-  const words = text.split(' ');
-  for (const word of words) {
+  for (let i = 0; i < text.length; i += chunkSize) {
     if (signal?.aborted) return;
     await sleep(delayMs, signal);
-    yield { type: 'response_delta', content: word + ' ' };
+    yield { type: 'response_delta', content: text.slice(i, i + chunkSize) };
   }
 }
 
@@ -219,7 +223,7 @@ async function* scenarioStats(
   yield { type: 'thinking_delta', content: 'Tools returned successfully. Composing the final answer now.' };
   yield { type: 'thinking_end', iteration: 2, tool_calls: [] };
 
-  yield* streamWords(ANSWERS.stats, 30, signal);
+  yield* streamChunks(ANSWERS.stats, 30, signal);
 
   yield {
     type: 'run_complete',
@@ -285,7 +289,7 @@ async function* scenarioToolFail(
   yield { type: 'thinking_delta', content: 'demographics_lookup failed with timeout. I will use cached data to answer. ' };
   yield { type: 'thinking_end', iteration: 2, tool_calls: [] };
 
-  yield* streamWords(ANSWERS.tool_fail, 30, signal);
+  yield* streamChunks(ANSWERS.tool_fail, 30, signal);
 
   yield {
     type: 'run_complete',
@@ -310,7 +314,7 @@ async function* scenarioSimple(
   yield { type: 'thinking_delta', content: 'This is a general question about GovOn. No tools needed — I can answer directly. ' };
   yield { type: 'thinking_end', iteration: 1, tool_calls: [] };
 
-  yield* streamWords(ANSWERS.simple, 25, signal);
+  yield* streamChunks(ANSWERS.simple, 25, signal);
 
   yield {
     type: 'run_complete',
@@ -366,7 +370,7 @@ async function* scenarioLong(
   yield { type: 'thinking_end', iteration: 2, tool_calls: [] };
 
   // Stream the long answer more slowly to stress-test the display
-  yield* streamWords(ANSWERS.long, 20, signal);
+  yield* streamChunks(ANSWERS.long, 20, signal);
 
   yield {
     type: 'run_complete',
@@ -538,7 +542,52 @@ export class MockGovOnClient implements IClient {
     await sleep(500, _signal);
     const sid = sessionId ?? uuid();
     const scenario = resolveScenario(query);
+
+    // Error scenario throws to mirror what a real backend would do
+    if (scenario === 'error') {
+      throw new Error('[MockError] Backend service unavailable: connection to data source timed out after 30s');
+    }
+
     const text = ANSWERS[scenario] || ANSWERS.stats;
+
+    // Build scenario-appropriate trace
+    const traceByScenario: Record<ScenarioKey, { plan: string[]; tool_results: AgentRunResponse['trace']['tool_results'] }> = {
+      stats: {
+        plan: ['stats_lookup', 'keyword_analyzer'],
+        tool_results: [
+          { tool: 'stats_lookup', success: true, latency_ms: 150, data: { total: 12847 } },
+          { tool: 'keyword_analyzer', success: true, latency_ms: 120, data: {} },
+        ],
+      },
+      simple: {
+        plan: [],
+        tool_results: [],
+      },
+      tool_fail: {
+        plan: ['stats_lookup', 'demographics_lookup'],
+        tool_results: [
+          { tool: 'stats_lookup', success: true, latency_ms: 150, data: {} },
+          { tool: 'demographics_lookup', success: false, latency_ms: 500, data: {}, error: 'Timeout' },
+        ],
+      },
+      long: {
+        plan: ['stats_lookup', 'keyword_analyzer', 'demographics_lookup'],
+        tool_results: [
+          { tool: 'stats_lookup', success: true, latency_ms: 400, data: {} },
+          { tool: 'keyword_analyzer', success: true, latency_ms: 350, data: {} },
+          { tool: 'demographics_lookup', success: true, latency_ms: 500, data: {} },
+        ],
+      },
+      approval: {
+        plan: ['stats_lookup'],
+        tool_results: [
+          { tool: 'stats_lookup', success: true, latency_ms: 150, data: {} },
+        ],
+      },
+      error: { plan: [], tool_results: [] }, // unreachable — throws above
+    };
+
+    const trace = traceByScenario[scenario] ?? traceByScenario.stats;
 
     return {
       request_id: uuid(),
@@ -547,16 +596,18 @@ export class MockGovOnClient implements IClient {
       trace: {
         request_id: uuid(),
         session_id: sid,
-        plan: ['stats_lookup'],
+        plan: trace.plan,
         plan_reason: `Mock blocking run for scenario: ${scenario}`,
-        tool_results: [
-          { tool: 'stats_lookup', success: true, latency_ms: 150, data: {} },
-        ],
+        tool_results: trace.tool_results,
         total_latency_ms: 500,
       },
       thread_id: uuid(),
       evidence_items: [],
-      metadata: { total_iterations: 1, total_tool_calls: 1, total_latency_ms: 500 },
+      metadata: {
+        total_iterations: scenario === 'simple' ? 1 : 2,
+        total_tool_calls: trace.tool_results.length,
+        total_latency_ms: 500,
+      },
     };
   }
 

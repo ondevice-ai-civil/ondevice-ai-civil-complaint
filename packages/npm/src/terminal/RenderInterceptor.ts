@@ -11,6 +11,7 @@ import {
   SHOW_CURSOR,
   SYNC_OUTPUT_SUPPORTED,
 } from './constants.js';
+import { ScreenBuffer } from './ScreenBuffer.js';
 
 /**
  * Regex to strip Ink's log-update eraseLines sequences.
@@ -59,10 +60,14 @@ export class RenderInterceptor {
   /** Last raw output captured from Ink; cleared after each flush */
   private lastOutput = '';
 
+  /** Double-buffered screen for cell-level diff rendering */
+  private screenBuffer: ScreenBuffer;
+
   constructor(stdout: NodeJS.WriteStream) {
     this.realStdout = stdout;
     this.terminalRows = stdout.rows ?? 24;
     this.terminalCols = stdout.columns ?? 80;
+    this.screenBuffer = new ScreenBuffer(this.terminalCols, this.terminalRows);
 
     // Build a Writable that captures Ink's output, strips erase sequences, and flushes
     const interceptor = this;
@@ -178,6 +183,8 @@ export class RenderInterceptor {
     if (this.altScreenActive) {
       // Deferred erase — consumed atomically inside flush()
       this.needsEraseBeforePaint = true;
+      // Resize the screen buffer so diff() will emit a full repaint next cycle
+      this.screenBuffer.resize(cols, rows);
     }
 
     // Trigger Ink re-render with updated dimensions
@@ -196,13 +203,17 @@ export class RenderInterceptor {
   /**
    * Write captured Ink output to real stdout in a single atomic call.
    *
-   * Layout of the emitted buffer:
-   *   [BSU]                            ← begin synchronized update
-   *   [ERASE_SCREEN + CURSOR_HOME]     ← only when needsEraseBeforePaint (resize)
-   *   [CURSOR_HOME]                    ← always in alt-screen (paint from top-left)
-   *   <Ink output with erase stripped>
-   *   [ERASE_TO_END_OF_SCREEN]         ← clear stale content below new frame
-   *   [ESU]                            ← end synchronized update
+   * When in alt-screen mode, uses ScreenBuffer to diff previous vs current
+   * frame and emits only the changed cells (cursor-move + styled text patches).
+   *
+   * Layout of the emitted buffer (alt-screen path):
+   *   [BSU]                              ← begin synchronized update
+   *   [ERASE_SCREEN + CURSOR_HOME]       ← only when needsEraseBeforePaint (resize)
+   *   <diff patch from ScreenBuffer>     ← only changed cells
+   *   [ESU]                              ← end synchronized update
+   *
+   * Fallback (non-alt-screen):
+   *   [CURSOR_HOME] <full output> [ERASE_TO_END_OF_SCREEN]
    */
   private flush(): void {
     if (!this.lastOutput) return;
@@ -211,17 +222,28 @@ export class RenderInterceptor {
 
     if (SYNC_OUTPUT_SUPPORTED) buffer += BSU;
 
-    if (this.needsEraseBeforePaint) {
-      this.needsEraseBeforePaint = false;
-      buffer += ERASE_SCREEN + CURSOR_HOME;
-    } else if (this.altScreenActive) {
-      buffer += CURSOR_HOME;
-    }
-
-    buffer += this.lastOutput;
-
-    // Clear any remaining old content below the new frame
     if (this.altScreenActive) {
+      if (this.needsEraseBeforePaint) {
+        this.needsEraseBeforePaint = false;
+        // screenBuffer.resize() was already called in handleResize(),
+        // which sets needsFullRedraw — so diff() will emit a full repaint.
+        buffer += ERASE_SCREEN + CURSOR_HOME;
+      }
+
+      // Parse Ink output into cell grid, diff, and swap buffers
+      this.screenBuffer.write(this.lastOutput);
+      buffer += this.screenBuffer.diff();
+      this.screenBuffer.swap();
+    } else {
+      // Non-alt-screen: fall back to the original full-repaint strategy
+      if (this.needsEraseBeforePaint) {
+        this.needsEraseBeforePaint = false;
+        buffer += ERASE_SCREEN + CURSOR_HOME;
+      } else {
+        buffer += CURSOR_HOME;
+      }
+
+      buffer += this.lastOutput;
       buffer += ERASE_TO_END_OF_SCREEN;
     }
 

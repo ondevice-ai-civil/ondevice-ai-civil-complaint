@@ -24,18 +24,10 @@ const argv = yargs(hideBin(process.argv))
     type: 'string',
     describe: 'Initial query to submit immediately',
   })
-  .option('version', {
-    alias: 'v',
-    type: 'boolean',
-    describe: 'Show version',
-  })
+  .version(pkg.version)
+  .alias('v', 'version')
   .help()
   .parseSync();
-
-if (argv.version) {
-  process.stdout.write(pkg.version + '\n');
-  process.exit(0);
-}
 
 // argv._[0] is the positional <query> argument when provided
 const query = argv._[0] as string | undefined;

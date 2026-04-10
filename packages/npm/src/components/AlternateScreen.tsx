@@ -22,7 +22,7 @@ interface AlternateScreenProps {
 export function AlternateScreen({ children }: AlternateScreenProps) {
   const { columns, rows } = useTerminalSize();
   return (
-    <Box flexDirection="column" height={rows} width={columns}>
+    <Box flexDirection="column" height={rows} width={columns} overflow="hidden">
       {children}
     </Box>
   );

@@ -331,9 +331,7 @@ export function App({ version, initialQuery }: AppProps) {
   });
 
   // Terminal dimensions from shared context (single resize subscription)
-  const { columns: cols, rows } = useTerminalSize();
-  // Reserve rows for: streaming area (~8), separator (2), input bar (2), status footer (2)
-  const messageListHeight = Math.max(rows - 14, 6);
+  const { columns: cols } = useTerminalSize();
 
   // ALL hooks must be called ABOVE this line — React requires the same
   // number of hooks on every render. Early returns go BELOW.
@@ -377,12 +375,11 @@ export function App({ version, initialQuery }: AppProps) {
         <MessageList
           messages={state.messages}
           version={version}
-          height={messageListHeight}
         />
 
-        {/* ── 2. Streaming area (live, below scrollback) ── */}
+        {/* ── 2. Streaming area (live, below message list) ── */}
         {state.isLoading && (
-          <Box flexDirection="column" marginTop={1}>
+          <Box flexDirection="column" marginTop={1} flexShrink={1} overflow="hidden">
             {/* Thinking in progress */}
             {state.streamingThinking.length > 0 && (
               <ThinkingBlock content={state.streamingThinking} streaming />
@@ -417,7 +414,7 @@ export function App({ version, initialQuery }: AppProps) {
 
         {/* ── 3. Error display ── */}
         {state.error && !state.isLoading && (
-          <Box marginTop={1} marginLeft={2}>
+          <Box marginTop={1} marginLeft={2} flexShrink={0}>
             <Text color={THEME_COLORS.error}>{'오류: '}{state.error}</Text>
           </Box>
         )}
@@ -431,22 +428,24 @@ export function App({ version, initialQuery }: AppProps) {
         )}
 
         {/* ── 5. Separator ── */}
-        <Box marginTop={1}>
+        <Box flexShrink={0}>
           <Text color={THEME_COLORS.muted} dimColor>{'─'.repeat(Math.max(1, cols - 1))}</Text>
         </Box>
 
         {/* ── 6. Input bar — unmounted during approval to avoid useInput conflicts ── */}
         {!state.pendingApproval && (
-          <InputBar
-          onSubmit={handleSubmit}
-          disabled={state.isLoading}
-          onNavigate={navigateHistory}
-          onResetCursor={resetHistoryCursor}
-        />
+          <Box flexShrink={0}>
+            <InputBar
+              onSubmit={handleSubmit}
+              disabled={state.isLoading}
+              onNavigate={navigateHistory}
+              onResetCursor={resetHistoryCursor}
+            />
+          </Box>
         )}
 
         {/* ── 7. Status footer ── */}
-        <Box marginTop={1}>
+        <Box flexShrink={0}>
           <Text dimColor color={THEME_COLORS.dimmed}>
             {isMockMode ? '[MOCK] esc 취소 · Ctrl+D 종료 · /help 도움말' : 'esc 취소 · Ctrl+D 종료 · /help 도움말'}
           </Text>

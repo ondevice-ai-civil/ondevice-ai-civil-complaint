@@ -16,11 +16,9 @@ import { MessageBubble } from './MessageBubble.js';
 interface MessageListProps {
   messages: Message[];
   version: string;
-  /** Available height in terminal rows for the message area. */
-  height: number;
 }
 
-export function MessageList({ messages, version, height }: MessageListProps) {
+export function MessageList({ messages, version }: MessageListProps) {
   const [scrollOffset, setScrollOffset] = useState(0);
   const [autoScroll, setAutoScroll] = useState(true);
 
@@ -77,7 +75,7 @@ export function MessageList({ messages, version, height }: MessageListProps) {
   const visibleMessages = messages.slice(0, Math.max(endIndex, 0));
 
   return (
-    <Box flexDirection="column" height={height} overflow="hidden">
+    <Box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden">
       <Banner version={version} />
       {visibleMessages.map((msg) => (
         <MessageBubble key={msg.id} message={msg} />

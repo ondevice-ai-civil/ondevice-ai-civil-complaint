@@ -16,7 +16,7 @@
  */
 
 import React, { useReducer, useCallback, useMemo } from 'react';
-import { Box, Text, Static, useApp, useInput, useStdout } from 'ink';
+import { Box, Text, Static, useApp, useInput } from 'ink';
 import { createClient, isMockMode } from './clientFactory.js';
 import { getBaseUrl, THEME_COLORS } from './config.js';
 import type { AppState, Action, Message } from './types.js';
@@ -244,7 +244,6 @@ function reducer(state: AppState, action: Action): AppState {
 
 export function App({ version, initialQuery }: AppProps) {
   const { exit } = useApp();
-  const { stdout } = useStdout();
   const [state, dispatch] = useReducer(reducer, initialState);
 
   // Client is stable for the lifetime of the app (mock or real based on GOVON_MOCK)
@@ -350,8 +349,6 @@ export function App({ version, initialQuery }: AppProps) {
     [completedMessages],
   );
 
-  // Terminal column width for the separator line.
-  const cols = stdout?.columns ?? 80;
 
   // ---------------------------------------------------------------------------
   // Render
@@ -444,11 +441,7 @@ export function App({ version, initialQuery }: AppProps) {
       )}
 
       {/* ── 5. Separator ── */}
-      <Box marginTop={1}>
-        <Text color={THEME_COLORS.muted} dimColor>
-          {'─'.repeat(Math.max(1, cols - 1))}
-        </Text>
-      </Box>
+      <Box marginTop={1} borderStyle="single" borderBottom borderTop={false} borderLeft={false} borderRight={false} borderColor={THEME_COLORS.muted} />
 
       {/* ── 6. Input bar — unmounted during approval to avoid useInput conflicts ── */}
       {!state.pendingApproval && (

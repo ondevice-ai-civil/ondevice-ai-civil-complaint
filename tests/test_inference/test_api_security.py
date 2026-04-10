@@ -61,7 +61,7 @@ def mock_manager():
         mock.session_store.db_path = ":memory:"
         mock.local_document_sync_status = {
             "status": "ok",
-            "root_dir": "/tmp/local-docs",
+            "root_dir": "/tmp/local-docs",  # noqa: S108 - mock value, not actual temp file
             "scanned_files": 2,
         }
         mock.hybrid_engine.search = AsyncMock(
@@ -95,7 +95,7 @@ def test_health_check(mock_manager):
     mock_model = MagicMock()
     mock_model.model_path = _SENSITIVE_PATH
     with (
-        patch("src.inference.api_server.runtime_config.paths.local_docs_root", "/tmp/local-docs"),
+        patch("src.inference.api_server.runtime_config.paths.local_docs_root", "/tmp/local-docs"),  # noqa: S108 - mock value, not actual temp file
         patch("src.inference.api_server.runtime_config.model", mock_model),
     ):
         response = client.get("/health")

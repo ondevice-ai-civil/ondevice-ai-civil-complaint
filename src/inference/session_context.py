@@ -701,8 +701,7 @@ class SessionStore:
         """
         now = time.time()
         expired = [
-            sid for sid, last in list(self._live_sessions.items())
-            if (now - last) > ttl_seconds
+            sid for sid, last in list(self._live_sessions.items()) if (now - last) > ttl_seconds
         ]
         for sid in expired:
             self._live_sessions.pop(sid, None)

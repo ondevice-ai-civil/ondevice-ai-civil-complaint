@@ -1,7 +1,7 @@
 {
   "name": "govon",
   "version": "1.5.1",
-  "description": "GovOn CLI — Agentic TUI for Korean civil complaint assistance powered by React + Ink",
+  "description": "GovOn CLI — AX platform TUI for unified government infrastructure powered by React + Ink",
   "type": "module",
   "bin": {
     "govon": "./bin/govon.js"

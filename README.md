@@ -1,6 +1,6 @@
 # GovOn
 
-> AI-powered agentic CLI for Korean public-sector civil complaint workflows.
+> AX (Agentic Transformation) platform that unifies Korea's fragmented government DX infrastructure through agentic AI.
 
 [![npm](https://img.shields.io/npm/v/govon?logo=npm)](https://www.npmjs.com/package/govon)
 [![Homebrew](https://img.shields.io/badge/brew-govon--org/govon-FBB040?logo=homebrew)](https://github.com/GovOn-Org/homebrew-govon)
@@ -19,9 +19,9 @@
 
 ---
 
-Government employees in South Korea spend hours drafting responses to civil complaints — looking up laws, finding precedents, and formatting official documents. **GovOn automates that entire workflow.** You type a natural-language request, and an AI agent retrieves relevant data, searches legal references, and generates a draft response in official document format.
+Korea's public sector has achieved widespread DX (Digital Transformation) — but data and APIs remain siloed across ministries, departments, and agencies, each with independent systems. **GovOn is the AX (Agentic Transformation) layer on top.** It wraps each agency's API endpoints as LLM-callable tools, and a central LLM autonomously decides which tools to call, chains them, and synthesizes results — acting as a single unified interface over the entire government infrastructure.
 
-The CLI is lightweight (~10 MB). The heavy lifting happens on a remote server running [EXAONE 4.0-32B](https://huggingface.co/LGAI-EXAONE/EXAONE-4.0-32B-AWQ) with domain-specific LoRA adapters for civil and legal tasks.
+The CLI is lightweight (~10 MB). The heavy lifting happens on a remote server running [EXAONE 4.0-32B](https://huggingface.co/LGAI-EXAONE/EXAONE-4.0-32B-AWQ) with domain-specific LoRA adapters. **MVP supports 2 domain adapters (공공행정, 법률); the roadmap targets 16 national domains.**
 
 ## Quick Start
 
@@ -141,23 +141,32 @@ curl -X POST $GOVON_RUNTIME_URL/v3/agent/run \
 
 ## Features
 
+- **AX platform architecture** -- government agency APIs wrapped as LLM tools; central LLM orchestrates cross-agency data access through a single interface
 - **ReAct agent with 7 tools** -- the agent autonomously selects and chains tools based on your request
 - **Human-in-the-loop approval** -- every tool execution requires explicit user approval before running
 - **Multi-turn conversations** -- session-based context management with extractive summarization
-- **Multi-LoRA inference** -- domain-specific adapters (civil complaints + legal references) on a single base model
+- **Multi-LoRA inference** -- domain-specific adapters loaded per-request on a single base model
 - **Streaming responses** -- real-time SSE streaming with per-node progress display
 - **Three installation methods** -- npm, Homebrew, and native installer
+
+### Domain Adapters
+
+| Adapter | Domain | Status |
+|---------|--------|--------|
+| `public_admin_adapter` | 공공행정 (Public Administration) | Active (MVP) |
+| `legal_adapter` | 법률 (Legal) | Active (MVP) |
+| *(14 more)* | 과학기술, 교육, 교통물류, 국토관리, 농축수산, 문화관광, 보건의료, 사회복지, 산업고용, 식품건강, 재난안전, 재정금융, 통일외교안보, 환경기상 | Roadmap |
 
 ### Tools
 
 | Tool | Purpose |
 |------|---------|
-| `api_lookup` | Query civil complaint data |
-| `issue_detector` | Detect trending complaint issues |
-| `stats_lookup` | Retrieve complaint statistics |
+| `api_lookup` | Query government data APIs |
+| `issue_detector` | Detect trending issues across domains |
+| `stats_lookup` | Retrieve domain statistics |
 | `keyword_analyzer` | Analyze keyword trends |
 | `demographics_lookup` | Look up regional demographics |
-| `public_admin_adapter` | Generate official response drafts |
+| `public_admin_adapter` | Generate public administration response drafts |
 | `legal_adapter` | Search legal references and precedents |
 
 ## Architecture
@@ -168,22 +177,33 @@ graph LR
         CLI["govon CLI<br/>npm / brew"]
     end
 
-    subgraph Server ["Server (HF Space or Docker)"]
+    subgraph Server ["AX Runtime (HF Space or Docker)"]
         API["FastAPI"]
-        AGENT["ReAct Agent<br/>+ 7 Tools"]
-        LLM["EXAONE 4.0-32B<br/>+ civil LoRA<br/>+ legal LoRA"]
+        AGENT["ReAct Agent<br/>LLM Orchestrator"]
+        LLM["EXAONE 4.0-32B<br/>+ domain LoRAs"]
+        TOOLS["Domain Adapters<br/>public_admin / legal<br/>(+ 14 roadmap)"]
+    end
+
+    subgraph GovInfra ["Government DX Infrastructure"]
+        GOV1["Ministry API A"]
+        GOV2["Agency API B"]
+        GOV3["Department API C"]
     end
 
     CLI -- "HTTP / SSE" --> API --> AGENT --> LLM
+    AGENT --> TOOLS
+    TOOLS --> GOV1 & GOV2 & GOV3
 
     style Client fill:#e0f2fe,stroke:#0284c7
     style Server fill:#fef3c7,stroke:#d97706
+    style GovInfra fill:#f0fdf4,stroke:#16a34a
 ```
 
-**The CLI is thin, the server is powerful.**
+**DX → AX: The CLI is the entry point; the server is the AX orchestration layer.**
 
 - **CLI**: React + Ink + TypeScript TUI (Node.js 18+, no GPU needed)
-- **Server**: EXAONE 4.0-32B + vLLM + Multi-LoRA on A100 80 GB
+- **AX Runtime**: EXAONE 4.0-32B + vLLM + Multi-LoRA on A100 80 GB
+- **Domain Adapters**: Each adapter wraps a government agency's DX APIs as LLM-callable tools
 
 ## Server Management
 
@@ -255,7 +275,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## About
 
-**GovOn** is an industry-academia project from the Department of Computer Engineering at Dong-A University. It assists local government employees with civil complaint response workflows. The AI does not replace human judgment -- it automates repetitive tasks so public servants can focus on decisions that matter.
+**GovOn** is an industry-academia project from the Department of Computer Engineering at Dong-A University. It is an AX (Agentic Transformation) platform that builds an agentic intelligence layer on top of Korea's existing DX (Digital Transformation) national infrastructure. Rather than replacing independent agency systems, GovOn wraps their APIs as LLM-callable tools — enabling a central agentic AI to orchestrate cross-agency workflows through a single interface. The AI does not replace human judgment -- it transforms fragmented digital infrastructure into a unified agentic experience so public servants can focus on decisions that matter.
 
 ## License
 

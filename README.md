@@ -53,6 +53,16 @@ curl -fsSL https://raw.githubusercontent.com/GovOn-Org/GovOn/main/scripts/instal
 brew install govon-org/tap/govon
 ```
 
+### Update
+
+```bash
+# npm
+npm install -g govon@latest
+
+# Homebrew
+brew upgrade govon
+```
+
 ### Self-hosted runtime (GPU required)
 
 You can host your own GovOn runtime on **Hugging Face Spaces** or on-premises.

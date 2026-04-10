@@ -478,11 +478,29 @@ export class MockGovOnClient implements IClient {
         },
       };
 
-      // Keep the generator alive until approve()/cancel() resolves it.
-      // The TUI shows ApprovalPrompt and waits for y/n; once the user
-      // decides, approve() resolves this promise and the stream ends.
-      await new Promise<void>((resolve) => {
-        this._pendingApprovals.set(tid, { sessionId: sid, resolve });
+      // Keep the generator alive until approve()/cancel() resolves it,
+      // or until the request is aborted (Esc). The TUI shows ApprovalPrompt
+      // and waits for y/n; once the user decides, approve() calls finish().
+      await new Promise<void>((resolve, reject) => {
+        const finish = () => {
+          _signal?.removeEventListener('abort', onAbort);
+          this._pendingApprovals.delete(tid);
+          resolve();
+        };
+
+        const onAbort = () => {
+          _signal?.removeEventListener('abort', onAbort);
+          this._pendingApprovals.delete(tid);
+          reject(new DOMException('Aborted', 'AbortError'));
+        };
+
+        if (_signal?.aborted) {
+          onAbort();
+          return;
+        }
+
+        this._pendingApprovals.set(tid, { sessionId: sid, resolve: finish });
+        _signal?.addEventListener('abort', onAbort, { once: true });
       });
 
       return;
@@ -548,7 +566,7 @@ export class MockGovOnClient implements IClient {
     _maxIterations?: number,
     _signal?: AbortSignal,
   ): Promise<Record<string, unknown>> {
-    const result = await this.run(query, sessionId);
+    const result = await this.run(query, sessionId, _signal);
     return result as unknown as Record<string, unknown>;
   }
 

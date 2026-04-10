@@ -30,18 +30,12 @@ export interface EvidenceItem {
   metadata?: Record<string, unknown>;
 }
 
-/** Metadata attached to a completed agent run. */
+/** Metadata attached to a completed agent run (v3 run_complete event). */
 export interface RunMetadata {
-  /** Total wall-clock duration in seconds. */
-  duration_seconds?: number;
-  /** Number of ReAct iterations consumed. */
-  iterations?: number;
-  /** Names of all tools that were invoked. */
-  tools_used?: string[];
-  /** LLM model identifier used for the run. */
-  model?: string;
-  /** Arbitrary backend-specific fields. */
-  [key: string]: unknown;
+  total_iterations?: number;
+  total_tool_calls?: number;
+  total_latency_ms?: number;
+  node_latencies?: Record<string, number>;
 }
 
 /** A single tool call record embedded in a thinking_end event. */
@@ -142,7 +136,7 @@ export interface ApprovalRequest {
 export interface V2SSEEvent {
   /** Graph node name (e.g. "agent", "tools", "approval_wait"). */
   node: string;
-  status: "completed" | "awaiting_approval" | "error";
+  status: "completed" | "awaiting_approval" | "error" | (string & {});
   /** Full answer text, present when node === "agent" and run is done. */
   final_text?: string;
   evidence_items?: EvidenceItem[];
@@ -180,34 +174,38 @@ export interface AgentRunRequest {
   max_iterations?: number;
 }
 
-/** A single tool invocation record inside an AgentTrace. */
+/** A single tool invocation record inside an AgentTrace. Matches backend ToolResultSchema. */
 export interface ToolResult {
   tool: string;
-  args: Record<string, unknown>;
-  result: unknown;
   success: boolean;
-  /** Execution duration in milliseconds. */
-  duration_ms?: number;
+  latency_ms: number;
+  data: Record<string, unknown>;
+  error?: string;
 }
 
-/** Full reasoning trace for a single agent run. */
+/** Full reasoning trace for a single agent run. Matches backend AgentTraceSchema. */
 export interface AgentTrace {
-  thread_id: string;
+  request_id: string;
   session_id: string;
-  iterations: number;
+  plan: string[];
+  plan_reason: string;
   tool_results: ToolResult[];
-  thinking_steps: string[];
-  metadata: RunMetadata;
+  total_latency_ms: number;
+  error?: string;
 }
 
 /** Non-streaming response returned by the agent endpoint. */
 export interface AgentRunResponse {
-  thread_id: string;
+  request_id: string;
   session_id: string;
   text: string;
-  evidence_items: EvidenceItem[];
-  metadata: RunMetadata;
-  trace?: AgentTrace;
+  trace: AgentTrace;
+  /** Present in v2 stream approval events, absent in blocking run. */
+  thread_id?: string;
+  /** Present in v2 blocking run responses. */
+  graph_run_id?: string;
+  evidence_items?: EvidenceItem[];
+  metadata?: RunMetadata;
 }
 
 /** Response from POST /v2/agent/approve. */

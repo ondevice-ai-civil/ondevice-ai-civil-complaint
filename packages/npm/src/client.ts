@@ -26,17 +26,11 @@ function makeSignal(ms: number): AbortSignal {
 export class GovOnClient {
   private readonly _baseUrl: string;
 
-  /** Cold-start polling timeout in seconds (env: GOVON_COLD_START_TIMEOUT). */
-  private static readonly _COLD_START_TIMEOUT = parseInt(
-    process.env['GOVON_COLD_START_TIMEOUT'] ?? '600',
-    10,
-  );
+  /** Cold-start polling timeout in ms (from config). */
+  private static readonly _COLD_START_TIMEOUT_MS = TIMEOUTS.coldStart;
 
-  /** Cold-start polling interval in seconds (env: GOVON_COLD_START_INTERVAL). */
-  private static readonly _COLD_START_INTERVAL = parseInt(
-    process.env['GOVON_COLD_START_INTERVAL'] ?? '5',
-    10,
-  );
+  /** Cold-start polling interval in ms (from config). */
+  private static readonly _COLD_START_INTERVAL_MS = TIMEOUTS.coldStartInterval;
 
   /**
    * @param baseUrl - Daemon base URL (e.g. "http://127.0.0.1:8000").
@@ -70,8 +64,8 @@ export class GovOnClient {
    */
   async waitForReady(): Promise<boolean> {
     const url = `${this._baseUrl}/health`;
-    const deadline = Date.now() + GovOnClient._COLD_START_TIMEOUT * 1000;
-    const intervalMs = GovOnClient._COLD_START_INTERVAL * 1000;
+    const deadline = Date.now() + GovOnClient._COLD_START_TIMEOUT_MS;
+    const intervalMs = GovOnClient._COLD_START_INTERVAL_MS;
 
     let lastStatus = '';
     let attempt = 0;
@@ -112,7 +106,7 @@ export class GovOnClient {
         }
       }
 
-      const elapsed = attempt * GovOnClient._COLD_START_INTERVAL;
+      const elapsed = Math.round((Date.now() - (deadline - GovOnClient._COLD_START_TIMEOUT_MS)) / 1000);
       if (newStatus !== lastStatus || attempt % 6 === 0) {
         process.stderr.write(`\r⏳ ${newStatus} (${elapsed}s)`);
         lastStatus = newStatus;
@@ -238,8 +232,9 @@ export class GovOnClient {
     body: Record<string, unknown>,
     label: string,
   ): AsyncGenerator<T> {
-    // connect=10s, read=300s — budget the AbortSignal on the read side
-    const signal = AbortSignal.timeout(300_000);
+    // Single AbortSignal covers the entire request (connect + read).
+    // Node fetch does not support separate connect/read timeouts.
+    const signal = AbortSignal.timeout(TIMEOUTS.read);
 
     let response: Response;
     try {

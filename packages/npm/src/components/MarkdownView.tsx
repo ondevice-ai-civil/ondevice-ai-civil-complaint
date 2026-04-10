@@ -1,6 +1,5 @@
-import React, { useMemo } from 'react';
-import { Box, Text } from 'ink';
-import useStdoutDimensions from 'ink-use-stdout-dimensions';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Box, Text, useStdout } from 'ink';
 import { Marked } from 'marked';
 import { markedTerminal } from 'marked-terminal';
 
@@ -17,9 +16,26 @@ function stripAnsi(str: string): string {
   return str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
 }
 
+/**
+ * Subscribe to stdout column changes via the "resize" event.
+ * Unlike useStdout() alone, this triggers a React state update on resize.
+ */
+function useColumns(): number {
+  const { stdout } = useStdout();
+  const [columns, setColumns] = useState(stdout?.columns ?? 80);
+
+  useEffect(() => {
+    if (!stdout) return;
+    const onResize = () => setColumns(stdout.columns);
+    stdout.on('resize', onResize);
+    return () => { stdout.off('resize', onResize); };
+  }, [stdout]);
+
+  return columns;
+}
+
 export function MarkdownView({ content, streaming = false }: MarkdownViewProps) {
-  const [columns] = useStdoutDimensions();
-  const width = columns ?? 80;
+  const width = useColumns();
 
   const rendered = useMemo(() => {
     if (!content) return '';

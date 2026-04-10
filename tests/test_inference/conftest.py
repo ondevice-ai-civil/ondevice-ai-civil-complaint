@@ -32,7 +32,13 @@ sys.modules.setdefault("sentence_transformers", MagicMock())
 _faiss_module = sys.modules.get("faiss")
 _faiss_is_real = _faiss_module is not None and not isinstance(_faiss_module, MagicMock)
 if not _faiss_is_real:
-    sys.modules.setdefault("faiss", MagicMock())
+    # importlib.util.find_spec("faiss") 호환: MagicMock은 __spec__을 처리하지 못해
+    # transformers 내부 faiss 감지 시 ValueError가 발생한다. types.ModuleType을 사용한다.
+    import importlib.machinery
+
+    _faiss_stub = types.ModuleType("faiss")
+    _faiss_stub.__spec__ = importlib.machinery.ModuleSpec("faiss", None)
+    sys.modules.setdefault("faiss", _faiss_stub)
 
 import pytest
 

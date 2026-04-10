@@ -80,15 +80,22 @@ jobs:
 
           ## Installation
 
-          ### npm (requires Node.js 18+)
+          ### Quick install (requires Node.js 18+)
+          \`\`\`bash
+          curl -fsSL https://raw.githubusercontent.com/GovOn-Org/GovOn/main/scripts/install.sh | bash
           \`\`\`
+
+          ### npm
+          \`\`\`bash
           npm install -g govon
           \`\`\`
 
+          ### Homebrew
           \`\`\`bash
-          pip install govon==${VERSION}
+          brew install govon-org/tap/govon
           \`\`\`
 
+          ### Docker
           \`\`\`bash
           docker pull ghcr.io/govon-org/govon:${TAG}
           \`\`\`

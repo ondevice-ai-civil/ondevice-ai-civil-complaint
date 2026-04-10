@@ -126,12 +126,14 @@ export class GovOnClient {
    * @param query         - User input query.
    * @param sessionId     - Session ID to resume an existing session.
    * @param maxIterations - Maximum ReAct loop iterations.
+   * @param signal        - Optional external AbortSignal; composed with the internal timeout.
    * @yields Parsed SSE event objects. Use the `type` key to distinguish them.
    */
   async *streamV3(
     query: string,
     sessionId?: string,
     maxIterations?: number,
+    signal?: AbortSignal,
   ): AsyncGenerator<V3SSEEvent> {
     const body: Record<string, unknown> = { query };
     if (sessionId !== undefined) body['session_id'] = sessionId;
@@ -139,7 +141,7 @@ export class GovOnClient {
 
     const url = `${this._baseUrl}/v3/agent/stream`;
 
-    yield* this._sseStream<V3SSEEvent>(url, body, 'stream_v3');
+    yield* this._sseStream<V3SSEEvent>(url, body, 'stream_v3', signal);
   }
 
   /**
@@ -147,15 +149,16 @@ export class GovOnClient {
    *
    * @param query     - User input query.
    * @param sessionId - Session ID to resume an existing session.
+   * @param signal    - Optional external AbortSignal; composed with the internal timeout.
    * @yields Parsed SSE event objects. Contains at least `node` and `status` keys.
    */
-  async *stream(query: string, sessionId?: string): AsyncGenerator<V2SSEEvent> {
+  async *stream(query: string, sessionId?: string, signal?: AbortSignal): AsyncGenerator<V2SSEEvent> {
     const body: Record<string, unknown> = { query };
     if (sessionId !== undefined) body['session_id'] = sessionId;
 
     const url = `${this._baseUrl}/v2/agent/stream`;
 
-    yield* this._sseStream<V2SSEEvent>(url, body, 'stream');
+    yield* this._sseStream<V2SSEEvent>(url, body, 'stream', signal);
   }
 
   /**
@@ -163,13 +166,14 @@ export class GovOnClient {
    *
    * @param query     - User input query.
    * @param sessionId - Session ID to resume an existing session.
+   * @param signal    - Optional external AbortSignal; composed with the internal timeout.
    * @returns Server response including thread_id, status, etc.
    */
-  async run(query: string, sessionId?: string): Promise<AgentRunResponse> {
+  async run(query: string, sessionId?: string, signal?: AbortSignal): Promise<AgentRunResponse> {
     const body: Record<string, unknown> = { query };
     if (sessionId !== undefined) body['session_id'] = sessionId;
 
-    return this._post('/v2/agent/run', body, TIMEOUTS.run) as unknown as Promise<AgentRunResponse>;
+    return this._post('/v2/agent/run', body, TIMEOUTS.run, signal) as unknown as Promise<AgentRunResponse>;
   }
 
   /**
@@ -178,18 +182,20 @@ export class GovOnClient {
    * @param query         - User input query.
    * @param sessionId     - Session ID to resume an existing session.
    * @param maxIterations - Maximum ReAct loop iterations.
+   * @param signal        - Optional external AbortSignal; composed with the internal timeout.
    * @returns Server response including metadata.
    */
   async runV3(
     query: string,
     sessionId?: string,
     maxIterations?: number,
+    signal?: AbortSignal,
   ): Promise<Record<string, unknown>> {
     const body: Record<string, unknown> = { query };
     if (sessionId !== undefined) body['session_id'] = sessionId;
     if (maxIterations !== undefined) body['max_iterations'] = maxIterations;
 
-    return this._post('/v3/agent/run', body, TIMEOUTS.run);
+    return this._post('/v3/agent/run', body, TIMEOUTS.run, signal);
   }
 
   /**
@@ -231,10 +237,14 @@ export class GovOnClient {
     url: string,
     body: Record<string, unknown>,
     label: string,
+    externalSignal?: AbortSignal,
   ): AsyncGenerator<T> {
-    // Single AbortSignal covers the entire request (connect + read).
-    // Node fetch does not support separate connect/read timeouts.
-    const signal = AbortSignal.timeout(TIMEOUTS.read);
+    // Compose the caller-provided signal with the internal read timeout so that
+    // whichever fires first aborts the fetch.
+    const timeoutSignal = AbortSignal.timeout(TIMEOUTS.read);
+    const signal = externalSignal
+      ? AbortSignal.any([externalSignal, timeoutSignal])
+      : timeoutSignal;
 
     let response: Response;
     try {
@@ -313,15 +323,20 @@ export class GovOnClient {
     path: string,
     body: Record<string, unknown>,
     timeoutMs: number,
+    externalSignal?: AbortSignal,
   ): Promise<Record<string, unknown>> {
     const url = `${this._baseUrl}${path}`;
+    const timeoutSignal = makeSignal(timeoutMs);
+    const signal = externalSignal
+      ? AbortSignal.any([externalSignal, timeoutSignal])
+      : timeoutSignal;
     let response: Response;
     try {
       response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-        signal: makeSignal(timeoutMs),
+        signal,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

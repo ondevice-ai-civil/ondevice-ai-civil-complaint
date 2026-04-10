@@ -15,8 +15,8 @@
  *   7. Status footer
  */
 
-import React, { useReducer, useCallback, useMemo } from 'react';
-import { Box, Text, Static, useApp, useInput } from 'ink';
+import React, { useReducer, useCallback, useMemo, useEffect } from 'react';
+import { Box, Text, Static, useApp, useInput, useStdout } from 'ink';
 import { createClient, isMockMode } from './clientFactory.js';
 import { getBaseUrl, THEME_COLORS } from './config.js';
 import type { AppState, Action, Message } from './types.js';
@@ -244,7 +244,20 @@ function reducer(state: AppState, action: Action): AppState {
 
 export function App({ version, initialQuery }: AppProps) {
   const { exit } = useApp();
+  const { stdout } = useStdout();
   const [state, dispatch] = useReducer(reducer, initialState);
+
+  // Clear terminal on resize to prevent ghost lines from Ink's line-count
+  // mismatch. Ink erases only previousLineCount lines, but after a width
+  // change text reflows and the line count shifts — leaving stale rows.
+  useEffect(() => {
+    if (!stdout) return;
+    const onResize = () => {
+      stdout.write('\x1b[2J\x1b[H');
+    };
+    stdout.on('resize', onResize);
+    return () => { stdout.off('resize', onResize); };
+  }, [stdout]);
 
   // Client is stable for the lifetime of the app (mock or real based on GOVON_MOCK)
   const client = useMemo(() => createClient(state.apiBase), [state.apiBase]);
@@ -441,7 +454,9 @@ export function App({ version, initialQuery }: AppProps) {
       )}
 
       {/* ── 5. Separator ── */}
-      <Box marginTop={1} borderStyle="single" borderBottom borderTop={false} borderLeft={false} borderRight={false} borderColor={THEME_COLORS.muted} />
+      <Box marginTop={1}>
+        <Text color={THEME_COLORS.muted} dimColor>{'───'}</Text>
+      </Box>
 
       {/* ── 6. Input bar — unmounted during approval to avoid useInput conflicts ── */}
       {!state.pendingApproval && (

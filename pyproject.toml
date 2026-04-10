@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "govon"
-version = "1.6.0"
+version = "1.6.1"
 description = "GovOn Agentic Shell — CLI client for the GovOn AX national infrastructure platform"
 readme = "README.md"
 license = {text = "MIT"}

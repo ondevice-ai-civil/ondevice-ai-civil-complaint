@@ -26,6 +26,8 @@ _AGENT_PAYLOAD = {"query": "테스트 민원입니다."}
 _V2_ENDPOINTS = [
     ("POST", "/v2/agent/run"),
     ("POST", "/v2/agent/stream"),
+    ("POST", "/v2/agent/approve"),
+    ("POST", "/v2/agent/cancel"),
 ]
 
 # v3 인증 대상 엔드포인트 목록
@@ -179,4 +181,12 @@ class TestAllowNoAuth:
         with patch("src.inference.api_server._API_KEY", None):
             with patch("src.inference.api_server._ALLOW_NO_AUTH", True):
                 resp = client.post("/v3/agent/run", json=_AGENT_PAYLOAD)
+        assert resp.status_code != 401
+
+    @pytest.mark.parametrize("path", ["/v2/agent/stream", "/v3/agent/stream"])
+    def test_allow_no_auth_applies_to_stream_endpoints(self, client, path):
+        """ALLOW_NO_AUTH=true는 stream 엔드포인트에도 동일하게 적용된다."""
+        with patch("src.inference.api_server._API_KEY", None):
+            with patch("src.inference.api_server._ALLOW_NO_AUTH", True):
+                resp = client.post(path, json=_AGENT_PAYLOAD)
         assert resp.status_code != 401

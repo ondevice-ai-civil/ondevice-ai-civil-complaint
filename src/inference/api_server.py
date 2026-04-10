@@ -748,9 +748,7 @@ async def lifespan(app: FastAPI):
     await manager.initialize()
 
     if _API_KEY is None and runtime_config.profile.value not in ("local",):
-        logger.warning(
-            "API_KEY not set: set the API_KEY environment variable in production."
-        )
+        logger.warning("API_KEY not set: set the API_KEY environment variable in production.")
 
     # _init_graph() selects MemorySaver or SQLite based on CHECKPOINTER env var.
     manager._init_graph()

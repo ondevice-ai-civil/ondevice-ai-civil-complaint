@@ -1,8 +1,9 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import { Box, Text, useStdout } from 'ink';
+import React, { useMemo } from 'react';
+import { Box, Text } from 'ink';
 import { Marked } from 'marked';
 import { markedTerminal } from 'marked-terminal';
 import { Chalk } from 'chalk';
+import { useTerminalSize } from '../contexts/index.js';
 
 // Force chalk level 3 (full 16m color) regardless of tty detection.
 // Ink takes over stdout which makes tty.isatty(1) === false, causing the
@@ -23,26 +24,8 @@ function stripAnsi(str: string): string {
   return str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
 }
 
-/**
- * Subscribe to stdout column changes via the "resize" event.
- * Unlike useStdout() alone, this triggers a React state update on resize.
- */
-function useColumns(): number {
-  const { stdout } = useStdout();
-  const [columns, setColumns] = useState(stdout?.columns ?? 80);
-
-  useEffect(() => {
-    if (!stdout) return;
-    const onResize = () => setColumns(stdout.columns);
-    stdout.on('resize', onResize);
-    return () => { stdout.off('resize', onResize); };
-  }, [stdout]);
-
-  return columns;
-}
-
 export function MarkdownView({ content, streaming = false }: MarkdownViewProps) {
-  const width = useColumns();
+  const { columns: width } = useTerminalSize();
 
   const rendered = useMemo(() => {
     if (!content) return '';

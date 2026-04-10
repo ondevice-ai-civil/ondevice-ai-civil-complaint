@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text } from 'ink';
 import { THEME_COLORS, getBaseUrl } from '../config.js';
+import { useTerminalSize } from '../contexts/index.js';
 
 // Full 'G' block art for Tier 1 wide layout
 const LOGO_ART = [
@@ -183,8 +184,7 @@ function Tier3BBanner({ version, modeLabel }: { version: string; modeLabel: stri
 // ─── Main Banner ──────────────────────────────────────────────────────────────
 
 export function Banner({ version }: BannerProps) {
-  const { stdout } = useStdout();
-  const cols = stdout?.columns ?? 80;
+  const { columns: cols } = useTerminalSize();
 
   const baseUrl = getBaseUrl();
   const modeLabel = getModeLabel(baseUrl);

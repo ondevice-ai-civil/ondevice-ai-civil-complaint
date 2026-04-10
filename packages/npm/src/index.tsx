@@ -11,6 +11,7 @@ import { hideBin } from 'yargs/helpers';
 import { createRequire } from 'node:module';
 import { App } from './App.js';
 import { RenderInterceptor } from './terminal/index.js';
+import { TerminalSizeProvider } from './contexts/index.js';
 
 // Read version from package.json at runtime (avoid bundling the whole file)
 const require = createRequire(import.meta.url);
@@ -57,9 +58,12 @@ const query = argv._[0] as string | undefined;
 const interceptor = new RenderInterceptor(process.stdout);
 interceptor.enterAltScreen();
 
-const instance = render(<App version={pkg.version} initialQuery={query} />, {
-  stdout: interceptor.stdout as unknown as NodeJS.WriteStream,
-});
+const instance = render(
+  <TerminalSizeProvider>
+    <App version={pkg.version} initialQuery={query} />
+  </TerminalSizeProvider>,
+  { stdout: interceptor.stdout as unknown as NodeJS.WriteStream },
+);
 
 // Restore normal screen on exit (covers all exit paths)
 process.on('exit', () => interceptor.destroy());

@@ -31,10 +31,14 @@ export function MessageList({ messages, version, height }: MessageListProps) {
     }
   }, [messages.length, autoScroll]);
 
-  // Scroll key handling: Shift+Up/Down and PageUp/PageDown.
+  // Max scroll: always keep at least 1 message visible
+  const maxScroll = Math.max(0, messages.length - 1);
+
+  // Scroll key handling: Shift+Up/Down (1 message), PageUp/PageDown (10 messages),
+  // Meta+Up (Home / scroll to top), Meta+Down (End / scroll to bottom).
   useInput((_input, key) => {
     if (key.shift && key.upArrow) {
-      setScrollOffset((prev) => Math.min(prev + 1, messages.length));
+      setScrollOffset((prev) => Math.min(prev + 1, maxScroll));
       setAutoScroll(false);
     }
     if (key.shift && key.downArrow) {
@@ -45,15 +49,25 @@ export function MessageList({ messages, version, height }: MessageListProps) {
       });
     }
     if (key.pageUp) {
-      setScrollOffset((prev) => Math.min(prev + 5, messages.length));
+      setScrollOffset((prev) => Math.min(prev + 10, maxScroll));
       setAutoScroll(false);
     }
     if (key.pageDown) {
       setScrollOffset((prev) => {
-        const next = Math.max(prev - 5, 0);
+        const next = Math.max(prev - 10, 0);
         if (next === 0) setAutoScroll(true);
         return next;
       });
+    }
+    // Meta+Up → scroll to top (oldest messages)
+    if (key.meta && key.upArrow) {
+      setScrollOffset(maxScroll);
+      setAutoScroll(false);
+    }
+    // Meta+Down → scroll to bottom (newest messages, re-enable auto-scroll)
+    if (key.meta && key.downArrow) {
+      setScrollOffset(0);
+      setAutoScroll(true);
     }
   });
 
@@ -71,7 +85,7 @@ export function MessageList({ messages, version, height }: MessageListProps) {
       {scrollOffset > 0 && (
         <Box>
           <Text dimColor color="#888">
-            {'↑ Shift+Up/Down 스크롤 · '}{scrollOffset}{'개 이전 메시지'}
+            {'↑ Shift+↑/↓ 스크롤 · PgUp/PgDn×10 · Meta+↑ 처음 · Meta+↓ 끝 · '}{scrollOffset}{'개 이전 메시지'}
           </Text>
         </Box>
       )}

@@ -11,7 +11,7 @@
  *  - Theme
  *  - AppState + Action discriminated union for the reducer
  *  - Exported const maps: NODE_STATUS_MESSAGES, TASK_TYPE_LABELS,
- *    TASK_TYPE_STYLES, TOOL_DISPLAY_NAMES
+ *    TASK_TYPE_STYLES
  */
 
 // ---------------------------------------------------------------------------
@@ -467,12 +467,3 @@ export const TASK_TYPE_STYLES: Readonly<Record<string, string>> = {
   default: "cyan",
 } as const;
 
-/**
- * Human-readable display names for each tool identifier.
- * Used in the tool-call inline UI within assistant messages.
- */
-export const TOOL_DISPLAY_NAMES: Readonly<Record<string, string>> = {
-  stats_lookup: "민원 통계",
-  keyword_analyzer: "키워드 분석",
-  demographics_lookup: "인구통계",
-} as const;

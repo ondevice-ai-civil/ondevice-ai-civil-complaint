@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Box, Text } from 'ink';
 import { Spinner as InkSpinner } from '@inkjs/ui';
 import { THEME_COLORS } from '../config.js';
@@ -19,16 +19,13 @@ function formatElapsed(seconds: number): string {
   return `${m}m ${String(s).padStart(2, '0')}s`;
 }
 
-/** Pick a random Korean proverb from the verb list. */
-function randomVerb(): string {
-  return SPINNER_VERBS[Math.floor(Math.random() * SPINNER_VERBS.length)];
-}
-
 export function Spinner({ dotColor = THEME_COLORS.warning, tokens = 0 }: SpinnerProps) {
   const [elapsed, setElapsed] = useState(0);
-  const [verb, setVerb] = useState(randomVerb);
+  // Freeze the random starting verb index so it does not shift on every render
+  const startVerbIndexRef = useRef(Math.floor(Math.random() * SPINNER_VERBS.length));
 
-  // Increment elapsed time every second
+  // Single interval drives both elapsed counter and proverb rotation.
+  // Proverb index is derived from elapsed ticks so no second timer is needed.
   useEffect(() => {
     const timer = setInterval(() => {
       setElapsed((s) => s + 1);
@@ -36,14 +33,8 @@ export function Spinner({ dotColor = THEME_COLORS.warning, tokens = 0 }: Spinner
     return () => clearInterval(timer);
   }, []);
 
-  // Rotate proverb every ~3 seconds
-  useEffect(() => {
-    const rotator = setInterval(() => {
-      setVerb(randomVerb());
-    }, 3000);
-    return () => clearInterval(rotator);
-  }, []);
-
+  // Rotate verb every 3 ticks (3 seconds) deterministically
+  const verb = SPINNER_VERBS[(startVerbIndexRef.current + Math.floor(elapsed / 3)) % SPINNER_VERBS.length];
   const elapsedStr = formatElapsed(elapsed);
 
   return (

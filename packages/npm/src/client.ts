@@ -177,28 +177,6 @@ export class GovOnClient {
   }
 
   /**
-   * POST /v3/agent/run — v3 ReAct blocking execution.
-   *
-   * @param query         - User input query.
-   * @param sessionId     - Session ID to resume an existing session.
-   * @param maxIterations - Maximum ReAct loop iterations.
-   * @param signal        - Optional external AbortSignal; composed with the internal timeout.
-   * @returns Server response including metadata.
-   */
-  async runV3(
-    query: string,
-    sessionId?: string,
-    maxIterations?: number,
-    signal?: AbortSignal,
-  ): Promise<Record<string, unknown>> {
-    const body: Record<string, unknown> = { query };
-    if (sessionId !== undefined) body['session_id'] = sessionId;
-    if (maxIterations !== undefined) body['max_iterations'] = maxIterations;
-
-    return this._post('/v3/agent/run', body, TIMEOUTS.run, signal);
-  }
-
-  /**
    * POST /v2/agent/approve — approve or reject a pending tool call.
    *
    * Note: uses QUERY PARAMETERS (thread_id, approved), not request body.
@@ -213,19 +191,6 @@ export class GovOnClient {
       approved: String(approved).toLowerCase(),
     });
     return this._postParams('/v2/agent/approve', params, TIMEOUTS.default) as unknown as Promise<ApprovalResponse>;
-  }
-
-  /**
-   * POST /v2/agent/cancel — cancel a running session.
-   *
-   * Note: uses QUERY PARAMETER (thread_id), not request body.
-   *
-   * @param threadId - Graph thread ID to cancel.
-   * @returns Server response.
-   */
-  async cancel(threadId: string): Promise<Record<string, unknown>> {
-    const params = new URLSearchParams({ thread_id: threadId });
-    return this._postParams('/v2/agent/cancel', params, TIMEOUTS.default);
   }
 
   // -------------------------------------------------------------------------

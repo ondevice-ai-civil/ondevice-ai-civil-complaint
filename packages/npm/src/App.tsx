@@ -7,7 +7,7 @@
  *
  * Layout (top → bottom):
  *   1. Banner           (welcome screen, rendered once into scrollback)
- *   2. Message history  (Ink <Static> — completed messages go to scrollback)
+ *   2. Message history  (<MessageList> — viewport-clipped scrollable message list)
  *   3. Streaming area   (current thinking + tools + streaming content)
  *   4. Approval prompt  (shown when pendingApproval is set)
  *   5. Separator line
@@ -16,13 +16,15 @@
  */
 
 import React, { useReducer, useCallback, useMemo } from 'react';
-import { Box, Text, useApp, useInput, useStdout } from 'ink';
+import { Box, Text, useApp, useInput } from 'ink';
 import { createClient, isMockMode } from './clientFactory.js';
 import { getBaseUrl, THEME_COLORS } from './config.js';
 import type { AppState, Action, Message } from './types.js';
 import { useDaemon } from './hooks/useDaemon.js';
 import { useSSE } from './hooks/useSSE.js';
 import { useHistory } from './hooks/useHistory.js';
+import { useTerminalSize } from './contexts/index.js';
+import { AlternateScreen } from './components/AlternateScreen.js';
 import { Banner } from './components/Banner.js';
 import { InputBar } from './components/InputBar.js';
 import { Spinner } from './components/Spinner.js';
@@ -254,7 +256,7 @@ export function App({ version, initialQuery }: AppProps) {
   });
 
   // Input history (up/down arrow navigation)
-  const { push: pushHistory } = useHistory();
+  const { push: pushHistory, navigate: navigateHistory, resetCursor: resetHistoryCursor } = useHistory();
 
   // Handle query submission from InputBar
   const handleSubmit = useCallback(
@@ -328,10 +330,8 @@ export function App({ version, initialQuery }: AppProps) {
     if (key.escape && state.isLoading) cancel();
   });
 
-  // Terminal dimensions for layout calculations
-  const { stdout } = useStdout();
-  const cols = stdout?.columns ?? 80;
-  const rows = stdout?.rows ?? 24;
+  // Terminal dimensions from shared context (single resize subscription)
+  const { columns: cols, rows } = useTerminalSize();
   // Reserve rows for: streaming area (~8), separator (2), input bar (2), status footer (2)
   const messageListHeight = Math.max(rows - 14, 6);
 
@@ -346,101 +346,112 @@ export function App({ version, initialQuery }: AppProps) {
   // Server not yet ready
   if (daemon.waiting) {
     return (
-      <Box flexDirection="column">
-        <Banner version={version} />
-        <Box marginTop={1}>
-          <Text color={THEME_COLORS.muted}>{'서버 연결 중…'}</Text>
+      <AlternateScreen>
+        <Box flexDirection="column">
+          <Banner version={version} />
+          <Box marginTop={1}>
+            <Text color={THEME_COLORS.muted}>{'서버 연결 중…'}</Text>
+          </Box>
         </Box>
-      </Box>
+      </AlternateScreen>
     );
   }
 
   if (daemon.error) {
     return (
-      <Box flexDirection="column">
-        <Banner version={version} />
-        <Box marginTop={1}>
-          <Text color={THEME_COLORS.error}>{'서버 오류: '}{daemon.error}</Text>
+      <AlternateScreen>
+        <Box flexDirection="column">
+          <Banner version={version} />
+          <Box marginTop={1}>
+            <Text color={THEME_COLORS.error}>{'서버 오류: '}{daemon.error}</Text>
+          </Box>
         </Box>
-      </Box>
+      </AlternateScreen>
     );
   }
 
   return (
-    <Box flexDirection="column">
-      {/* ── 1. Banner + message history in viewport ── */}
-      <MessageList
-        messages={state.messages}
-        version={version}
-        height={messageListHeight}
-      />
-
-      {/* ── 2. Streaming area (live, below scrollback) ── */}
-      {state.isLoading && (
-        <Box flexDirection="column" marginTop={1}>
-          {/* Thinking in progress */}
-          {state.streamingThinking.length > 0 && (
-            <ThinkingBlock content={state.streamingThinking} streaming />
-          )}
-
-          {/* Active tool invocations */}
-          {state.activeTools.length > 0 && (
-            <ToolPanel tools={state.activeTools} />
-          )}
-
-          {/* Streaming response text */}
-          {state.streamingContent.length > 0 ? (
-            <Box marginLeft={2}>
-              <MarkdownView content={state.streamingContent} streaming />
-            </Box>
-          ) : (
-            <Box marginLeft={2}>
-              <Spinner />
-            </Box>
-          )}
-
-          {/* Status label from v2 node events */}
-          {state.statusLabel && (
-            <Box marginLeft={2}>
-              <Text color={THEME_COLORS.muted} dimColor>
-                {state.statusLabel}
-              </Text>
-            </Box>
-          )}
-        </Box>
-      )}
-
-      {/* ── 3. Error display ── */}
-      {state.error && !state.isLoading && (
-        <Box marginTop={1} marginLeft={2}>
-          <Text color={THEME_COLORS.error}>{'오류: '}{state.error}</Text>
-        </Box>
-      )}
-
-      {/* ── 4. Approval prompt ── */}
-      {state.pendingApproval && (
-        <ApprovalPrompt
-          request={state.pendingApproval}
-          onApprove={handleApproval}
+    <AlternateScreen>
+      <Box flexDirection="column">
+        {/* ── 1. Banner + message history in viewport ── */}
+        <MessageList
+          messages={state.messages}
+          version={version}
+          height={messageListHeight}
         />
-      )}
 
-      {/* ── 5. Separator ── */}
-      <Box marginTop={1}>
-        <Text color={THEME_COLORS.muted} dimColor>{'─'.repeat(Math.max(1, cols - 1))}</Text>
+        {/* ── 2. Streaming area (live, below scrollback) ── */}
+        {state.isLoading && (
+          <Box flexDirection="column" marginTop={1}>
+            {/* Thinking in progress */}
+            {state.streamingThinking.length > 0 && (
+              <ThinkingBlock content={state.streamingThinking} streaming />
+            )}
+
+            {/* Active tool invocations */}
+            {state.activeTools.length > 0 && (
+              <ToolPanel tools={state.activeTools} />
+            )}
+
+            {/* Streaming response text */}
+            {state.streamingContent.length > 0 ? (
+              <Box marginLeft={2}>
+                <MarkdownView content={state.streamingContent} streaming />
+              </Box>
+            ) : (
+              <Box marginLeft={2}>
+                <Spinner />
+              </Box>
+            )}
+
+            {/* Status label from v2 node events */}
+            {state.statusLabel && (
+              <Box marginLeft={2}>
+                <Text color={THEME_COLORS.muted} dimColor>
+                  {state.statusLabel}
+                </Text>
+              </Box>
+            )}
+          </Box>
+        )}
+
+        {/* ── 3. Error display ── */}
+        {state.error && !state.isLoading && (
+          <Box marginTop={1} marginLeft={2}>
+            <Text color={THEME_COLORS.error}>{'오류: '}{state.error}</Text>
+          </Box>
+        )}
+
+        {/* ── 4. Approval prompt ── */}
+        {state.pendingApproval && (
+          <ApprovalPrompt
+            request={state.pendingApproval}
+            onApprove={handleApproval}
+          />
+        )}
+
+        {/* ── 5. Separator ── */}
+        <Box marginTop={1}>
+          <Text color={THEME_COLORS.muted} dimColor>{'─'.repeat(Math.max(1, cols - 1))}</Text>
+        </Box>
+
+        {/* ── 6. Input bar — unmounted during approval to avoid useInput conflicts ── */}
+        {!state.pendingApproval && (
+          <InputBar
+          onSubmit={handleSubmit}
+          disabled={state.isLoading}
+          onNavigate={navigateHistory}
+          onResetCursor={resetHistoryCursor}
+        />
+        )}
+
+        {/* ── 7. Status footer ── */}
+        <Box marginTop={1}>
+          <Text dimColor color={THEME_COLORS.dimmed}>
+            {isMockMode ? '[MOCK] esc 취소 · Ctrl+D 종료 · /help 도움말' : 'esc 취소 · Ctrl+D 종료 · /help 도움말'}
+          </Text>
+        </Box>
       </Box>
-
-      {/* ── 6. Input bar — unmounted during approval to avoid useInput conflicts ── */}
-      {!state.pendingApproval && (
-        <InputBar onSubmit={handleSubmit} disabled={state.isLoading} />
-      )}
-
-      {/* ── 7. Status footer ── */}
-      <Box marginTop={1}>
-        <Text dimColor color={THEME_COLORS.dimmed}>
-          {isMockMode ? '[MOCK] esc 취소 · Ctrl+D 종료 · /help 도움말' : 'esc 취소 · Ctrl+D 종료 · /help 도움말'}
-        </Text>
-      </Box>
-    </Box>
+    </AlternateScreen>
   );
 }

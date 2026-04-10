@@ -8,10 +8,16 @@ interface ThinkingBlockProps {
   content: string;
   /** Whether thinking is still in progress. */
   streaming?: boolean;
+  /**
+   * Externally measured elapsed duration in milliseconds.
+   * When provided and streaming=false, this value is used instead of the
+   * internal timer (which would show 0s for messages loaded from history).
+   */
+  elapsedMs?: number;
 }
 
-export function ThinkingBlock({ content, streaming = false }: ThinkingBlockProps) {
-  // Elapsed time in milliseconds, updated every second while streaming
+export function ThinkingBlock({ content, streaming = false, elapsedMs: externalElapsedMs }: ThinkingBlockProps) {
+  // Internal elapsed time in milliseconds, updated every second while streaming
   const [elapsedMs, setElapsedMs] = useState(0);
 
   useEffect(() => {
@@ -40,8 +46,10 @@ export function ThinkingBlock({ content, streaming = false }: ThinkingBlockProps
     );
   }
 
-  // Completed state: show elapsed time captured at completion
-  const elapsedSeconds = elapsedMs / 1000;
+  // Completed state: prefer externally measured elapsed over internal timer
+  // (internal timer shows 0s for pre-rendered historical messages)
+  const resolvedElapsedMs = externalElapsedMs ?? elapsedMs;
+  const elapsedSeconds = resolvedElapsedMs / 1000;
   const elapsedDisplay = elapsedSeconds % 1 === 0
     ? `${elapsedSeconds.toFixed(0)}s`
     : `${elapsedSeconds.toFixed(1)}s`;

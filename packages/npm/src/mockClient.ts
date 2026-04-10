@@ -614,16 +614,6 @@ export class MockGovOnClient implements IClient {
     };
   }
 
-  async runV3(
-    query: string,
-    sessionId?: string,
-    _maxIterations?: number,
-    _signal?: AbortSignal,
-  ): Promise<Record<string, unknown>> {
-    const result = await this.run(query, sessionId, _signal);
-    return result as unknown as Record<string, unknown>;
-  }
-
   async approve(threadId: string, approved: boolean): Promise<ApprovalResponse> {
     await sleep(200);
 
@@ -649,13 +639,4 @@ export class MockGovOnClient implements IClient {
     };
   }
 
-  async cancel(threadId: string): Promise<Record<string, unknown>> {
-    // Clean up any pending approval for this thread
-    const pending = this._pendingApprovals.get(threadId);
-    if (pending) {
-      pending.resolve();
-      this._pendingApprovals.delete(threadId);
-    }
-    return { status: 'cancelled', thread_id: threadId };
-  }
 }

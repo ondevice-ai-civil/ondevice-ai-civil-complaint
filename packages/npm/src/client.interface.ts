@@ -35,14 +35,5 @@ export interface IClient {
     signal?: AbortSignal,
   ): Promise<AgentRunResponse>;
 
-  runV3(
-    query: string,
-    sessionId?: string,
-    maxIterations?: number,
-    signal?: AbortSignal,
-  ): Promise<Record<string, unknown>>;
-
   approve(threadId: string, approved: boolean): Promise<ApprovalResponse>;
-
-  cancel(threadId: string): Promise<Record<string, unknown>>;
 }

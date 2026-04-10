@@ -62,9 +62,3 @@ export const THEME_COLORS = {
   dimmed: '#666666',
 } as const;
 
-// Spinner animation config
-export const SPINNER = {
-  fps: 30,
-  verbChangeInterval: 90, // frames (~3 seconds at 30fps)
-  chars: ['\u00b7', '\u273b', '\u273d', '\u2736', '\u2733', '\u2722'] as const,
-} as const;

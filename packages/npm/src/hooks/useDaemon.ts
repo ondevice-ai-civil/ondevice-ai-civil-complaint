@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import type { IClient } from '../client.interface.js';
 
 interface DaemonState {
@@ -20,7 +20,6 @@ export function useDaemon(client: IClient): DaemonState {
     waiting: true,
     error: null,
   });
-  const controllerRef = useRef(new AbortController());
 
   useEffect(() => {
     let mounted = true;
@@ -57,7 +56,6 @@ export function useDaemon(client: IClient): DaemonState {
     check();
     return () => {
       mounted = false;
-      controllerRef.current.abort();
     };
   }, [client]);
 

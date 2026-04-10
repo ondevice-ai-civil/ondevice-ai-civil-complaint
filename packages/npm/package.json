@@ -1,6 +1,6 @@
 {
   "name": "govon",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "GovOn CLI — Agentic TUI for Korean civil complaint assistance powered by React + Ink",
   "type": "module",
   "bin": {

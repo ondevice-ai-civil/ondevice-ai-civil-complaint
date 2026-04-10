@@ -36,7 +36,8 @@ from src.inference.session_context import SessionStore  # noqa: E402
 
 SIMULATED_LATENCIES = {
     "api_lookup": 0.5,  # 500ms
-    "domain_adapter": 1.0,  # 1000ms
+    "public_admin_adapter": 1.0,  # 1000ms
+    "legal_adapter": 1.0,  # 1000ms
 }
 
 

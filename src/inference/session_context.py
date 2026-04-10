@@ -1,27 +1,20 @@
-"""Session context and SQLite-backed session store.
+"""세션 컨텍스트 및 SQLite 기반 세션 저장소.
 
-The GovOn Shell MVP session model stores:
+GovOn Shell MVP의 세션 모델은 다음을 저장한다.
 
-- Conversation history
-- Tool-use records
-- Task-loop execution logs
+- 대화 기록
+- tool 사용 기록
+- task loop 단위 실행 로그
 
-Heavy state such as draft versions and selection rationale lists is excluded
-from the default persistence scope.
+초안 버전, 선택 근거 목록 같은 무거운 상태는 제품 기본 저장 범위에서 제외한다.
 
 Schema versioning
 -----------------
-_init_db() manages sequential migrations via a schema_version table.
-Current latest version: SCHEMA_VERSION = 2
+_init_db()는 schema_version 테이블을 통해 순차 migration을 관리한다.
+현재 최신 버전: SCHEMA_VERSION = 2
 
 Migration history:
-  v1 -> v2: add graph_run_request_id column to tool_runs (previously ad-hoc ALTER TABLE)
-
-Session TTL
------------
-SESSION_TTL_SECONDS controls how long an in-memory session lives after the last
-activity.  Expired sessions are evicted on the next get_or_create() / get() call.
-Set via GOVON_SESSION_TTL env var (default: 60 seconds).
+  v1 → v2: tool_runs에 graph_run_request_id 컬럼 추가 (이전에는 ad-hoc ALTER TABLE)
 """
 
 from __future__ import annotations
@@ -39,12 +32,7 @@ from typing import Any, Callable, Dict, List, Optional
 from loguru import logger
 
 SCHEMA_VERSION = 2
-"""Current SessionStore SQLite schema version."""
-
-# ---------------------------------------------------------------------------
-# Session TTL — configurable via env var; default 60 s
-# ---------------------------------------------------------------------------
-SESSION_TTL_SECONDS: int = int(os.getenv("GOVON_SESSION_TTL", "60"))
+"""현재 SessionStore SQLite 스키마 버전."""
 
 
 def _default_session_db_path() -> str:
@@ -94,7 +82,7 @@ class GraphRunRecord:
 
 @dataclass
 class SessionContext:
-    """Session-scoped conversation and tool-use context."""
+    """세션 기반 대화/도구 기록 컨텍스트."""
 
     session_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     max_history: int = 20
@@ -103,29 +91,19 @@ class SessionContext:
     graph_runs: List[GraphRunRecord] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
     created_at: float = field(default_factory=time.time)
-    last_activity_at: float = field(default_factory=time.time)
     _persist_turn: Optional[Callable[[ConversationTurn], None]] = field(default=None, repr=False)
     _persist_tool_run: Optional[Callable[[ToolRunRecord], None]] = field(default=None, repr=False)
     _persist_graph_run: Optional[Callable[[GraphRunRecord], None]] = field(default=None, repr=False)
     _persist_metadata: Optional[Callable[[str, Any], None]] = field(default=None, repr=False)
 
-    def touch(self) -> None:
-        """Update last_activity_at to the current time."""
-        self.last_activity_at = time.time()
-
-    def is_expired(self, ttl_seconds: int = SESSION_TTL_SECONDS) -> bool:
-        """Return True if the session has been idle longer than ttl_seconds."""
-        return (time.time() - self.last_activity_at) > ttl_seconds
-
     def add_turn(self, role: str, content: str, **kwargs: Any) -> None:
-        """Append a conversation turn and persist if a callback is registered."""
-        self.touch()
+        """대화 턴을 추가하고 필요 시 영속화한다."""
         turn = ConversationTurn(role=role, content=content, metadata=kwargs)
         self.conversations.append(turn)
         if len(self.conversations) > self.max_history:
             removed = len(self.conversations) - self.max_history
             self.conversations = self.conversations[removed:]
-            logger.debug(f"Session {self.session_id}: removed {removed} old turns")
+            logger.debug(f"세션 {self.session_id}: 오래된 대화 {removed}턴 제거")
 
         if self._persist_turn:
             self._persist_turn(turn)
@@ -139,8 +117,7 @@ class SessionContext:
         error: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Append a tool-run record and persist if a callback is registered."""
-        self.touch()
+        """도구 실행 로그를 추가하고 필요 시 영속화한다."""
         record = ToolRunRecord(
             tool=tool,
             graph_run_request_id=graph_run_request_id,
@@ -174,8 +151,7 @@ class SessionContext:
         started_at: Optional[float] = None,
         completed_at: Optional[float] = None,
     ) -> None:
-        """Append or update a graph-run record and persist if a callback is registered."""
-        self.touch()
+        """task loop 단위 실행 로그를 추가하고 필요 시 영속화한다."""
         record = GraphRunRecord(
             request_id=request_id,
             plan_summary=plan_summary,
@@ -243,18 +219,11 @@ class SessionContext:
 
 
 class SessionStore:
-    """SQLite-backed session store with in-memory TTL eviction.
-
-    Sessions are tracked in ``_live_sessions`` (a dict keyed by session_id).
-    On every get_or_create() / get() call, expired entries (idle > SESSION_TTL_SECONDS)
-    are evicted first via cleanup_expired().
-    """
+    """SQLite 기반 세션 저장소."""
 
     def __init__(self, db_path: Optional[str] = None, max_history: int = 20) -> None:
         self._db_path = db_path or os.getenv("GOVON_SESSION_DB") or _default_session_db_path()
         self._max_history = max_history
-        # In-memory activity registry: session_id -> last_activity_at timestamp
-        self._live_sessions: Dict[str, float] = {}
         self._init_db()
 
     @property
@@ -693,58 +662,21 @@ class SessionStore:
             _persist_metadata=lambda key, value: self._upsert_metadata(session_id, key, value),
         )
 
-    def cleanup_expired(self, ttl_seconds: int = SESSION_TTL_SECONDS) -> int:
-        """Remove all sessions that have been idle longer than ttl_seconds.
-
-        Returns the number of sessions evicted from the in-memory registry.
-        This does NOT delete rows from SQLite — SQLite is the durable store.
-        """
-        now = time.time()
-        expired = [
-            sid for sid, last in list(self._live_sessions.items())
-            if (now - last) > ttl_seconds
-        ]
-        for sid in expired:
-            self._live_sessions.pop(sid, None)
-        if expired:
-            logger.debug(f"SessionStore: evicted {len(expired)} expired session(s) from memory")
-        return len(expired)
-
-    def _touch(self, session_id: str) -> None:
-        """Record the current time as the last-activity timestamp for session_id."""
-        self._live_sessions[session_id] = time.time()
-
-    def _is_expired(self, session_id: str, ttl_seconds: int = SESSION_TTL_SECONDS) -> bool:
-        """Return True if session_id is tracked and its idle time exceeds ttl_seconds."""
-        last = self._live_sessions.get(session_id)
-        if last is None:
-            # Never seen in this process — treated as expired (will be re-loaded from DB)
-            return False
-        return (time.time() - last) > ttl_seconds
-
     def get_or_create(
         self,
         session_id: Optional[str] = None,
         max_history: Optional[int] = None,
     ) -> SessionContext:
-        self.cleanup_expired()
         history_limit = max_history or self._max_history
         if session_id:
-            # If session is tracked but expired, drop it and create a fresh one
-            if self._is_expired(session_id):
-                logger.info(f"Session {session_id} expired — starting fresh")
-                self._live_sessions.pop(session_id, None)
-            else:
-                existing = self._build_context(session_id, history_limit)
-                if existing is not None:
-                    self._touch(session_id)
-                    return existing
+            existing = self._build_context(session_id, history_limit)
+            if existing is not None:
+                return existing
 
         sid = session_id or str(uuid.uuid4())
         created_at = time.time()
         self._ensure_session(sid, created_at=created_at)
-        self._touch(sid)
-        logger.info(f"New session created: {sid}")
+        logger.info(f"새 세션 생성: {sid}")
         return SessionContext(
             session_id=sid,
             max_history=history_limit,
@@ -756,15 +688,7 @@ class SessionStore:
         )
 
     def get(self, session_id: str) -> Optional[SessionContext]:
-        self.cleanup_expired()
-        if self._is_expired(session_id):
-            logger.info(f"Session {session_id} expired — returning None")
-            self._live_sessions.pop(session_id, None)
-            return None
-        ctx = self._build_context(session_id, self._max_history)
-        if ctx is not None:
-            self._touch(session_id)
-        return ctx
+        return self._build_context(session_id, self._max_history)
 
     def delete(self, session_id: str) -> bool:
         with closing(self._connect()) as conn, conn:

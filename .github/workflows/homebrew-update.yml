@@ -1,16 +1,15 @@
 name: Homebrew Formula Auto-Update
 
 on:
-  # Auto-trigger after PyPI deployment completes
-  workflow_run:
-    workflows: ["Publish to PyPI"]
-    types: [completed]
+  # Auto-trigger on version tag push
+  push:
+    tags: ['v*']
 
   # Manual trigger
   workflow_dispatch:
     inputs:
       version:
-        description: "GovOn version (e.g. 1.1.0)"
+        description: "GovOn version (e.g. 1.4.9)"
         required: false
         type: string
 
@@ -21,13 +20,6 @@ jobs:
   update-formula:
     name: Update Homebrew Formula
     runs-on: ubuntu-latest
-    # workflow_run: only when PyPI deployment succeeds + tag push
-    # workflow_dispatch: always runs
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success' &&
-       startsWith(github.event.workflow_run.head_branch, 'v'))
 
     permissions:
       contents: write
@@ -39,112 +31,44 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Resolve version and sha256 from PyPI (with retry)
+      - name: Resolve version
         id: resolve
         env:
           INPUT_VERSION: ${{ inputs.version || '' }}
-          TRIGGER_BRANCH: ${{ github.event.workflow_run.head_branch || '' }}
+          REF_NAME: ${{ github.ref_name || '' }}
         run: |
-          pip install requests --quiet
+          VERSION="${INPUT_VERSION:-${REF_NAME#v}}"
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not determine version"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Version: $VERSION"
 
-          python3 << 'PYEOF'
-          import json, os, re, sys, time
-          import requests
-
-          input_version = os.environ.get("INPUT_VERSION", "").strip()
-          trigger_branch = os.environ.get("TRIGGER_BRANCH", "").strip()
-
-          # Determine version: input > trigger branch tag > PyPI latest
-          version = None
-          if input_version:
-              version = input_version.lstrip("v")
-          elif trigger_branch.startswith("v"):
-              version = trigger_branch.lstrip("v")
-
-          # Fetch from PyPI with retry to handle index cache delay
-          MAX_RETRIES = 6
-          RETRY_DELAY = 30  # seconds
-
-          for attempt in range(1, MAX_RETRIES + 1):
-              resp = requests.get("https://pypi.org/pypi/govon/json", timeout=30)
-              resp.raise_for_status()
-              data = resp.json()
-
-              if not version:
-                  version = data["info"]["version"]
-
-              if version in data["releases"] and data["releases"][version]:
-                  print(f"Version {version} found on PyPI (attempt {attempt})")
-                  break
-
-              if attempt < MAX_RETRIES:
-                  print(f"::warning::Version {version} not yet on PyPI, retrying in {RETRY_DELAY}s (attempt {attempt}/{MAX_RETRIES})")
-                  time.sleep(RETRY_DELAY)
-          else:
-              print(f"::error::Version {version} not found on PyPI after {MAX_RETRIES} attempts ({MAX_RETRIES * RETRY_DELAY}s)")
-              sys.exit(1)
-
-          releases = data["releases"][version]
-          sdist = next((r for r in releases if r["packagetype"] == "sdist"), None)
-          if not sdist:
-              print(f"::error::No sdist found for version {version}")
-              sys.exit(1)
-
-          url = sdist["url"]
-          sha256 = sdist["digests"]["sha256"]
-
-          # Validate
-          if not re.match(r"^[0-9]+\.[0-9]+\.[0-9]+", version):
-              print(f"::error::Invalid version: {version}")
-              sys.exit(1)
-          if not re.match(r"^[a-f0-9]{64}$", sha256):
-              print(f"::error::Invalid sha256: {sha256}")
-              sys.exit(1)
-
-          print(f"Version: {version}")
-          print(f"URL: {url}")
-          print(f"SHA256: {sha256}")
-
-          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write(f"version={version}\n")
-              f.write(f"sha256={sha256}\n")
-              f.write(f"pypi_url={url}\n")
-          PYEOF
+          # Fetch npm tarball URL
+          NPM_URL="https://registry.npmjs.org/govon/-/govon-${VERSION}.tgz"
+          echo "npm_url=$NPM_URL" >> "$GITHUB_OUTPUT"
+          echo "URL: $NPM_URL"
 
       - name: Update formula
         env:
           VERSION: ${{ steps.resolve.outputs.version }}
-          SHA256: ${{ steps.resolve.outputs.sha256 }}
-          PYPI_URL: ${{ steps.resolve.outputs.pypi_url }}
+          NPM_URL: ${{ steps.resolve.outputs.npm_url }}
         run: |
           python3 << 'PYEOF'
           import os, re
 
           formula_path = "homebrew/govon.rb"
           version = os.environ["VERSION"]
-          sha256 = os.environ["SHA256"]
-          pypi_url = os.environ["PYPI_URL"]
+          npm_url = os.environ["NPM_URL"]
 
           with open(formula_path, "r") as f:
               content = f.read()
 
-          # Replace first url line
+          # Replace url line
           content = re.sub(
               r'url ".*?"',
-              f'url "{pypi_url}"',
-              content,
-              count=1,
-          )
-
-          # Replace first sha256 line
-          content = re.sub(
-              r'sha256 ".*?"',
-              f'sha256 "{sha256}"',
+              f'url "{npm_url}"',
               content,
               count=1,
           )
@@ -155,7 +79,7 @@ jobs:
           print("=== Updated formula ===")
           with open(formula_path, "r") as f:
               for i, line in enumerate(f):
-                  if i >= 15:
+                  if i >= 12:
                       break
                   print(line, end="")
           PYEOF
@@ -186,7 +110,5 @@ jobs:
             --base main)
 
           echo "PR created: $PR_URL"
-
-          # Auto-merge via admin (bypasses branch protection)
           gh pr merge "$PR_URL" --admin --squash --delete-branch
           echo "Homebrew formula updated to ${VERSION} via PR"

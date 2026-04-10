@@ -114,8 +114,8 @@ all = [
     "govon[dev,server,korean-nlp,database]",
 ]
 
-[project.scripts]
-govon = "src.govon_cli._launcher:main"
+# CLI is distributed via npm / brew / native installer (not pip).
+# See: npm install -g govon | brew install govon-org/tap/govon
 
 [project.urls]
 Homepage = "https://github.com/GovOn-org/GovOn"
@@ -129,7 +129,6 @@ include = ["src*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.json", "*.yaml", "*.yml", "*.tcss"]
-"src.govon_cli" = ["_bin/*"]
 
 # Black configuration
 [tool.black]

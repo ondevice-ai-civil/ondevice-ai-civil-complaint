@@ -3,12 +3,14 @@ import { Box, Text } from 'ink';
 import { THEME_COLORS, getBaseUrl } from '../config.js';
 
 // ASCII art for the 'G' logo, one line per row
+// Note: uses only narrow-width ASCII characters to ensure correct layout
+// across Korean-locale terminals where U+2588 FULL BLOCK renders as 2 columns.
 const LOGO_ART = [
-  '  ██████╗ ',
-  ' ██╔════╝ ',
-  ' ██║ ████╗',
-  ' ██║ ╚═██║',
-  ' ╚██████╔╝',
+  '  ######╗ ',
+  ' ##╔════╝ ',
+  ' ##║ ####╗',
+  ' ##║ ╚═##║',
+  ' ╚######╔╝',
   '  ╚═════╝ ',
 ];
 

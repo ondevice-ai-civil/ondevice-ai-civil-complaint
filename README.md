@@ -12,8 +12,8 @@
 <!-- DORA-BADGES:START -->
 ![DORA Grade](https://img.shields.io/badge/DORA-Elite-brightgreen)
 ![Deploy Freq](https://img.shields.io/badge/Deploy_Freq-30%2Fweek-blue)
-![Lead Time](https://img.shields.io/badge/Lead_Time-0.1h-brightgreen)
-![CFR](https://img.shields.io/badge/CFR-29.6%2525-yellow)
+![Lead Time](https://img.shields.io/badge/Lead_Time-0.3h-brightgreen)
+![CFR](https://img.shields.io/badge/CFR-32.3%2525-yellow)
 ![MTTR](https://img.shields.io/badge/MTTR-0.0h-brightgreen)
 <!-- DORA-BADGES:END -->
 

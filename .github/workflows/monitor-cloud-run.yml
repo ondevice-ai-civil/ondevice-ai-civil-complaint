@@ -94,7 +94,7 @@ jobs:
 
       - name: Create alert issue on failure
         if: steps.health.outputs.status == 'unhealthy'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             // Check for existing open alert
@@ -128,7 +128,7 @@ jobs:
 
       - name: Close alert if recovered
         if: steps.health.outputs.status == 'healthy'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const issues = await github.rest.issues.listForRepo({

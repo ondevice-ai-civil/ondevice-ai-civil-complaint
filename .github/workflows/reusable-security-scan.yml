@@ -134,7 +134,7 @@ jobs:
 
       - name: Create or Update Issue on vulnerability detection
         if: inputs.create-issue-on-vuln && always() && steps.audit.outputs.vuln_count != '0'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.github-token || github.token }}
           script: |

@@ -38,7 +38,7 @@ jobs:
       - name: Generate checksum
         working-directory: packages/npm
         run: node -e "const c=require('crypto'),f=require('fs');const h=c.createHash('sha256').update(f.readFileSync('dist/sea-bundle.js')).digest('hex');f.writeFileSync('dist/sea-bundle.js.sha256',h+'\n')"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sea-bundle
           path: |
@@ -110,7 +110,7 @@ jobs:
           fi
 
           ls -lh "$BINARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: govon-${{ matrix.platform }}
           path: packages/npm/dist/govon-${{ matrix.platform }}*

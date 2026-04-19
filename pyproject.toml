@@ -87,7 +87,7 @@ server = [
     "pydantic>=2.13.2",
     "rank-bm25>=0.2.2",
     "sentence-transformers>=5.4.0",
-    "faiss-cpu>=1.7.4",
+    "faiss-cpu>=1.13.2",
     "langgraph==1.1.8",
     "langgraph-checkpoint==4.0.2",
     "langgraph-checkpoint-sqlite==3.0.3",

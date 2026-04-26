@@ -15,7 +15,7 @@ trl>=0.15.0
 
 # Inference & Serving
 vllm>=0.14.1
-fastapi>=0.100.0
+fastapi>=0.136.1
 uvicorn>=0.23.0
 pydantic>=2.0.0
 rank-bm25>=0.2.2

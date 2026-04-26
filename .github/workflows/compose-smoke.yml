@@ -106,7 +106,10 @@ jobs:
 
   compose-gpu-smoke:
     needs: compose-config
-    if: github.event_name == 'workflow_dispatch'
+    # Disabled: Actions Linux GPU 4-core ($0.052/min) caused
+    # ~$25/month billing on public repo. Re-enable only after a
+    # spending limit is configured at the org level.
+    if: false
     runs-on: ubuntu-22.04-gpu-t4
     timeout-minutes: 45
 

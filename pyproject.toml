@@ -92,7 +92,7 @@ server = [
     "langgraph-checkpoint==4.0.2",
     "langgraph-checkpoint-sqlite==3.0.3",
     "langchain-core>=1.3.0,<2.0.0",
-    "langchain-openai>=1.1.14",
+    "langchain-openai>=1.2.1",
     "pandas>=2.3.3",
     "numpy>=2.2.6",
     "scikit-learn>=1.7.2",

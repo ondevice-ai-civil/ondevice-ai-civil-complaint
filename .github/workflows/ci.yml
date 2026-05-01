@@ -69,7 +69,6 @@ jobs:
             monitoring:
               - 'metrics/**'
               - '.github/workflows/dora-metrics.yml'
-              - '.github/workflows/monitor-cloud-run.yml'
             npm_changed:
               - 'packages/npm/**'
               - '.github/workflows/publish-npm.yml'

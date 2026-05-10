@@ -14,7 +14,7 @@ peft>=0.16.0
 trl>=1.4.0
 
 # Inference & Serving
-vllm>=0.14.1
+vllm>=0.20.2
 fastapi>=0.136.1
 uvicorn>=0.46.0
 pydantic>=2.13.4

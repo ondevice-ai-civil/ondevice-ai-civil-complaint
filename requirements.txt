@@ -27,7 +27,7 @@ langchain-openai>=1.2.1
 langchain-core>=1.2.0,<2.0.0
 
 # RAG & Search (New for M3)
-sentence-transformers>=3.0.0
+sentence-transformers>=5.5.0
 faiss-cpu>=1.7.4
 
 # Data Processing

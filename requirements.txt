@@ -39,7 +39,7 @@ scikit-learn>=1.7.2
 PyMuPDF>=1.27.2.3
 
 # Data Collection
-requests>=2.33.1
+requests>=2.34.2
 beautifulsoup4>=4.14.3
 lxml>=4.9.0
 
